@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MineUI
 
-## Getting Started
+Local Minecraft server control panel built with Next.js and Podman.
 
-First, run the development server:
+## Features
+
+- Start/stop the server container
+- Live status + player list (query protocol)
+- Logs stream (tail)
+- One-click backups to `/data/backups`
+- Mods & plugins list from container
+
+## Setup
+
+1. Ensure Podman is running and the socket is available.
+2. Start the Minecraft container (optional):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+podman-compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Create a local env file:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp env.local.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Update variables in `.env.local`:
 
-## Learn More
+- `MINECRAFT_CONTAINER_NAME` (default: `minecraft-server`)
+- `MINECRAFT_QUERY_HOST` / `MINECRAFT_QUERY_PORT`
+- `PODMAN_SOCKET` (default: `/run/user/1000/podman/podman.sock`)
+- `PODMAN_BINARY` (default: `podman`)
+- `MINECRAFT_WORLD_DIR` (default: `world`)
 
-To learn more about Next.js, take a look at the following resources:
+5. Start the app:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open `http://localhost:3000`.
 
-## Deploy on Vercel
+## Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Player list requires the Minecraft query protocol to be enabled.
+- Backups are created inside the container at `/data/backups`.
+- Podman compose stores data in `../minecraft-data` by default.
+- Mods/plugins list reads `/data/mods` and `/data/plugins`.

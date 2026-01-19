@@ -1,8 +1,17 @@
 @import "tailwindcss";
+@config "../tailwind.config.ts";
+@source "./**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+@import "@heroui/styles";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0f0b;
+  --foreground: #eaf5ea;
+  --mc-panel: #131813;
+  --mc-panel-border: #2a352a;
+  --mc-accent: #67f78f;
+  --mc-accent-strong: #28c76f;
+  --mc-muted: #97a697;
 }
 
 @theme inline {
@@ -12,15 +21,60 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+}
+
+@layer utilities {
+  .mc-panel {
+    @apply rounded-xl border shadow-lg backdrop-blur;
+    background: linear-gradient(180deg, rgba(19, 24, 19, 0.98), rgba(9, 12, 9, 0.98));
+    border-color: var(--mc-panel-border);
+    box-shadow: 0 12px 40px rgba(4, 9, 4, 0.55);
+  }
+
+  .mc-title {
+    @apply text-2xl font-semibold tracking-wide;
+    color: var(--mc-accent);
+  }
+
+  .mc-subtitle {
+    @apply text-sm uppercase tracking-[0.3em];
+    color: var(--mc-muted);
+  }
+
+  .mc-glow {
+    text-shadow: 0 0 18px rgba(103, 247, 143, 0.35);
+  }
+
+  .mc-button {
+    @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition;
+    background: rgba(40, 199, 111, 0.12);
+    border: 1px solid rgba(40, 199, 111, 0.45);
+    color: var(--mc-accent);
+  }
+
+  .mc-button:hover {
+    background: rgba(40, 199, 111, 0.2);
+  }
+
+  .mc-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .mc-chip {
+    @apply rounded-full px-3 py-1 text-xs font-semibold;
+    background: rgba(16, 22, 16, 0.9);
+    border: 1px solid rgba(42, 53, 42, 0.9);
+    color: var(--mc-muted);
+  }
+
+  .mc-grid {
+    background-image: linear-gradient(rgba(20, 40, 20, 0.35) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(20, 40, 20, 0.35) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
 }
