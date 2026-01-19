@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { motion } from "motion/react";
+import { toast } from "sonner";
 import {
   Activity,
   Archive,
   Boxes,
+  Loader2,
   Play,
   RefreshCcw,
   ScrollText,
@@ -13,6 +16,8 @@ import {
   Square,
   Users,
 } from "lucide-react";
+import { useUISound } from "@/app/hooks/useUISound";
+import { SkeletonCard } from "@/app/components/Skeleton";
 
 type ContainerState = {
   exists: boolean;
@@ -65,6 +70,9 @@ export default function Home() {
   const [logs, setLogs] = useState<LogsResponse | null>(null);
   const [mods, setMods] = useState<ModsResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const logsRef = useRef<HTMLDivElement>(null);
+  const { play } = useUISound();
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players?.online ?? 0;
@@ -90,6 +98,7 @@ export default function Home() {
     if (modState.status === "fulfilled") {
       setMods(modState.value);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -100,170 +109,284 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleAction = async (path: string) => {
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (logsRef.current) {
+      logsRef.current.scrollTop = logsRef.current.scrollHeight;
+    }
+  }, [logs]);
+
+  const handleAction = async (path: string, label: string) => {
+    play("click_confirm");
     setBusy(true);
     try {
       const res = await fetch(path, { method: "POST" });
       if (!res.ok) throw new Error("Action failed");
+      play("success");
+      toast.success(`${label} completed`);
       await refreshAll();
+    } catch {
+      play("error");
+      toast.error(`${label} failed`);
     } finally {
       setBusy(false);
     }
   };
 
+  const handleRefresh = () => {
+    play("click_confirm");
+    refreshAll();
+  };
+
+  const containerMotion = {
+    hidden: { opacity: 0, y: 12 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { staggerChildren: 0.08, duration: 0.4 },
+    },
+  };
+
+  const cardMotion = {
+    hidden: { opacity: 0, y: 14, scale: 0.98 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.35 } },
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen mc-grid" style={{ background: "var(--background)" }}>
+        <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
+          <div className="h-16" />
+          <SkeletonCard />
+          <div className="grid gap-6 md:grid-cols-3">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(29,68,38,0.55),_transparent_60%)] mc-grid">
-      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-6 py-10">
-        <header className="flex flex-col gap-2">
+    <div
+      className="min-h-screen mc-grid"
+      style={{
+        background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)`,
+      }}
+    >
+      <motion.main
+        className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
+        initial="hidden"
+        animate="show"
+        variants={containerMotion}
+      >
+        <motion.header className="flex flex-col gap-2" variants={cardMotion}>
           <span className="mc-subtitle">Home Server Control</span>
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <h1 className="mc-title mc-glow">MineUI</h1>
-            <div className="flex items-center gap-3">
-              <span className="mc-chip">
+            <div className="relative">
+              <motion.div
+                className="absolute -inset-4 rounded-full"
+                style={{
+                  background: "radial-gradient(circle, var(--mc-accent-soft), transparent 70%)",
+                }}
+                animate={{ opacity: [0.2, 0.6, 0.3] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <h1 className="mc-title mc-glow relative">MineUI</h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <motion.span
+                className="mc-chip"
+                animate={{
+                  borderColor: container?.running
+                    ? "var(--mc-accent)"
+                    : "var(--mc-panel-border)",
+                }}
+              >
                 Container: {container?.status ?? "unknown"}
-              </span>
-              <span className="mc-chip">
-                Server: {serverOnline ? "online" : "offline"}
-              </span>
+              </motion.span>
+              <motion.span
+                className="mc-chip"
+                animate={{
+                  borderColor: serverOnline
+                    ? "var(--mc-accent)"
+                    : "var(--mc-panel-border)",
+                }}
+              >
+                {serverOnline ? (
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-2 w-2 rounded-full animate-pulse"
+                      style={{ background: "var(--mc-accent)" }}
+                    />
+                    Online
+                  </span>
+                ) : (
+                  "Offline"
+                )}
+              </motion.span>
               <button
                 className="mc-button"
-                onClick={() => refreshAll()}
+                onClick={handleRefresh}
                 disabled={busy}
+                onMouseEnter={() => play("hover")}
               >
-                <RefreshCcw size={16} />
-                Refresh
+                <RefreshCcw size={16} className={busy ? "animate-spin" : ""} />
+                <span className="hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
-        </header>
+        </motion.header>
 
-        <section className="grid gap-6 md:grid-cols-3">
-          <div className="mc-panel p-5">
-            <div className="flex items-center gap-3 text-sm text-emerald-200">
-              <Server size={18} />
-              Status
+        <motion.section className="mc-panel p-5" variants={cardMotion}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
+              <ScrollText size={18} />
+              <span className="font-pixel text-xs tracking-wide">Server Logs</span>
             </div>
-            <div className="mt-4 flex flex-col gap-2">
-              <div className="text-lg font-semibold">
+            <motion.div
+              className="h-2 w-2 rounded-full"
+              style={{ background: "var(--mc-accent)" }}
+              animate={{ opacity: [0.3, 1, 0.3] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          </div>
+          <div
+            ref={logsRef}
+            className="mt-4 max-h-[420px] overflow-auto rounded-lg border p-4 text-xs leading-5 font-mono"
+            style={{
+              background: "color-mix(in oklab, var(--background) 70%, black)",
+              borderColor: "var(--mc-panel-border)",
+              color: "var(--foreground)",
+            }}
+          >
+            {logs?.lines?.length ? (
+              <pre className="whitespace-pre-wrap">{logs.lines.join("\n")}</pre>
+            ) : (
+              <div className="flex items-center gap-2" style={{ color: "var(--mc-muted)" }}>
+                <Activity size={16} />
+                Waiting for logs...
+              </div>
+            )}
+          </div>
+        </motion.section>
+
+        <motion.section className="grid gap-6 md:grid-cols-3" variants={containerMotion}>
+          <motion.div className="mc-panel flex flex-col p-5" variants={cardMotion}>
+            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
+              <Server size={18} />
+              <span className="font-pixel text-xs tracking-wide">Status</span>
+            </div>
+            <div className="mt-4 flex flex-1 flex-col gap-2">
+              <div className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
                 {serverOnline ? "Online" : "Offline"}
               </div>
-              <div className="text-sm text-emerald-200/80">
+              <div className="text-sm" style={{ color: "var(--mc-muted)" }}>
                 Version: {status?.version ?? "unknown"}
               </div>
-              <div className="text-sm text-emerald-200/80">
+              <div className="text-sm" style={{ color: "var(--mc-muted)" }}>
                 MOTD: {status?.motd ?? "—"}
               </div>
-              <div className="text-sm text-emerald-200/80">
+              <div className="text-sm" style={{ color: "var(--mc-muted)" }}>
                 Ping: {status?.ping ? `${status.ping}ms` : "—"}
               </div>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-auto flex flex-wrap gap-2 pt-4">
               <button
                 className="mc-button"
-                onClick={() => handleAction("/api/server/start")}
+                onClick={() => handleAction("/api/server/start", "Start")}
                 disabled={busy}
+                onMouseEnter={() => play("hover")}
               >
-                <Play size={16} />
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
                 Start
               </button>
               <button
                 className="mc-button"
-                onClick={() => handleAction("/api/server/stop")}
+                onClick={() => handleAction("/api/server/stop", "Stop")}
                 disabled={busy}
+                onMouseEnter={() => play("hover")}
               >
                 <Square size={16} />
                 Stop
               </button>
               <button
                 className="mc-button"
-                onClick={() => handleAction("/api/backup")}
+                onClick={() => handleAction("/api/backup", "Backup")}
                 disabled={busy}
+                onMouseEnter={() => play("hover")}
               >
                 <Archive size={16} />
                 Backup
               </button>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="mc-panel p-5">
-            <div className="flex items-center gap-3 text-sm text-emerald-200">
+          <motion.div className="mc-panel flex flex-col p-5" variants={cardMotion}>
+            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
               <Users size={18} />
-              Players
+              <span className="font-pixel text-xs tracking-wide">Players</span>
             </div>
-            <div className="mt-4 flex items-center gap-3">
-              <span className="text-3xl font-semibold">
-                {playerCount}/{maxPlayers || "?"}
-              </span>
-              <span className="text-sm text-emerald-200/80">
-                Online right now
-              </span>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {playerCount === 0 ? (
-                <span className="text-sm text-emerald-200/70">
-                  No players online
+            <div className="mt-4 flex flex-1 flex-col">
+              <div className="flex items-center gap-3">
+                <span className="font-pixel text-2xl" style={{ color: "var(--mc-accent)" }}>
+                  {playerCount}/{maxPlayers || "?"}
                 </span>
-              ) : (
-                <span className="mc-chip">{playerCount} online</span>
-              )}
+                <span className="text-sm" style={{ color: "var(--mc-muted)" }}>
+                  Online now
+                </span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {playerCount === 0 ? (
+                  <span className="text-sm" style={{ color: "var(--mc-muted)" }}>
+                    No players online
+                  </span>
+                ) : (
+                  <span className="mc-chip">{playerCount} online</span>
+                )}
+              </div>
             </div>
-            <Link className="mc-button mt-4 w-fit" href="/players">
-              View player details
+            <Link
+              className="mc-button mt-auto w-fit pt-4"
+              href="/players"
+              onClick={() => play("click_confirm")}
+              onMouseEnter={() => play("hover")}
+            >
+              View players
             </Link>
-          </div>
+          </motion.div>
 
-          <div className="mc-panel p-5">
-            <div className="flex items-center gap-3 text-sm text-emerald-200">
+          <motion.div className="mc-panel flex flex-col p-5" variants={cardMotion}>
+            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
               <Boxes size={18} />
-              Mods & Plugins
+              <span className="font-pixel text-xs tracking-wide">Mods & Plugins</span>
             </div>
-            <div className="mt-4 grid gap-3 text-sm text-emerald-200/80">
+            <div className="mt-4 flex flex-1 flex-col gap-3 text-sm">
               <div>
-                <div className="text-xs uppercase tracking-[0.25em] text-emerald-200/60">
-                  Mods
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="mc-chip">
-                    {mods?.mods?.length ?? 0} total
-                  </span>
+                <div className="mc-subtitle text-[10px]">Mods</div>
+                <div className="mt-2">
+                  <span className="mc-chip">{mods?.mods?.length ?? 0} total</span>
                 </div>
               </div>
               <div>
-                <div className="text-xs uppercase tracking-[0.25em] text-emerald-200/60">
-                  Plugins
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="mc-chip">
-                    {mods?.plugins?.length ?? 0} total
-                  </span>
+                <div className="mc-subtitle text-[10px]">Plugins</div>
+                <div className="mt-2">
+                  <span className="mc-chip">{mods?.plugins?.length ?? 0} total</span>
                 </div>
               </div>
-              <Link className="mc-button w-fit" href="/mods">
-                View mods & plugins
-              </Link>
             </div>
-          </div>
-        </section>
-
-        <section className="mc-panel p-5">
-          <div className="flex items-center gap-3 text-sm text-emerald-200">
-            <ScrollText size={18} />
-            Server Logs
-          </div>
-          <div className="mt-4 max-h-[420px] overflow-auto rounded-lg border border-emerald-900/60 bg-black/70 p-4 text-xs leading-5 text-emerald-100/90">
-            {logs?.lines?.length ? (
-              <pre className="whitespace-pre-wrap">
-                {logs.lines.join("\n")}
-              </pre>
-            ) : (
-              <div className="flex items-center gap-2 text-emerald-200/70">
-                <Activity size={16} />
-                Waiting for logs...
-              </div>
-            )}
-          </div>
-        </section>
-      </main>
+            <Link
+              className="mc-button mt-auto w-fit pt-4"
+              href="/mods"
+              onClick={() => play("click_confirm")}
+              onMouseEnter={() => play("hover")}
+            >
+              View mods
+            </Link>
+          </motion.div>
+        </motion.section>
+      </motion.main>
     </div>
   );
 }

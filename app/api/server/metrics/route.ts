@@ -1,0 +1,143 @@
+import { NextResponse } from "next/server";
+import { runPodman } from "@/app/api/_utils/podman";
+import { runRcon } from "@/app/api/_utils/rcon";
+import { serverConfig } from "@/app/lib/serverConfig";
+
+export const revalidate = 0;
+
+const parsePercent = (value: string) => {
+  const num = Number(value.replace("%", "").trim());
+  return Number.isFinite(num) ? num : null;
+};
+
+const parseBytes = (value: string) => {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([\d.]+)\s*([KMGT]?i?B)?$/i);
+  if (!match) return null;
+  const size = Number(match[1]);
+  if (!Number.isFinite(size)) return null;
+  const unit = (match[2] ?? "B").toUpperCase();
+  const base = unit.includes("IB") ? 1024 : 1000;
+  const powMap: Record<string, number> = {
+    B: 0,
+    KB: 1,
+    MB: 2,
+    GB: 3,
+    TB: 4,
+    KIB: 1,
+    MIB: 2,
+    GIB: 3,
+    TIB: 4,
+  };
+  const power = powMap[unit] ?? 0;
+  return Math.round(size * Math.pow(base, power));
+};
+
+const parseUsage = (value: string) => {
+  const [usedRaw, totalRaw] = value.split("/").map((part) => part.trim());
+  return {
+    usedBytes: usedRaw ? parseBytes(usedRaw) : null,
+    totalBytes: totalRaw ? parseBytes(totalRaw) : null,
+  };
+};
+
+const parseIO = (value: string) => {
+  const [inputRaw, outputRaw] = value.split("/").map((part) => part.trim());
+  return {
+    inputBytes: inputRaw ? parseBytes(inputRaw) : null,
+    outputBytes: outputRaw ? parseBytes(outputRaw) : null,
+  };
+};
+
+const parseTps = (output: string) => {
+  const match = output.match(
+    /TPS from last 1m, 5m, 15m: ([\\d.]+),\\s*([\\d.]+),\\s*([\\d.]+)/i,
+  );
+  if (!match) return null;
+  return {
+    one: Number(match[1]),
+    five: Number(match[2]),
+    fifteen: Number(match[3]),
+    raw: output,
+  };
+};
+
+export const GET = async () => {
+  try {
+    const [statsRaw, startedAtRaw, diskRaw] = await Promise.all([
+      runPodman([
+        "stats",
+        "--no-stream",
+        "--format",
+        "json",
+        serverConfig.containerName,
+      ]),
+      runPodman([
+        "inspect",
+        "-f",
+        "{{.State.StartedAt}}",
+        serverConfig.containerName,
+      ]),
+      runPodman([
+        "exec",
+        serverConfig.containerName,
+        "sh",
+        "-c",
+        "df -k /data | tail -n 1",
+      ]),
+    ]);
+
+    const stats = statsRaw.stdout ? JSON.parse(statsRaw.stdout) : [];
+    const container = Array.isArray(stats) ? stats[0] : stats;
+    const cpuPercent = parsePercent(container?.CPUPerc ?? "");
+    const memPercent = parsePercent(container?.MemPerc ?? "");
+    const memUsage = parseUsage(container?.MemUsage ?? "");
+    const netIO = parseIO(container?.NetIO ?? "");
+    const blockIO = parseIO(container?.BlockIO ?? "");
+
+    const diskParts = diskRaw.stdout.trim().split(/\s+/);
+    const diskTotal = diskParts[1] ? Number(diskParts[1]) * 1024 : null;
+    const diskUsed = diskParts[2] ? Number(diskParts[2]) * 1024 : null;
+    const diskPercentRaw = diskParts[4] ?? "";
+    const diskPercent = parsePercent(diskPercentRaw);
+
+    let tps: {
+      one: number;
+      five: number;
+      fifteen: number;
+      raw: string;
+    } | null = null;
+    try {
+      const tpsOutput = await runRcon("tps");
+      tps = parseTps(tpsOutput);
+      if (!tps) {
+        tps = { one: NaN, five: NaN, fifteen: NaN, raw: tpsOutput };
+      }
+    } catch {
+      tps = null;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      cpuPercent,
+      memUsage,
+      memPercent,
+      netIO,
+      blockIO,
+      disk: {
+        usedBytes: diskUsed,
+        totalBytes: diskTotal,
+        percent: diskPercent,
+        raw: diskRaw.stdout.trim(),
+      },
+      uptime: startedAtRaw.stdout.trim() || null,
+      tps,
+      chunks: null,
+      entities: null,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Metrics unavailable";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+};

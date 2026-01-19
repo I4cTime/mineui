@@ -13,7 +13,7 @@ export const serverConfig = {
   rconPassword: getEnv("MINECRAFT_RCON_PASSWORD", ""),
   rconAllowlist: getEnv(
     "MINECRAFT_RCON_ALLOWLIST",
-    "list,whitelist,op,deop,ban,pardon,banlist,kick,say,save-all,stop",
+    "list,whitelist,op,deop,ban,pardon,banlist,kick,say,save-all,stop,tps",
   )
     .split(",")
     .map((item) => item.trim())

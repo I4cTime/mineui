@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Filter, Search, Shield, Users } from "lucide-react";
+import { motion } from "motion/react";
+import { toast } from "sonner";
+import { Filter, Search, Shield, Users } from "lucide-react";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
+import PageHeader from "@/app/components/PageHeader";
+import { SkeletonTable } from "@/app/components/Skeleton";
+import { useUISound } from "@/app/hooks/useUISound";
 
 type StatusResponse = {
   online: boolean;
@@ -40,35 +46,42 @@ type PlayerSample = { name?: string; id?: string } | string;
 const toPlayerName = (player: PlayerSample) =>
   typeof player === "string" ? player : player.name ?? player.id ?? "Unknown";
 
+const containerMotion = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
+};
+
+const cardMotion = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 },
+};
+
 export default function PlayersPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [users, setUsers] = useState<UsersResponse | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [presence, setPresence] = useState<"all" | "online" | "offline">("all");
   const [sort, setSort] = useState<"name-asc" | "last-seen-desc">("name-asc");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    command: string;
+    username: string;
+  } | null>(null);
+  const { play } = useUISound();
 
   useEffect(() => {
-    fetchJson<StatusResponse>("/api/status")
-      .then(setStatus)
-      .catch((error) => {
-        setStatus({
-          online: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      });
-    fetchJson<UsersResponse>("/api/rcon/users")
-      .then(setUsers)
-      .catch((error) => {
-        setUsers({
-          ok: false,
-          users: [],
-          online: [],
-          raw: null,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      });
+    Promise.allSettled([
+      fetchJson<StatusResponse>("/api/status"),
+      fetchJson<UsersResponse>("/api/rcon/users"),
+    ]).then(([statusRes, usersRes]) => {
+      if (statusRes.status === "fulfilled") setStatus(statusRes.value);
+      else setStatus({ online: false });
+      if (usersRes.status === "fulfilled") setUsers(usersRes.value);
+      else setUsers({ ok: false, users: [], online: [], raw: null });
+      setLoading(false);
+    });
   }, []);
 
   const playerList = useMemo(() => {
@@ -107,7 +120,6 @@ export default function PlayersPage() {
 
   const runUserCommand = async (command: string, username: string) => {
     setActionBusy(`${command}:${username}`);
-    setActionError(null);
     try {
       const res = await fetch("/api/rcon/command", {
         method: "POST",
@@ -116,84 +128,87 @@ export default function PlayersPage() {
       });
       const payload = await res.json();
       if (!res.ok || !payload.ok) {
-        setActionError(payload.error ?? "Command failed.");
+        play("error");
+        toast.error(payload.error ?? "Command failed.");
       } else {
+        play("success");
+        toast.success(`${command} ${username} completed`);
         const updated = await fetchJson<UsersResponse>("/api/rcon/users");
         setUsers(updated);
       }
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Command failed.");
+      play("error");
+      toast.error(error instanceof Error ? error.message : "Command failed.");
     } finally {
       setActionBusy(null);
     }
   };
 
-  const sendCommand = async () => {
-    if (!command.trim()) return;
-    setSending(true);
-    setCommandError(null);
-    setCommandOutput(null);
-    try {
-      const res = await fetch("/api/rcon/command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command }),
-      });
-      const payload = await res.json();
-      if (!res.ok || !payload.ok) {
-        setCommandError(payload.error ?? "Command failed.");
-      } else {
-        setCommandOutput(payload.output ?? "OK");
-      }
-    } catch (error) {
-      setCommandError(
-        error instanceof Error ? error.message : "Command failed.",
-      );
-    } finally {
-      setSending(false);
-    }
+  const confirmAction = (command: string, username: string) => {
+    setPendingAction({ command, username });
+    setConfirmOpen(true);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen mc-grid" style={{ background: "var(--background)" }}>
+        <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
+          <div className="h-16" />
+          <SkeletonTable rows={6} cols={4} />
+        </main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(29,68,38,0.55),_transparent_60%)] mc-grid">
-      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-6 py-10">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Users size={20} className="text-emerald-200" />
-            <h1 className="mc-title mc-glow">Player Management</h1>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link className="mc-button" href="/rcon">
+    <div
+      className="min-h-screen mc-grid"
+      style={{
+        background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)`,
+      }}
+    >
+      <motion.main
+        className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
+        initial="hidden"
+        animate="show"
+        variants={containerMotion}
+      >
+        <PageHeader
+          title="Player Management"
+          icon={Users}
+          actions={
+            <Link
+              className="mc-button"
+              href="/rcon"
+              onClick={() => play("click_confirm")}
+              onMouseEnter={() => play("hover")}
+            >
               <Shield size={16} />
               RCON Tools
             </Link>
-            <Link className="mc-button" href="/">
-              <ArrowLeft size={16} />
-              Back to dashboard
-            </Link>
-          </div>
-        </header>
+          }
+        />
 
-        <section className="mc-panel p-5">
-          <div className="flex flex-wrap items-center gap-3 text-sm text-emerald-200/80">
-            <span className="mc-chip">
-              Status: {status?.online ? "online" : "offline"}
-            </span>
+        <motion.section className="mc-panel p-5" variants={cardMotion}>
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <motion.span
+              className="mc-chip"
+              animate={{
+                borderColor: status?.online ? "var(--mc-accent)" : "var(--mc-panel-border)",
+              }}
+            >
+              {status?.online ? "Online" : "Offline"}
+            </motion.span>
             <span className="mc-chip">
               Players: {status?.players?.online ?? playerList.length}
             </span>
-            <span className="mc-chip">
-              Version: {status?.version ?? "unknown"}
-            </span>
-            {status?.error ? (
-              <span className="mc-chip text-amber-200">{status.error}</span>
-            ) : null}
+            <span className="mc-chip">Version: {status?.version ?? "unknown"}</span>
           </div>
-        </section>
+        </motion.section>
 
-        <section className="grid gap-6 md:grid-cols-2">
-          <div className="mc-panel p-5">
-            <div className="text-xs uppercase tracking-[0.25em] text-emerald-200/60">
+        <motion.section className="grid gap-6 md:grid-cols-2" variants={containerMotion}>
+          <motion.div className="mc-panel p-5" variants={cardMotion}>
+            <div className="font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
               Online Players
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -204,159 +219,110 @@ export default function PlayersPage() {
                   </span>
                 ))
               ) : (
-                <span className="text-emerald-200/70">No players online</span>
+                <span style={{ color: "var(--mc-muted)" }}>No players online</span>
               )}
             </div>
-          </div>
+          </motion.div>
 
-          <div className="mc-panel p-5">
-            <div className="text-xs uppercase tracking-[0.25em] text-emerald-200/60">
+          <motion.div className="mc-panel p-5" variants={cardMotion}>
+            <div className="font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
               Server Details
             </div>
-            <div className="mt-4 grid gap-2 text-sm text-emerald-200/80">
+            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
               <span>MOTD: {status?.motd ?? "—"}</span>
               <span>
-                Players: {status?.players?.online ?? 0}/
-                {status?.players?.max ?? "?"}
+                Players: {status?.players?.online ?? 0}/{status?.players?.max ?? "?"}
               </span>
               <span>Ping: {status?.ping ? `${status.ping}ms` : "—"}</span>
             </div>
-          </div>
-        </section>
+          </motion.div>
+        </motion.section>
 
-        <section className="mc-panel overflow-hidden p-0">
-          <div className="border-b border-emerald-900/60 p-5">
-            <div className="text-xs uppercase tracking-[0.25em] text-emerald-200/60">
+        <motion.section className="mc-panel overflow-hidden p-0" variants={cardMotion}>
+          <div className="border-b p-5" style={{ borderColor: "var(--mc-panel-border)" }}>
+            <div className="font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
               User Management
             </div>
-            {actionError ? (
-              <div className="mt-2 text-sm text-amber-200">{actionError}</div>
-            ) : null}
-            <div className="mt-4 flex flex-wrap gap-3 text-sm text-emerald-100">
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-900/60 bg-black/40 px-3 py-2">
-                <Search size={16} />
+            <div className="mt-4 flex flex-wrap gap-3 text-sm">
+              <div className="mc-input flex items-center gap-2 pr-2">
+                <Search size={16} style={{ color: "var(--mc-muted)" }} />
                 <input
-                  className="bg-transparent outline-none placeholder:text-emerald-200/50"
+                  className="bg-transparent outline-none"
                   placeholder="Search username or IP"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  style={{ color: "var(--foreground)" }}
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Filter size={16} />
+                <Filter size={16} style={{ color: "var(--mc-muted)" }} />
                 <select
-                  className="rounded-lg border border-emerald-900/60 bg-black/60 px-2 py-1 text-sm"
+                  className="mc-select text-sm"
                   value={presence}
-                  onChange={(event) =>
-                    setPresence(event.target.value as typeof presence)
-                  }
+                  onChange={(event) => setPresence(event.target.value as typeof presence)}
                 >
                   <option value="all">All</option>
                   <option value="online">Online</option>
                   <option value="offline">Offline</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <select
-                  className="rounded-lg border border-emerald-900/60 bg-black/60 px-2 py-1 text-sm"
-                  value={sort}
-                  onChange={(event) =>
-                    setSort(event.target.value as typeof sort)
-                  }
-                >
-                  <option value="name-asc">Name (A-Z)</option>
-                  <option value="last-seen-desc">Last Seen (Recent)</option>
-                </select>
-              </div>
+              <select
+                className="mc-select text-sm"
+                value={sort}
+                onChange={(event) => setSort(event.target.value as typeof sort)}
+              >
+                <option value="name-asc">Name (A-Z)</option>
+                <option value="last-seen-desc">Last Seen (Recent)</option>
+              </select>
             </div>
           </div>
           <div className="overflow-auto">
-            <table className="w-full text-left text-sm text-emerald-100/90">
-              <thead className="bg-black/70 text-xs uppercase tracking-[0.2em] text-emerald-200/70">
+            <table className="mc-table">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3">Username</th>
-                  <th className="px-4 py-3">Last Seen</th>
-                  <th className="px-4 py-3">IP Address</th>
-                  <th className="px-4 py-3">Actions</th>
+                  <th>Username</th>
+                  <th>Last Seen</th>
+                  <th>IP Address</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredUsers.length ? (
                   filteredUsers.map((row) => (
-                    <tr
-                      key={row.username}
-                      className="border-t border-emerald-900/60"
-                    >
-                      <td className="px-4 py-3 font-semibold">
+                    <tr key={row.username}>
+                      <td className="font-semibold">
                         <div className="flex items-center gap-2">
-                          <span>{row.username}</span>
-                          {row.isOnline ? (
-                            <span className="mc-chip">online</span>
-                          ) : null}
+                          {row.username}
+                          {row.isOnline && (
+                            <span
+                              className="inline-block h-2 w-2 rounded-full animate-pulse"
+                              style={{ background: "var(--mc-accent)" }}
+                            />
+                          )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-emerald-200/70">
-                        {row.lastSeen ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-emerald-200/70">
-                        {row.ipAddress ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="mc-button px-2 py-1 text-xs"
-                            onClick={() =>
-                              runUserCommand("whitelist add", row.username)
-                            }
-                            disabled={actionBusy === `whitelist add:${row.username}`}
-                          >
-                            Whitelist
-                          </button>
-                          <button
-                            className="mc-button px-2 py-1 text-xs"
-                            onClick={() => runUserCommand("op", row.username)}
-                            disabled={actionBusy === `op:${row.username}`}
-                          >
-                            Op
-                          </button>
-                          <button
-                            className="mc-button px-2 py-1 text-xs"
-                            onClick={() => runUserCommand("deop", row.username)}
-                            disabled={actionBusy === `deop:${row.username}`}
-                          >
-                            Deop
-                          </button>
-                          <button
-                            className="mc-button px-2 py-1 text-xs"
-                            onClick={() => runUserCommand("ban", row.username)}
-                            disabled={actionBusy === `ban:${row.username}`}
-                          >
-                            Ban
-                          </button>
-                          <button
-                            className="mc-button px-2 py-1 text-xs"
-                            onClick={() => runUserCommand("pardon", row.username)}
-                            disabled={actionBusy === `pardon:${row.username}`}
-                          >
-                            Pardon
-                          </button>
-                          <button
-                            className="mc-button px-2 py-1 text-xs"
-                            onClick={() => runUserCommand("kick", row.username)}
-                            disabled={actionBusy === `kick:${row.username}`}
-                          >
-                            Kick
-                          </button>
+                      <td style={{ color: "var(--mc-muted)" }}>{row.lastSeen ?? "—"}</td>
+                      <td style={{ color: "var(--mc-muted)" }}>{row.ipAddress ?? "—"}</td>
+                      <td>
+                        <div className="flex flex-wrap gap-1">
+                          {["whitelist add", "op", "deop", "ban", "pardon", "kick"].map((cmd) => (
+                            <button
+                              key={cmd}
+                              className="mc-button px-2 py-1 text-xs"
+                              onClick={() => confirmAction(cmd, row.username)}
+                              disabled={actionBusy === `${cmd}:${row.username}`}
+                              onMouseEnter={() => play("hover")}
+                            >
+                              {cmd.split(" ").pop()}
+                            </button>
+                          ))}
                         </div>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td
-                      className="px-4 py-6 text-emerald-200/70"
-                      colSpan={4}
-                    >
+                    <td colSpan={4} style={{ color: "var(--mc-muted)" }}>
                       No player data available.
                     </td>
                   </tr>
@@ -364,8 +330,31 @@ export default function PlayersPage() {
               </tbody>
             </table>
           </div>
-        </section>
-      </main>
+        </motion.section>
+
+        <ConfirmDialog
+          isOpen={confirmOpen}
+          title="Confirm player action"
+          description={
+            pendingAction
+              ? `Run "${pendingAction.command}" on ${pendingAction.username}?`
+              : "Run this command?"
+          }
+          confirmLabel="Run command"
+          cancelLabel="Cancel"
+          variant="danger"
+          isLoading={Boolean(actionBusy)}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={async () => {
+            if (!pendingAction) {
+              setConfirmOpen(false);
+              return;
+            }
+            setConfirmOpen(false);
+            await runUserCommand(pendingAction.command, pendingAction.username);
+          }}
+        />
+      </motion.main>
     </div>
   );
 }
