@@ -73,6 +73,11 @@ type ServerUtilsMetricsResponse = {
   chunks?: number | null;
   entities?: number | null;
   dimensions?: Record<string, { chunks: number | null; entities: number | null }>;
+  system?: {
+    cpuPercent?: number | null;
+    mem?: { totalBytes?: number | null; usedBytes?: number | null };
+    net?: { inputBytes?: number | null; outputBytes?: number | null };
+  };
   players?: { online: number | null; max: number | null };
   error?: string;
 };
@@ -128,6 +133,12 @@ export const GET = async () => {
     let entities: number | null = null;
     let dimensions: Record<string, { chunks: number | null; entities: number | null }> | null =
       null;
+    let systemCpu: number | null = null;
+    let systemMemUsage: { usedBytes: number | null; totalBytes: number | null } | null =
+      null;
+    let systemMemPercent: number | null = null;
+    let systemNet: { inputBytes: number | null; outputBytes: number | null } | null =
+      null;
     const serverUtilsUrl = getServerUtilsBaseUrl();
     if (serverUtilsUrl) {
       try {
@@ -149,6 +160,29 @@ export const GET = async () => {
           entities = metricsResponse.entities ?? null;
           mspt = metricsResponse.mspt ?? null;
           dimensions = metricsResponse.dimensions ?? null;
+          if (metricsResponse.system) {
+            systemCpu = metricsResponse.system.cpuPercent ?? null;
+            if (metricsResponse.system.mem) {
+              systemMemUsage = {
+                usedBytes: metricsResponse.system.mem.usedBytes ?? null,
+                totalBytes: metricsResponse.system.mem.totalBytes ?? null,
+              };
+              if (
+                systemMemUsage.totalBytes != null &&
+                systemMemUsage.usedBytes != null &&
+                systemMemUsage.totalBytes > 0
+              ) {
+                systemMemPercent =
+                  (systemMemUsage.usedBytes / systemMemUsage.totalBytes) * 100;
+              }
+            }
+            if (metricsResponse.system.net) {
+              systemNet = {
+                inputBytes: metricsResponse.system.net.inputBytes ?? null,
+                outputBytes: metricsResponse.system.net.outputBytes ?? null,
+              };
+            }
+          }
         }
       } catch {
         tps = null;
@@ -168,10 +202,10 @@ export const GET = async () => {
 
     return NextResponse.json({
       ok: true,
-      cpuPercent,
-      memUsage,
-      memPercent,
-      netIO,
+      cpuPercent: systemCpu ?? cpuPercent,
+      memUsage: systemMemUsage ?? memUsage,
+      memPercent: systemMemPercent ?? memPercent,
+      netIO: systemNet ?? netIO,
       blockIO,
       disk: {
         usedBytes: diskUsed,

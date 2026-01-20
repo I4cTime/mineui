@@ -105,17 +105,23 @@ export default function StatusPage() {
   const { play } = useUISound();
 
   useEffect(() => {
-    Promise.allSettled([
-      fetchJson<StatusResponse>("/api/status"),
-      fetchJson<MetricsResponse>("/api/server/metrics"),
-      fetchJson<ContainerState>("/api/server/state"),
-    ]).then(([statusRes, metricsRes, containerRes]) => {
-      if (statusRes.status === "fulfilled") setStatus(statusRes.value);
-      else setStatus({ online: false });
-      if (metricsRes.status === "fulfilled") setMetrics(metricsRes.value);
-      if (containerRes.status === "fulfilled") setContainer(containerRes.value);
-      setLoading(false);
-    });
+    const fetchAll = () => {
+      Promise.allSettled([
+        fetchJson<StatusResponse>("/api/status"),
+        fetchJson<MetricsResponse>("/api/server/metrics"),
+        fetchJson<ContainerState>("/api/server/state"),
+      ]).then(([statusRes, metricsRes, containerRes]) => {
+        if (statusRes.status === "fulfilled") setStatus(statusRes.value);
+        else setStatus({ online: false });
+        if (metricsRes.status === "fulfilled") setMetrics(metricsRes.value);
+        if (containerRes.status === "fulfilled") setContainer(containerRes.value);
+        setLoading(false);
+      });
+    };
+
+    fetchAll();
+    const interval = setInterval(fetchAll, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   const tpsDisplay = useMemo(() => {

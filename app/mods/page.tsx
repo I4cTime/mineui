@@ -3,7 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { Boxes, Copy, Filter, Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import {
+  Boxes,
+  Copy,
+  Download,
+  Filter,
+  Search,
+  SlidersHorizontal,
+  Sparkles,
+  Upload,
+  X,
+} from "lucide-react";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -45,13 +55,21 @@ export default function ModsPage() {
   const [sort, setSort] = useState<"name-asc" | "name-desc" | "size-desc" | "updated-desc">("name-asc");
   const [copied, setCopied] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(24);
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState("");
+  const [downloadName, setDownloadName] = useState("");
+  const [target, setTarget] = useState<"mods" | "plugins">("mods");
+  const [busy, setBusy] = useState(false);
   const { play } = useUISound();
 
-  useEffect(() => {
+  const refreshMods = () =>
     fetchJson<ModsResponse>("/api/mods")
       .then(setMods)
-      .catch(() => setMods({ mods: [], plugins: [] }))
-      .finally(() => setLoading(false));
+      .catch(() => setMods({ mods: [], plugins: [] }));
+
+  useEffect(() => {
+    refreshMods().finally(() => setLoading(false));
   }, []);
 
   const normalize = (value: string) => value.toLowerCase().trim();
@@ -130,6 +148,65 @@ export default function ModsPage() {
     }
   };
 
+  const handleUpload = async () => {
+    if (!uploadFile) {
+      toast.error("Choose a mod file first");
+      return;
+    }
+    setBusy(true);
+    play("click_confirm");
+    try {
+      const form = new FormData();
+      form.append("file", uploadFile);
+      form.append("target", target);
+      const res = await fetch("/api/mods/upload", {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      play("success");
+      toast.success("Mod uploaded");
+      setUploadFile(null);
+      await refreshMods();
+    } catch {
+      play("error");
+      toast.error("Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!downloadUrl.trim()) {
+      toast.error("Enter a URL");
+      return;
+    }
+    setBusy(true);
+    play("click_confirm");
+    try {
+      const res = await fetch("/api/mods/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: downloadUrl.trim(),
+          filename: downloadName.trim() || undefined,
+          target,
+        }),
+      });
+      if (!res.ok) throw new Error("Download failed");
+      play("success");
+      toast.success("Mod downloaded");
+      setDownloadUrl("");
+      setDownloadName("");
+      await refreshMods();
+    } catch {
+      play("error");
+      toast.error("Download failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const showMods = filter === "all" || filter === "mods";
   const showPlugins = filter === "all" || filter === "plugins";
 
@@ -173,6 +250,14 @@ export default function ModsPage() {
             <span className="mc-chip">Last updated: {lastUpdated ? formatDate(lastUpdated) : "—"}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="mc-button"
+              onClick={() => setShowUpload(true)}
+              onMouseEnter={() => play("hover")}
+            >
+              <Upload size={16} />
+              Add mod
+            </button>
             <div className="mc-input flex items-center gap-2 pr-2">
               <Search size={16} style={{ color: "var(--mc-muted)" }} />
               <input
@@ -333,6 +418,105 @@ export default function ModsPage() {
           )}
         </motion.section>
       </motion.main>
+
+      {showUpload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="mc-panel w-full max-w-xl p-6">
+            <div className="flex items-center justify-between">
+              <div className="font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
+                Add Mods
+              </div>
+              <button
+                className="mc-button"
+                onClick={() => setShowUpload(false)}
+                onMouseEnter={() => play("hover")}
+              >
+                <X size={14} />
+                Close
+              </button>
+            </div>
+            <div className="mt-4 grid gap-4 text-sm">
+              <div className="mc-panel rounded-xl p-4">
+                <div className="flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
+                  <Upload size={14} />
+                  Upload a mod (.jar/.zip)
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
+                  <span>Target:</span>
+                  <select
+                    className="mc-select text-xs"
+                    value={target}
+                    onChange={(event) => setTarget(event.target.value as "mods" | "plugins")}
+                  >
+                    <option value="mods">mods</option>
+                    <option value="plugins">plugins</option>
+                  </select>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <input
+                    type="file"
+                    accept=".jar,.zip"
+                    onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    className="mc-button"
+                    onClick={handleUpload}
+                    disabled={busy}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    Upload
+                  </button>
+                </div>
+                {uploadFile && (
+                  <div className="mt-2 text-xs" style={{ color: "var(--mc-muted)" }}>
+                    Selected: {uploadFile.name}
+                  </div>
+                )}
+              </div>
+
+              <div className="mc-panel rounded-xl p-4">
+                <div className="flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
+                  <Download size={14} />
+                  Download from URL
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
+                  <span>Target:</span>
+                  <select
+                    className="mc-select text-xs"
+                    value={target}
+                    onChange={(event) => setTarget(event.target.value as "mods" | "plugins")}
+                  >
+                    <option value="mods">mods</option>
+                    <option value="plugins">plugins</option>
+                  </select>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <input
+                    className="mc-input"
+                    placeholder="https://example.com/mod.jar"
+                    value={downloadUrl}
+                    onChange={(event) => setDownloadUrl(event.target.value)}
+                  />
+                  <input
+                    className="mc-input"
+                    placeholder="Optional filename (mod.jar)"
+                    value={downloadName}
+                    onChange={(event) => setDownloadName(event.target.value)}
+                  />
+                  <button
+                    className="mc-button w-fit"
+                    onClick={handleDownload}
+                    disabled={busy}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

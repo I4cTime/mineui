@@ -4,7 +4,7 @@ const path = require("path");
 const createWindow = () => {
   const win = new BrowserWindow({
     width: 1280,
-    height: 800,
+    height: 1000,
     backgroundColor: "#0b0b0f",
     webPreferences: {
       contextIsolation: true,
