@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { runPodman } from "@/app/api/_utils/podman";
 import { runRcon } from "@/app/api/_utils/rcon";
+import {
+  fetchServerUtilsJson,
+  getServerUtilsBaseUrl,
+} from "@/app/api/_utils/mineuiServerUtils";
 import { serverConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
@@ -62,6 +66,12 @@ const parseTps = (output: string) => {
   };
 };
 
+type ServerUtilsTpsResponse = {
+  ok: boolean;
+  raw?: string;
+  error?: string;
+};
+
 export const GET = async () => {
   try {
     const [statsRaw, startedAtRaw, diskRaw] = await Promise.all([
@@ -107,14 +117,34 @@ export const GET = async () => {
       fifteen: number;
       raw: string;
     } | null = null;
-    try {
-      const tpsOutput = await runRcon("tps");
-      tps = parseTps(tpsOutput);
-      if (!tps) {
-        tps = { one: NaN, five: NaN, fifteen: NaN, raw: tpsOutput };
+    const serverUtilsUrl = getServerUtilsBaseUrl();
+    if (serverUtilsUrl) {
+      try {
+        const tpsResponse = await fetchServerUtilsJson<ServerUtilsTpsResponse>(
+          "/tps",
+        );
+        if (tpsResponse.ok && tpsResponse.raw) {
+          tps = parseTps(tpsResponse.raw) ?? {
+            one: NaN,
+            five: NaN,
+            fifteen: NaN,
+            raw: tpsResponse.raw,
+          };
+        }
+      } catch {
+        tps = null;
       }
-    } catch {
-      tps = null;
+    }
+    if (!tps) {
+      try {
+        const tpsOutput = await runRcon("tps");
+        tps = parseTps(tpsOutput);
+        if (!tps) {
+          tps = { one: NaN, five: NaN, fifteen: NaN, raw: tpsOutput };
+        }
+      } catch {
+        tps = null;
+      }
     }
 
     return NextResponse.json({

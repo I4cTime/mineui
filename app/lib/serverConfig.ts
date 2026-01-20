@@ -11,6 +11,7 @@ export const serverConfig = {
   rconHost: getEnv("MINECRAFT_RCON_HOST", "127.0.0.1"),
   rconPort: Number(getEnv("MINECRAFT_RCON_PORT", "25575")),
   rconPassword: getEnv("MINECRAFT_RCON_PASSWORD", ""),
+  mineuiServerUtilsUrl: getEnv("MINEUI_SERVER_UTILS_URL", ""),
   rconAllowlist: getEnv(
     "MINECRAFT_RCON_ALLOWLIST",
     "list,whitelist,op,deop,ban,pardon,banlist,kick,say,save-all,stop,tps",
