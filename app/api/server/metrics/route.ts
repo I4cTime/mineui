@@ -66,9 +66,14 @@ const parseTps = (output: string) => {
   };
 };
 
-type ServerUtilsTpsResponse = {
+type ServerUtilsMetricsResponse = {
   ok: boolean;
-  raw?: string;
+  tps?: { one: number; five: number; fifteen: number; raw?: string };
+  mspt?: { one: number | null; five: number | null; fifteen: number | null };
+  chunks?: number | null;
+  entities?: number | null;
+  dimensions?: Record<string, { chunks: number | null; entities: number | null }>;
+  players?: { online: number | null; max: number | null };
   error?: string;
 };
 
@@ -117,19 +122,33 @@ export const GET = async () => {
       fifteen: number;
       raw: string;
     } | null = null;
+    let mspt: { one: number | null; five: number | null; fifteen: number | null } | null =
+      null;
+    let chunks: number | null = null;
+    let entities: number | null = null;
+    let dimensions: Record<string, { chunks: number | null; entities: number | null }> | null =
+      null;
     const serverUtilsUrl = getServerUtilsBaseUrl();
     if (serverUtilsUrl) {
       try {
-        const tpsResponse = await fetchServerUtilsJson<ServerUtilsTpsResponse>(
-          "/tps",
-        );
-        if (tpsResponse.ok && tpsResponse.raw) {
-          tps = parseTps(tpsResponse.raw) ?? {
-            one: NaN,
-            five: NaN,
-            fifteen: NaN,
-            raw: tpsResponse.raw,
-          };
+        const metricsResponse =
+          await fetchServerUtilsJson<ServerUtilsMetricsResponse>("/metrics");
+        if (metricsResponse.ok) {
+          if (metricsResponse.tps) {
+            const raw =
+              metricsResponse.tps.raw ??
+              `TPS avg 1m/5m/15m: ${metricsResponse.tps.one}, ${metricsResponse.tps.five}, ${metricsResponse.tps.fifteen}`;
+            tps = {
+              one: metricsResponse.tps.one,
+              five: metricsResponse.tps.five,
+              fifteen: metricsResponse.tps.fifteen,
+              raw,
+            };
+          }
+          chunks = metricsResponse.chunks ?? null;
+          entities = metricsResponse.entities ?? null;
+          mspt = metricsResponse.mspt ?? null;
+          dimensions = metricsResponse.dimensions ?? null;
         }
       } catch {
         tps = null;
@@ -162,8 +181,10 @@ export const GET = async () => {
       },
       uptime: startedAtRaw.stdout.trim() || null,
       tps,
-      chunks: null,
-      entities: null,
+      mspt,
+      chunks,
+      entities,
+      dimensions,
     });
   } catch (error) {
     const message =

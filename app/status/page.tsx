@@ -35,8 +35,10 @@ type MetricsResponse = {
   disk: { usedBytes: number | null; totalBytes: number | null; percent: number | null };
   uptime: string | null;
   tps: { one: number; five: number; fifteen: number; raw: string } | null;
+  mspt: { one: number | null; five: number | null; fifteen: number | null } | null;
   chunks: number | null;
   entities: number | null;
+  dimensions: Record<string, { chunks: number | null; entities: number | null }> | null;
   error?: string;
 };
 
@@ -68,6 +70,9 @@ const formatBytes = (value: number | null) => {
 
 const formatPercent = (value: number | null) =>
   value === null ? "—" : `${value.toFixed(1)}%`;
+
+const formatMspt = (value: number | null) =>
+  value === null ? "—" : `${value.toFixed(2)} ms`;
 
 const formatUptime = (value: string | null) => {
   if (!value) return "—";
@@ -117,6 +122,11 @@ export default function StatusPage() {
     if (!metrics?.tps) return "—";
     if (!Number.isFinite(metrics.tps.one)) return metrics.tps.raw;
     return `${metrics.tps.one.toFixed(1)} / ${metrics.tps.five.toFixed(1)} / ${metrics.tps.fifteen.toFixed(1)}`;
+  }, [metrics]);
+
+  const dimensionsDisplay = useMemo(() => {
+    if (!metrics?.dimensions) return [];
+    return Object.entries(metrics.dimensions);
   }, [metrics]);
 
   if (loading) {
@@ -231,6 +241,14 @@ export default function StatusPage() {
                 <span className="text-xs">{tpsDisplay}</span>
               </div>
               <div className="flex justify-between">
+                <span>MSPT:</span>
+                <span className="text-xs">
+                  {metrics?.mspt
+                    ? `${formatMspt(metrics.mspt.one)} / ${formatMspt(metrics.mspt.five)} / ${formatMspt(metrics.mspt.fifteen)}`
+                    : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span>Chunks:</span>
                 <span>{metrics?.chunks ?? "—"}</span>
               </div>
@@ -316,6 +334,27 @@ export default function StatusPage() {
                 <span>Usage:</span>
                 <span>{formatPercent(metrics?.disk?.percent ?? null)}</span>
               </div>
+            </div>
+          </motion.div>
+
+          <motion.div className="mc-panel p-5" variants={cardMotion}>
+            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
+              <Database size={18} />
+              <span className="font-pixel text-xs tracking-wide">Dimensions</span>
+            </div>
+            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
+              {dimensionsDisplay.length === 0 ? (
+                <div className="text-xs">—</div>
+              ) : (
+                dimensionsDisplay.map(([dimension, values]) => (
+                  <div key={dimension} className="flex justify-between gap-3">
+                    <span className="truncate max-w-[140px]">{dimension}</span>
+                    <span className="text-xs">
+                      {values.chunks ?? "—"} ch / {values.entities ?? "—"} en
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </motion.div>
         </motion.section>

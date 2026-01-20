@@ -10,6 +10,7 @@ services:
       - "25565:25565/tcp"
       - "25565:25565/udp"
       - "25575:25575/tcp"
+      - "8787:8787/tcp"
     environment:
       EULA: "TRUE"
       ENABLE_QUERY: "true"
@@ -17,7 +18,7 @@ services:
       RCON_PASSWORD: 20e49c761220cbeb1947a29d
       RCON_PORT: "25575"
       MINECRAFT_RCON_ALLOWLIST: list,whitelist,op,deop,ban,pardon,banlist,kick,say,save-all,stop,tps
-      CF_API_KEY: ${CF_API_KEY}
+      CF_API_KEY: "$$2a$10$$CGIKTrCo9bFiCKwScOL.o.SUVdrawTyYwLEcF72CxmXxNF.tYPuvu"
       # TYPE: "FORGE"
       VERSION: "1.20.1"
       FORGE_VERSION: "47.4.10"
