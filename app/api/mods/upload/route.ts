@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { runPodman } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -41,10 +41,11 @@ export const POST = async (req: Request) => {
     await fs.writeFile(tmpPath, buffer);
 
     const targetPath = getTargetPath(target);
+    const config = await getServerConfig();
     await runPodman([
       "cp",
       tmpPath,
-      `${serverConfig.containerName}:${targetPath}/${filename}`,
+      `${config.containerName}:${targetPath}/${filename}`,
     ]);
 
     await fs.rm(tmpDir, { recursive: true, force: true });

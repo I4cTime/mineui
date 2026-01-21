@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runPodman, safeList } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -30,9 +30,10 @@ const toDisplayName = (filename: string) => {
 
 const listDir = async (path: string) => {
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       `ls -1 ${path} 2>/dev/null || true`,
@@ -45,9 +46,10 @@ const listDir = async (path: string) => {
 
 const listEntries = async (path: string) => {
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       `for f in ${path}/*; do [ -f "$f" ] || continue; stat -c "%n|%s|%Y" "$f"; done`,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { runRcon } from "@/app/api/_utils/rcon";
 import { runPodman } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -120,9 +120,10 @@ const parseLogs = (lines: string[]) => {
 
 const readLatestLog = async () => {
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       "tail -n 4000 /data/logs/latest.log 2>/dev/null || true",
@@ -135,9 +136,10 @@ const readLatestLog = async () => {
 
 const readFallbackLog = async () => {
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       "tail -n 2000 /data/logs/latest.log.1 2>/dev/null || true",

@@ -1,0 +1,4 @@
+{
+  "MINECRAFT_RCON_ALLOWLIST": "list,whitelist,op,deop,ban,pardon,banlist,kick,say,save-all,stop,tps",
+  "MINECRAFT_RCON_PASSWORD": "20e49c761220cbeb1947a29d"
+}

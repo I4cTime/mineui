@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runPodman } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -9,11 +9,12 @@ export const GET = async (request: Request) => {
   const tail = Number(searchParams.get("tail") ?? "200");
   const safeTail = Number.isFinite(tail) ? Math.min(Math.max(tail, 10), 1000) : 200;
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "logs",
       "--tail",
       safeTail.toString(),
-      serverConfig.containerName,
+      config.containerName,
     ]);
     return NextResponse.json({
       ok: true,

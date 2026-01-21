@@ -1,12 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 const execFileAsync = promisify(execFile);
-const PODMAN_BIN = process.env.PODMAN_BINARY ?? "podman";
-
-const getPodmanEnv = () => {
-  const socket = serverConfig.podmanSocket;
+const getPodmanEnv = async () => {
+  const config = await getServerConfig();
+  const socket = config.podmanSocket;
   const host = socket.startsWith("unix://") ? socket : `unix://${socket}`;
   return {
     ...process.env,
@@ -15,8 +14,10 @@ const getPodmanEnv = () => {
 };
 
 export const runPodman = async (args: string[]) => {
-  const { stdout, stderr } = await execFileAsync(PODMAN_BIN, args, {
-    env: getPodmanEnv(),
+  const config = await getServerConfig();
+  const podmanBin = config.podmanBinary || "podman";
+  const { stdout, stderr } = await execFileAsync(podmanBin, args, {
+    env: await getPodmanEnv(),
   });
   return { stdout: stdout.trim(), stderr: stderr.trim() };
 };

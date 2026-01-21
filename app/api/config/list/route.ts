@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runPodman, safeList } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -30,9 +30,10 @@ const isAllowedExtension = (path: string) => {
 
 export const GET = async () => {
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       "find /data/config -type f 2>/dev/null || true",
@@ -46,7 +47,7 @@ export const GET = async () => {
     const serverProps = "/data/server.properties";
     const { stdout: exists } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       `[ -f "${serverProps}" ] && echo yes || true`,

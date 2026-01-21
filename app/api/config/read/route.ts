@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runPodman } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -41,9 +41,10 @@ export const POST = async (request: Request) => {
   }
 
   try {
+    const config = await getServerConfig();
     const { stdout } = await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       `cat "${path}" 2>/dev/null || true`,

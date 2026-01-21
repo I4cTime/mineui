@@ -4,7 +4,7 @@ import {
   fetchServerUtilsJson,
   getServerUtilsBaseUrl,
 } from "@/app/api/_utils/mineuiServerUtils";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -32,7 +32,7 @@ const parseMaxPlayers = (value?: string) => {
 };
 
 export const GET = async () => {
-  const serverUtilsUrl = getServerUtilsBaseUrl();
+  const serverUtilsUrl = await getServerUtilsBaseUrl();
   if (serverUtilsUrl) {
     const [statusRes, metricsRes, modsRes] = await Promise.allSettled([
       fetchServerUtilsJson<ServerUtilsStatus>("/status"),
@@ -83,7 +83,8 @@ export const GET = async () => {
   }
 
   try {
-    const result = await status(serverConfig.queryHost, serverConfig.queryPort, {
+    const config = await getServerConfig();
+    const result = await status(config.queryHost, config.queryPort, {
       timeout: 3000,
       enableSRV: false,
     });

@@ -1,14 +1,15 @@
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
 
-export const getServerUtilsBaseUrl = () => {
-  const url = serverConfig.mineuiServerUtilsUrl?.trim();
+export const getServerUtilsBaseUrl = async () => {
+  const config = await getServerConfig();
+  const url = config.mineuiServerUtilsUrl?.trim();
   return url ? trimSlash(url) : "";
 };
 
 export const fetchServerUtilsJson = async <T,>(path: string): Promise<T> => {
-  const baseUrl = getServerUtilsBaseUrl();
+  const baseUrl = await getServerUtilsBaseUrl();
   if (!baseUrl) {
     throw new Error("MINEUI_SERVER_UTILS_URL not configured");
   }

@@ -5,7 +5,7 @@ import {
   fetchServerUtilsJson,
   getServerUtilsBaseUrl,
 } from "@/app/api/_utils/mineuiServerUtils";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -96,23 +96,24 @@ type ServerUtilsMetricsResponse = {
 
 export const GET = async () => {
   try {
+    const config = await getServerConfig();
     const [statsRaw, startedAtRaw, diskRaw] = await Promise.all([
       runPodman([
         "stats",
         "--no-stream",
         "--format",
         "json",
-        serverConfig.containerName,
+        config.containerName,
       ]),
       runPodman([
         "inspect",
         "-f",
         "{{.State.StartedAt}}",
-        serverConfig.containerName,
+        config.containerName,
       ]),
       runPodman([
         "exec",
-        serverConfig.containerName,
+        config.containerName,
         "sh",
         "-c",
         "df -k /data | tail -n 1",
@@ -161,7 +162,7 @@ export const GET = async () => {
       null;
     let containerBlock: { inputBytes: number | null; outputBytes: number | null } | null =
       null;
-    const serverUtilsUrl = getServerUtilsBaseUrl();
+    const serverUtilsUrl = await getServerUtilsBaseUrl();
     if (serverUtilsUrl) {
       try {
         const metricsResponse =

@@ -10,6 +10,7 @@ import {
   Menu,
   ScrollText,
   Server,
+  Settings,
   Shield,
   Users,
   Volume2,
@@ -33,6 +34,7 @@ const navItems = [
   { href: "/players", label: "Players", icon: Users },
   { href: "/rcon", label: "RCON", icon: Shield },
   { href: "/config", label: "Config", icon: ScrollText },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Navbar() {

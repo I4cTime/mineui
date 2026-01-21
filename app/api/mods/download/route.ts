@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import { runPodman } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 export const revalidate = 0;
 
@@ -57,9 +57,10 @@ export const POST = async (req: Request) => {
     const safeFilename = escapeShell(filename);
     const safeUrl = escapeShell(url.toString());
     const targetPath = getTargetPath(body.target);
+    const config = await getServerConfig();
     await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       `cd ${targetPath} && curl -L -o '${safeFilename}' '${safeUrl}'`,

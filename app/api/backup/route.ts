@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runPodman } from "@/app/api/_utils/podman";
-import { serverConfig } from "@/app/lib/serverConfig";
+import { getServerConfig } from "@/app/lib/serverConfig";
 
 const getTimestamp = () => {
   const now = new Date();
@@ -11,21 +11,22 @@ const getTimestamp = () => {
 };
 
 export const POST = async () => {
+  const config = await getServerConfig();
   const filename = `world-${getTimestamp()}.tar.gz`;
   try {
     await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
       "mkdir -p /data/backups",
     ]);
     await runPodman([
       "exec",
-      serverConfig.containerName,
+      config.containerName,
       "sh",
       "-c",
-      `tar -czf /data/backups/${filename} -C /data ${serverConfig.worldDir}`,
+      `tar -czf /data/backups/${filename} -C /data ${config.worldDir}`,
     ]);
     return NextResponse.json({ ok: true, filename });
   } catch (error) {
