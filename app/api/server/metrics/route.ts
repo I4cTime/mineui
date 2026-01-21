@@ -77,6 +77,18 @@ type ServerUtilsMetricsResponse = {
     cpuPercent?: number | null;
     mem?: { totalBytes?: number | null; usedBytes?: number | null };
     net?: { inputBytes?: number | null; outputBytes?: number | null };
+    disk?: { readBytes?: number | null; writeBytes?: number | null };
+    container?: {
+      cpuPercent?: number | null;
+      mem?: {
+        usedBytes?: number | null;
+        limitBytes?: number | null;
+        percent?: number | null;
+      };
+      net?: { inputBytes?: number | null; outputBytes?: number | null };
+      block?: { readBytes?: number | null; writeBytes?: number | null };
+      pids?: number | null;
+    };
   };
   players?: { online: number | null; max: number | null };
   error?: string;
@@ -139,6 +151,16 @@ export const GET = async () => {
     let systemMemPercent: number | null = null;
     let systemNet: { inputBytes: number | null; outputBytes: number | null } | null =
       null;
+    let systemDisk: { inputBytes: number | null; outputBytes: number | null } | null =
+      null;
+    let containerCpu: number | null = null;
+    let containerMemUsage: { usedBytes: number | null; totalBytes: number | null } | null =
+      null;
+    let containerMemPercent: number | null = null;
+    let containerNet: { inputBytes: number | null; outputBytes: number | null } | null =
+      null;
+    let containerBlock: { inputBytes: number | null; outputBytes: number | null } | null =
+      null;
     const serverUtilsUrl = getServerUtilsBaseUrl();
     if (serverUtilsUrl) {
       try {
@@ -182,6 +204,42 @@ export const GET = async () => {
                 outputBytes: metricsResponse.system.net.outputBytes ?? null,
               };
             }
+            if (metricsResponse.system.disk) {
+              systemDisk = {
+                inputBytes: metricsResponse.system.disk.readBytes ?? null,
+                outputBytes: metricsResponse.system.disk.writeBytes ?? null,
+              };
+            }
+            if (metricsResponse.system.container) {
+              containerCpu =
+                metricsResponse.system.container.cpuPercent ?? null;
+              if (metricsResponse.system.container.mem) {
+                containerMemUsage = {
+                  usedBytes:
+                    metricsResponse.system.container.mem.usedBytes ?? null,
+                  totalBytes:
+                    metricsResponse.system.container.mem.limitBytes ?? null,
+                };
+                containerMemPercent =
+                  metricsResponse.system.container.mem.percent ?? null;
+              }
+              if (metricsResponse.system.container.net) {
+                containerNet = {
+                  inputBytes:
+                    metricsResponse.system.container.net.inputBytes ?? null,
+                  outputBytes:
+                    metricsResponse.system.container.net.outputBytes ?? null,
+                };
+              }
+              if (metricsResponse.system.container.block) {
+                containerBlock = {
+                  inputBytes:
+                    metricsResponse.system.container.block.readBytes ?? null,
+                  outputBytes:
+                    metricsResponse.system.container.block.writeBytes ?? null,
+                };
+              }
+            }
           }
         }
       } catch {
@@ -202,11 +260,11 @@ export const GET = async () => {
 
     return NextResponse.json({
       ok: true,
-      cpuPercent: systemCpu ?? cpuPercent,
-      memUsage: systemMemUsage ?? memUsage,
-      memPercent: systemMemPercent ?? memPercent,
-      netIO: systemNet ?? netIO,
-      blockIO,
+      cpuPercent: containerCpu ?? systemCpu ?? cpuPercent,
+      memUsage: containerMemUsage ?? systemMemUsage ?? memUsage,
+      memPercent: containerMemPercent ?? systemMemPercent ?? memPercent,
+      netIO: containerNet ?? systemNet ?? netIO,
+      blockIO: containerBlock ?? systemDisk ?? blockIO,
       disk: {
         usedBytes: diskUsed,
         totalBytes: diskTotal,
