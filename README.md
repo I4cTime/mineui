@@ -111,3 +111,4 @@ MineUI will still work, but with limited functionality:
 ## License
 
 MIT
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K11SM7LV)

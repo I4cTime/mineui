@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Boxes,
@@ -13,6 +13,7 @@ import {
   Settings,
   Shield,
   Users,
+  Coffee,
   Volume2,
   VolumeX,
   X,
@@ -41,9 +42,11 @@ export default function Navbar() {
   const pathname = usePathname();
   const [theme, setTheme] = useState("emerald");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showKofi, setShowKofi] = useState(false);
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
   const { play } = useUISound();
+  const kofiRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("mineui-theme");
@@ -58,6 +61,18 @@ export default function Navbar() {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("mineui-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!showKofi) return;
+      const target = event.target as Node;
+      if (kofiRef.current && !kofiRef.current.contains(target)) {
+        setShowKofi(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showKofi]);
 
   const handleNavClick = () => {
     play("click_confirm");
@@ -143,7 +158,7 @@ export default function Navbar() {
         </div>
 
         {/* Right controls */}
-        <div className="relative z-10 flex items-center gap-2">
+        <div className="relative z-10 flex items-center gap-2" ref={kofiRef}>
           {/* Sound toggle */}
           <button
             onClick={toggleSound}
@@ -167,6 +182,50 @@ export default function Navbar() {
               </option>
             ))}
           </select>
+
+          {/* Ko-fi popover */}
+          <div className="relative hidden md:block">
+            <button
+              className="mc-button px-2 py-2"
+              title="Support on Ko-fi"
+              onClick={() => {
+                play("click_confirm");
+                setShowKofi((prev) => !prev);
+              }}
+              onMouseEnter={() => play("hover")}
+              aria-expanded={showKofi}
+              aria-controls="kofi-popover"
+            >
+              <Coffee size={16} />
+            </button>
+            <AnimatePresence>
+              {showKofi && (
+                <motion.div
+                  id="kofi-popover"
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                  transition={{ duration: 0.18 }}
+                  className="absolute right-0 mt-3 w-[340px] overflow-hidden rounded-xl border shadow-xl"
+                  style={{
+                    background: "var(--mc-panel-bg)",
+                    borderColor: "var(--mc-panel-border)",
+                  }}
+                >
+                  <iframe
+                    src="https://ko-fi.com/i4cdeath/?hidefeed=true&widget=true&embed=true&preview=true"
+                    title="i4cdeath Ko-fi"
+                    className="h-[520px] w-full"
+                    style={{
+                      border: "none",
+                      padding: 4,
+                      background: "#f9f9f9",
+                    }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Mobile menu toggle */}
           <button
