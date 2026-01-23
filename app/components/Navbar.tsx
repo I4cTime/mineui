@@ -216,7 +216,7 @@ export default function Navbar() {
                 <iframe
                   src="https://ko-fi.com/i4cdeath/?hidefeed=true&widget=true&embed=true&preview=true"
                   title="i4cdeath Ko-fi"
-                  className="h-[520px] w-full"
+                  className="h-[570px] w-full"
                   style={{
                     border: "none",
                     padding: 4,
