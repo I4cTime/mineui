@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Boxes,
@@ -18,6 +18,15 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import {
+  Button,
+  Label,
+  ListBox,
+  Popover,
+  Select,
+  Separator,
+  Surface,
+} from "@heroui/react";
 import Logo from "./Logo";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
 
@@ -40,13 +49,14 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [theme, setTheme] = useState("emerald");
+  const router = useRouter();
+  const [theme, setTheme] = useState<string | null>("emerald");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showKofi, setShowKofi] = useState(false);
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
   const { play } = useUISound();
-  const kofiRef = useRef<HTMLDivElement | null>(null);
+  const currentTheme = typeof theme === "string" ? theme : "emerald";
 
   useEffect(() => {
     const stored = window.localStorage.getItem("mineui-theme");
@@ -58,30 +68,20 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("mineui-theme", theme);
-  }, [theme]);
+    document.documentElement.dataset.theme = currentTheme;
+    window.localStorage.setItem("mineui-theme", currentTheme);
+  }, [currentTheme]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!showKofi) return;
-      const target = event.target as Node;
-      if (kofiRef.current && !kofiRef.current.contains(target)) {
-        setShowKofi(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showKofi]);
-
-  const handleNavClick = () => {
+  const handleNavigate = (href: string) => {
     play("click_confirm");
     setMobileMenuOpen(false);
+    router.push(href);
   };
 
-  const handleThemeChange = (newTheme: string) => {
+  const handleThemeChange = (newTheme: string | number | null) => {
+    if (newTheme === null) return;
     play("toggle_on");
-    setTheme(newTheme);
+    setTheme(String(newTheme));
   };
 
   const toggleSound = () => {
@@ -99,14 +99,17 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="mc-nav">
+    <Surface
+      className="sticky top-0 z-40 border-b backdrop-blur"
+      style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--background) 85%, transparent)" }}
+    >
       <div className="relative mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
         {/* Animated glow background */}
         <motion.div
           className="pointer-events-none absolute inset-0 opacity-50"
           style={{
             background:
-              "radial-gradient(ellipse at 20% 50%, var(--mc-accent-soft), transparent 50%)",
+              "radial-gradient(ellipse at 20% 50%, color-mix(in oklab, var(--accent) 25%, transparent), transparent 55%)",
           }}
           animate={{ opacity: [0.2, 0.5, 0.25] }}
           transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
@@ -116,11 +119,11 @@ export default function Navbar() {
         <Link
           href="/"
           className="relative z-10 flex items-center gap-3"
-          onClick={handleNavClick}
+          onClick={() => play("click_confirm")}
           onMouseEnter={() => play("hover")}
         >
           <Logo size={28} />
-          <span className="font-pixel text-sm tracking-wide text-[var(--mc-accent)]">
+          <span className="font-pixel text-sm tracking-wide text-[var(--accent)]">
             MineUI
           </span>
         </Link>
@@ -131,112 +134,111 @@ export default function Navbar() {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
-              <Link
+              <Button
                 key={item.href}
-                href={item.href}
-                className={`relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all ${
-                  active
-                    ? "text-[var(--mc-accent)]"
-                    : "text-[var(--mc-muted)] hover:text-[var(--foreground)]"
-                }`}
-                onClick={handleNavClick}
+                size="sm"
+                variant={active ? "secondary" : "ghost"}
+                className="relative"
+                onPress={() => handleNavigate(item.href)}
                 onMouseEnter={() => play("hover")}
+                aria-current={active ? "page" : undefined}
               >
                 {active && (
                   <motion.div
                     layoutId="nav-active"
                     className="absolute inset-0 rounded-lg"
-                    style={{ background: "var(--mc-accent-soft)" }}
+                    style={{
+                      background:
+                        "color-mix(in oklab, var(--accent) 18%, transparent)",
+                    }}
                     transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
                   />
                 )}
                 <Icon size={16} className="relative z-10" />
                 <span className="relative z-10">{item.label}</span>
-              </Link>
+              </Button>
             );
           })}
         </div>
 
         {/* Right controls */}
-        <div className="relative z-10 flex items-center gap-2" ref={kofiRef}>
+        <div className="relative z-10 flex items-center gap-2">
           {/* Sound toggle */}
-          <button
-            onClick={toggleSound}
-            className="mc-button px-2 py-2"
-            title={soundEnabled ? "Mute sounds" : "Enable sounds"}
+          <Button
+            isIconOnly
+            variant="ghost"
+            onPress={toggleSound}
+            aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
             onMouseEnter={() => play("hover")}
           >
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </button>
+          </Button>
 
           {/* Theme selector */}
-          <select
-            className="mc-select hidden px-2 py-1.5 text-xs md:block"
+          <Select
+            className="text-xs w-26"
+            placeholder="Theme"
             value={theme}
-            onChange={(event) => handleThemeChange(event.target.value)}
-            onMouseEnter={() => play("hover")}
+            onChange={handleThemeChange}
           >
-            {themes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            <Label className="sr-only">Theme</Label>
+            <Select.Trigger onMouseEnter={() => play("hover")}>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {themes.map((item) => (
+                  <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
+                    {item.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
+          </Select>
 
           {/* Ko-fi popover */}
-          <div className="relative hidden md:block">
-            <button
-              className="mc-button px-2 py-2"
-              title="Support on Ko-fi"
-              onClick={() => {
-                play("click_confirm");
-                setShowKofi((prev) => !prev);
-              }}
-              onMouseEnter={() => play("hover")}
-              aria-expanded={showKofi}
-              aria-controls="kofi-popover"
-            >
-              <Coffee size={16} />
-            </button>
-            <AnimatePresence>
-              {showKofi && (
-                <motion.div
-                  id="kofi-popover"
-                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                  transition={{ duration: 0.18 }}
-                  className="absolute right-0 mt-3 w-[340px] overflow-hidden rounded-xl border shadow-xl"
+          <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
+            <Popover.Trigger className="hidden md:block">
+              <Button
+                isIconOnly
+                variant="ghost"
+                onPress={() => play("click_confirm")}
+                aria-label="Support on Ko-fi"
+                onMouseEnter={() => play("hover")}
+              >
+                <Coffee size={16} />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content className="p-0" placement="bottom end">
+              <Popover.Dialog className="w-[340px] overflow-hidden rounded-xl">
+                <iframe
+                  src="https://ko-fi.com/i4cdeath/?hidefeed=true&widget=true&embed=true&preview=true"
+                  title="i4cdeath Ko-fi"
+                  className="h-[520px] w-full"
                   style={{
-                    background: "var(--mc-panel-bg)",
-                    borderColor: "var(--mc-panel-border)",
+                    border: "none",
+                    padding: 4,
+                    background: "#f9f9f9",
                   }}
-                >
-                  <iframe
-                    src="https://ko-fi.com/i4cdeath/?hidefeed=true&widget=true&embed=true&preview=true"
-                    title="i4cdeath Ko-fi"
-                    className="h-[520px] w-full"
-                    style={{
-                      border: "none",
-                      padding: 4,
-                      background: "#f9f9f9",
-                    }}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                />
+              </Popover.Dialog>
+            </Popover.Content>
+          </Popover>
 
           {/* Mobile menu toggle */}
-          <button
-            className="mc-button flex px-2 py-2 md:!hidden"
-            onClick={() => {
+          <Button
+            isIconOnly
+            variant="ghost"
+            className="md:!hidden"
+            onPress={() => {
               play("click_confirm");
               setMobileMenuOpen(!mobileMenuOpen);
             }}
           >
             {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -249,48 +251,51 @@ export default function Navbar() {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
             className="overflow-hidden border-t md:hidden"
-            style={{ borderColor: "var(--mc-panel-border)" }}
+            style={{ borderColor: "var(--border)" }}
           >
-            <div className="flex flex-col gap-1 p-4">
+            <div className="flex flex-col gap-2 p-4">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href);
                 return (
-                  <Link
+                  <Button
                     key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-all ${
-                      active
-                        ? "bg-[var(--mc-accent-soft)] text-[var(--mc-accent)]"
-                        : "text-[var(--mc-muted)] hover:bg-[var(--mc-accent-soft)] hover:text-[var(--foreground)]"
-                    }`}
-                    onClick={handleNavClick}
+                    variant={active ? "secondary" : "ghost"}
+                    className="justify-start"
+                    onPress={() => handleNavigate(item.href)}
                   >
                     <Icon size={18} />
                     {item.label}
-                  </Link>
+                  </Button>
                 );
               })}
-              <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--mc-panel-border)" }}>
-                <label className="flex items-center gap-3 text-sm text-[var(--mc-muted)]">
-                  Theme:
-                  <select
-                    className="mc-select flex-1 text-xs"
-                    value={theme}
-                    onChange={(event) => handleThemeChange(event.target.value)}
-                  >
+              <Separator className="my-2" />
+              <Select
+                className="w-full text-xs"
+                placeholder="Theme"
+                value={theme}
+                onChange={handleThemeChange}
+              >
+                <Label>Theme</Label>
+                <Select.Trigger>
+                  <Select.Value />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
                     {themes.map((item) => (
-                      <option key={item.id} value={item.id}>
+                      <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
                         {item.label}
-                      </option>
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
                     ))}
-                  </select>
-                </label>
-              </div>
+                  </ListBox>
+                </Select.Popover>
+              </Select>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </nav>
+    </Surface>
   );
 }

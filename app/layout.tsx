@@ -31,16 +31,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${pressStart.variable} antialiased`}
+        suppressHydrationWarning
       >
         <Navbar />
         {children}
         <Toaster
           position="bottom-right"
           toastOptions={{
-            className: "mc-toast",
+            className: "ui-toast",
             duration: 4000,
           }}
         />

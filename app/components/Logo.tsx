@@ -26,16 +26,16 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
         width="28"
         height="28"
         rx="4"
-        fill="var(--mc-panel)"
-        stroke="var(--mc-accent)"
+        fill="var(--surface)"
+        stroke="var(--accent)"
         strokeWidth="2"
       />
 
       {/* Inner grid pattern (minecraft block texture hint) */}
-      <rect x="6" y="6" width="8" height="8" fill="var(--mc-accent)" opacity="0.8" />
-      <rect x="18" y="6" width="8" height="8" fill="var(--mc-accent)" opacity="0.6" />
-      <rect x="6" y="18" width="8" height="8" fill="var(--mc-accent)" opacity="0.6" />
-      <rect x="18" y="18" width="8" height="8" fill="var(--mc-accent)" opacity="0.8" />
+      <rect x="6" y="6" width="8" height="8" fill="var(--accent)" opacity="0.8" />
+      <rect x="18" y="6" width="8" height="8" fill="var(--accent)" opacity="0.6" />
+      <rect x="6" y="18" width="8" height="8" fill="var(--accent)" opacity="0.6" />
+      <rect x="18" y="18" width="8" height="8" fill="var(--accent)" opacity="0.8" />
 
       {/* Center accent */}
       <motion.rect
@@ -43,7 +43,7 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
         y="12"
         width="8"
         height="8"
-        fill="var(--mc-accent-strong)"
+        fill="color-mix(in oklab, var(--accent) 80%, white)"
         animate={{ opacity: [0.7, 1, 0.7] }}
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -56,7 +56,7 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
         height="28"
         rx="4"
         fill="none"
-        stroke="var(--mc-accent)"
+        stroke="var(--accent)"
         strokeWidth="1"
         opacity="0.3"
         animate={{ opacity: [0.2, 0.5, 0.2] }}

@@ -17,7 +17,7 @@ export default function ProgressRing({
   strokeWidth = 8,
   label,
   sublabel,
-  colorVar = "--mc-accent",
+  colorVar = "--accent",
 }: ProgressRingProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
@@ -28,7 +28,7 @@ export default function ProgressRing({
       <svg
         width={size}
         height={size}
-        className="mc-progress-ring"
+        style={{ transform: "rotate(-90deg)" }}
       >
         {/* Background circle */}
         <circle
@@ -36,7 +36,7 @@ export default function ProgressRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="var(--mc-panel-border)"
+          stroke="var(--border)"
           strokeWidth={strokeWidth}
         />
         {/* Progress circle */}
@@ -83,7 +83,7 @@ export default function ProgressRing({
         {sublabel && (
           <motion.span
             className="text-xs"
-            style={{ color: "var(--mc-muted)" }}
+            style={{ color: "var(--muted)" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}

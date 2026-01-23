@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -16,6 +16,7 @@ import {
   Square,
   Users,
 } from "lucide-react";
+import { Button, ButtonGroup, Card, Chip, Separator } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
 import { SkeletonCard } from "@/app/components/Skeleton";
 
@@ -65,6 +66,7 @@ const fetchJson = async <T,>(path: string): Promise<T> => {
 };
 
 export default function Home() {
+  const router = useRouter();
   const [container, setContainer] = useState<ContainerState | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [logs, setLogs] = useState<LogsResponse | null>(null);
@@ -154,7 +156,7 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen mc-grid" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen" style={{ background: "var(--background)" }}>
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <SkeletonCard />
@@ -170,220 +172,254 @@ export default function Home() {
 
   return (
     <div
-      className="min-h-screen mc-grid"
+      className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
-        className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
       >
-        <motion.header className="flex flex-col gap-2" variants={cardMotion}>
-          <span className="mc-subtitle">Home Server Control</span>
+        <motion.header className="flex flex-col gap-3" variants={cardMotion}>
+          <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+            Home Server Control
+          </span>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="relative">
               <motion.div
                 className="absolute -inset-4 rounded-full"
                 style={{
-                  background: "radial-gradient(circle, var(--mc-accent-soft), transparent 70%)",
+                  background:
+                    "radial-gradient(circle, color-mix(in oklab, var(--accent) 25%, transparent), transparent 70%)",
                 }}
                 animate={{ opacity: [0.2, 0.6, 0.3] }}
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               />
-              <h1 className="mc-title mc-glow relative">MineUI</h1>
+              <h1 className="font-pixel text-2xl uppercase tracking-[0.2em] text-[var(--accent)]">
+                MineUI
+              </h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <motion.span
-                className="mc-chip"
-                animate={{
-                  borderColor: container?.running
-                    ? "var(--mc-accent)"
-                    : "var(--mc-panel-border)",
-                }}
+              <Chip
+                variant="soft"
+                color={container?.running ? "accent" : "default"}
               >
                 Container: {container?.status ?? "unknown"}
-              </motion.span>
-              <motion.span
-                className="mc-chip"
-                animate={{
-                  borderColor: serverOnline
-                    ? "var(--mc-accent)"
-                    : "var(--mc-panel-border)",
-                }}
+              </Chip>
+              <Chip
+                variant="soft"
+                color={serverOnline ? "success" : "warning"}
               >
                 {serverOnline ? (
                   <span className="flex items-center gap-1.5">
                     <span
                       className="inline-block h-2 w-2 rounded-full animate-pulse"
-                      style={{ background: "var(--mc-accent)" }}
+                      style={{ background: "var(--accent)" }}
                     />
                     Online
                   </span>
                 ) : (
                   "Offline"
                 )}
-              </motion.span>
-              <button
-                className="mc-button"
-                onClick={handleRefresh}
-                disabled={busy}
+              </Chip>
+              <Button
+                onPress={handleRefresh}
+                isDisabled={busy}
                 onMouseEnter={() => play("hover")}
               >
                 <RefreshCcw size={16} className={busy ? "animate-spin" : ""} />
                 <span className="hidden sm:inline">Refresh</span>
-              </button>
+              </Button>
+              <Button
+                variant="tertiary"
+                onPress={() => handleAction("/api/backup", "Backup")}
+                isDisabled={busy}
+                onMouseEnter={() => play("hover")}
+              >
+                <Archive size={16} />
+                <span className="hidden sm:inline">Backup</span>
+              </Button>
             </div>
           </div>
         </motion.header>
 
-        <motion.section className="mc-panel p-5" variants={cardMotion}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <ScrollText size={18} />
-              <span className="font-pixel text-xs tracking-wide">Server Logs</span>
-            </div>
-            <motion.div
-              className="h-2 w-2 rounded-full"
-              style={{ background: "var(--mc-accent)" }}
-              animate={{ opacity: [0.3, 1, 0.3] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
-          <div
-            ref={logsRef}
-            className="mt-4 max-h-[420px] overflow-auto rounded-lg border p-4 text-xs leading-5 font-mono"
-            style={{
-              background: "color-mix(in oklab, var(--background) 70%, black)",
-              borderColor: "var(--mc-panel-border)",
-              color: "var(--foreground)",
-            }}
-          >
-            {logs?.lines?.length ? (
-              <pre className="whitespace-pre-wrap">{logs.lines.join("\n")}</pre>
-            ) : (
-              <div className="flex items-center gap-2" style={{ color: "var(--mc-muted)" }}>
-                <Activity size={16} />
-                Waiting for logs...
+        <motion.section variants={cardMotion}>
+          <Card className="p-5">
+            <Card.Header className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <ScrollText size={18} />
+                <span className="font-pixel text-xs tracking-wide">Server Logs</span>
               </div>
-            )}
-          </div>
+              <motion.div
+                className="h-2 w-2 rounded-full"
+                style={{ background: "var(--accent)" }}
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
+            </Card.Header>
+            <Card.Content>
+              <div
+                ref={logsRef}
+                className="mt-4 max-h-[420px] overflow-auto rounded-lg border p-4 text-xs leading-5 font-mono"
+                style={{
+                  background:
+                    "color-mix(in oklab, var(--background) 70%, black)",
+                  borderColor: "var(--border)",
+                  color: "var(--foreground)",
+                }}
+              >
+                {logs?.lines?.length ? (
+                  <pre className="whitespace-pre-wrap">
+                    {logs.lines.join("\n")}
+                  </pre>
+                ) : (
+                  <div
+                    className="flex items-center gap-2"
+                    style={{ color: "var(--muted)" }}
+                  >
+                    <Activity size={16} />
+                    Waiting for logs...
+                  </div>
+                )}
+              </div>
+            </Card.Content>
+          </Card>
         </motion.section>
 
         <motion.section className="grid gap-6 md:grid-cols-3" variants={containerMotion}>
-          <motion.div className="mc-panel flex flex-col p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Server size={18} />
-              <span className="font-pixel text-xs tracking-wide">Status</span>
-            </div>
-            <div className="mt-4 flex flex-1 flex-col gap-2">
-              <div className="text-lg font-semibold" style={{ color: "var(--foreground)" }}>
-                {serverOnline ? "Online" : "Offline"}
-              </div>
-              <div className="text-sm" style={{ color: "var(--mc-muted)" }}>
-                Version: {status?.version ?? "unknown"}
-              </div>
-              <div className="text-sm" style={{ color: "var(--mc-muted)" }}>
-                MOTD: {status?.motd ?? "—"}
-              </div>
-              <div className="text-sm" style={{ color: "var(--mc-muted)" }}>
-                Ping: {status?.ping ? `${status.ping}ms` : "—"}
-              </div>
-            </div>
-            <div className="mt-auto flex flex-wrap gap-2 pt-4">
-              <button
-                className="mc-button"
-                onClick={() => handleAction("/api/server/start", "Start")}
-                disabled={busy}
-                onMouseEnter={() => play("hover")}
-              >
-                {busy ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                Start
-              </button>
-              <button
-                className="mc-button"
-                onClick={() => handleAction("/api/server/stop", "Stop")}
-                disabled={busy}
-                onMouseEnter={() => play("hover")}
-              >
-                <Square size={16} />
-                Stop
-              </button>
-              <button
-                className="mc-button"
-                onClick={() => handleAction("/api/backup", "Backup")}
-                disabled={busy}
-                onMouseEnter={() => play("hover")}
-              >
-                <Archive size={16} />
-                Backup
-              </button>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="flex h-full flex-col p-5">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Server size={18} />
+                <span className="font-pixel text-xs tracking-wide">Status</span>
+              </Card.Header>
+              <Card.Content className="mt-4 flex flex-1 flex-col gap-2 text-sm">
+                <div className="text-lg font-semibold">
+                  {serverOnline ? "Online" : "Offline"}
+                </div>
+                <div className="text-[var(--muted)]">
+                  Version: {status?.version ?? "unknown"}
+                </div>
+                <div className="text-[var(--muted)]">
+                  MOTD: {status?.motd ?? "—"}
+                </div>
+                <div className="text-[var(--muted)]">
+                  Ping: {status?.ping ? `${status.ping}ms` : "—"}
+                </div>
+              </Card.Content>
+              <Card.Footer className="mt-auto flex flex-wrap gap-2 pt-4">
+
+                <Button
+                  onPress={() => handleAction("/api/server/start", "Start")}
+                  isDisabled={busy}
+                  onMouseEnter={() => play("hover")}
+                >
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  Start
+                </Button>
+                <Button
+                  variant="danger"
+                  onPress={() => handleAction("/api/server/stop", "Stop")}
+                  isDisabled={busy}
+                  onMouseEnter={() => play("hover")}
+                >
+                  <Square size={16} />
+                  Stop
+                </Button>
+                <Button
+                  variant="tertiary"
+                  onPress={() => handleAction("/api/server/restart", "Restart")}
+                  isDisabled={busy}
+                  onMouseEnter={() => play("hover")}
+                >
+                  <RefreshCcw size={16} />
+                  Restart
+                </Button>
+              </Card.Footer>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel flex flex-col p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Users size={18} />
-              <span className="font-pixel text-xs tracking-wide">Players</span>
-            </div>
-            <div className="mt-4 flex flex-1 flex-col">
-              <div className="flex items-center gap-3">
-                <span className="font-pixel text-2xl" style={{ color: "var(--mc-accent)" }}>
-                  {playerCount}/{maxPlayers || "?"}
-                </span>
-                <span className="text-sm" style={{ color: "var(--mc-muted)" }}>
-                  Online now
-                </span>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {playerCount === 0 ? (
-                  <span className="text-sm" style={{ color: "var(--mc-muted)" }}>
-                    No players online
+          <motion.div variants={cardMotion}>
+            <Card className="flex h-full flex-col p-5">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Users size={18} />
+                <span className="font-pixel text-xs tracking-wide">Players</span>
+              </Card.Header>
+              <Card.Content className="mt-4 flex flex-1 flex-col">
+                <div className="flex items-center gap-3">
+                  <span className="font-pixel text-2xl text-[var(--accent)]">
+                    {playerCount}/{maxPlayers || "?"}
                   </span>
-                ) : (
-                  <span className="mc-chip">{playerCount} online</span>
-                )}
-              </div>
-            </div>
-            <Link
-              className="mc-button mt-auto w-fit pt-4"
-              href="/players"
-              onClick={() => play("click_confirm")}
-              onMouseEnter={() => play("hover")}
-            >
-              View players
-            </Link>
+                  <span className="text-sm text-[var(--muted)]">Online now</span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {playerCount === 0 ? (
+                    <span className="text-sm text-[var(--muted)]">
+                      No players online
+                    </span>
+                  ) : (
+                    <Chip variant="soft" color="accent">
+                      {playerCount} online
+                    </Chip>
+                  )}
+                </div>
+              </Card.Content>
+              <Card.Footer className="mt-auto pt-4">
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    play("click_confirm");
+                    router.push("/players");
+                  }}
+                  onMouseEnter={() => play("hover")}
+                >
+                  View players
+                </Button>
+              </Card.Footer>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel flex flex-col p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Boxes size={18} />
-              <span className="font-pixel text-xs tracking-wide">Mods & Plugins</span>
-            </div>
-            <div className="mt-4 flex flex-1 flex-col gap-3 text-sm">
-              <div>
-                <div className="mc-subtitle text-[10px]">Mods</div>
-                <div className="mt-2">
-                  <span className="mc-chip">{mods?.mods?.length ?? 0} total</span>
+          <motion.div variants={cardMotion}>
+            <Card className="flex h-full flex-col p-5">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Boxes size={18} />
+                <span className="font-pixel text-xs tracking-wide">Mods & Plugins</span>
+              </Card.Header>
+              <Card.Content className="mt-4 flex flex-1 flex-col gap-3 text-sm">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Mods
+                  </div>
+                  <div className="mt-2">
+                    <Chip variant="soft">{mods?.mods?.length ?? 0} total</Chip>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className="mc-subtitle text-[10px]">Plugins</div>
-                <div className="mt-2">
-                  <span className="mc-chip">{mods?.plugins?.length ?? 0} total</span>
+                <Separator />
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                    Plugins
+                  </div>
+                  <div className="mt-2">
+                    <Chip variant="soft">{mods?.plugins?.length ?? 0} total</Chip>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <Link
-              className="mc-button mt-auto w-fit pt-4"
-              href="/mods"
-              onClick={() => play("click_confirm")}
-              onMouseEnter={() => play("hover")}
-            >
-              View mods
-            </Link>
+              </Card.Content>
+              <Card.Footer className="mt-auto pt-4">
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    play("click_confirm");
+                    router.push("/mods");
+                  }}
+                  onMouseEnter={() => play("hover")}
+                >
+                  View mods
+                </Button>
+              </Card.Footer>
+            </Card>
           </motion.div>
         </motion.section>
       </motion.main>

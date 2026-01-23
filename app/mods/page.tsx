@@ -14,6 +14,18 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import {
+  Button,
+  Card,
+  Chip,
+  Disclosure,
+  Label,
+  ListBox,
+  Modal,
+  Select,
+  TextField,
+  Input,
+} from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -61,6 +73,8 @@ export default function ModsPage() {
   const [downloadName, setDownloadName] = useState("");
   const [target, setTarget] = useState<"mods" | "plugins">("mods");
   const [busy, setBusy] = useState(false);
+  const [modsExpanded, setModsExpanded] = useState(true);
+  const [pluginsExpanded, setPluginsExpanded] = useState(true);
   const { play } = useUISound();
 
   const refreshMods = () =>
@@ -212,7 +226,7 @@ export default function ModsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen mc-grid" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen" style={{ background: "var(--background)" }}>
         <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-4 md:grid-cols-2">
@@ -227,296 +241,351 @@ export default function ModsPage() {
 
   return (
     <div
-      className="min-h-screen mc-grid"
-      style={{ background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)` }}
+      className="min-h-screen"
+      style={{ background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)` }}
     >
       <motion.main
-        className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
       >
         <PageHeader title="Mods & Plugins" icon={Boxes} />
 
-        <motion.section className="mc-panel flex flex-wrap items-center justify-between gap-4 p-5" variants={cardMotion}>
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="mc-chip flex items-center gap-2">
-              <Sparkles size={14} />
-              Curated view
-            </span>
-            <span className="mc-chip">Mods: {mods?.mods?.length ?? 0}</span>
-            <span className="mc-chip">Plugins: {mods?.plugins?.length ?? 0}</span>
-            <span className="mc-chip">Total: {allEntries.length}</span>
-            <span className="mc-chip">Last updated: {lastUpdated ? formatDate(lastUpdated) : "—"}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              className="mc-button"
-              onClick={() => setShowUpload(true)}
-              onMouseEnter={() => play("hover")}
-            >
-              <Upload size={16} />
-              Add mod
-            </button>
-            <div className="mc-input flex items-center gap-2 pr-2">
-              <Search size={16} style={{ color: "var(--mc-muted)" }} />
-              <input
-                className="bg-transparent outline-none"
-                placeholder="Search mods or files"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                style={{ color: "var(--foreground)" }}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter size={16} style={{ color: "var(--mc-muted)" }} />
-              <select
-                className="mc-select text-sm"
-                value={filter}
-                onChange={(event) => setFilter(event.target.value as typeof filter)}
-              >
-                <option value="all">All</option>
-                <option value="mods">Mods</option>
-                <option value="plugins">Plugins</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal size={16} style={{ color: "var(--mc-muted)" }} />
-              <select
-                className="mc-select text-sm"
-                value={sort}
-                onChange={(event) => setSort(event.target.value as typeof sort)}
-              >
-                <option value="name-asc">Name (A-Z)</option>
-                <option value="name-desc">Name (Z-A)</option>
-                <option value="size-desc">Size (Largest)</option>
-                <option value="updated-desc">Recently Updated</option>
-              </select>
-            </div>
-          </div>
+        <motion.section variants={cardMotion}>
+          <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+            <Card.Content className="flex sm:flex-col md:flex-row justify-center gap-3 text-sm">
+              <Chip variant="soft" color="accent" className="flex items-center gap-2">
+                <Sparkles size={14} />
+                Curated view
+              </Chip>
+              <Chip variant="soft">Mods: {mods?.mods?.length ?? 0}</Chip>
+              <Chip variant="soft">Plugins: {mods?.plugins?.length ?? 0}</Chip>
+              <Chip variant="soft">Total: {allEntries.length}</Chip>
+              <Chip variant="soft">
+                Last updated: {lastUpdated ? formatDate(lastUpdated) : "—"}
+              </Chip>
+            </Card.Content>
+            <Card.Footer className="flex flex-wrap items-center gap-3">
+              <Button onPress={() => setShowUpload(true)} onMouseEnter={() => play("hover")}>
+                <Upload size={16} />
+                Add mod
+              </Button>
+              <div className="flex items-center gap-2">
+                <Search size={16} className="text-[var(--muted)]" />
+                <TextField className="w-56">
+                  <Label className="sr-only">Search mods</Label>
+                  <Input
+                    placeholder="Search mods or files"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </TextField>
+              </div>
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-[var(--muted)]" />
+                <Select
+                  className="w-36 text-sm"
+                  placeholder="Filter"
+                  value={filter}
+                  onChange={(value) => setFilter(value as typeof filter)}
+                >
+                  <Label className="sr-only">Filter</Label>
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      <ListBox.Item id="all">All</ListBox.Item>
+                      <ListBox.Item id="mods">Mods</ListBox.Item>
+                      <ListBox.Item id="plugins">Plugins</ListBox.Item>
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={16} className="text-[var(--muted)]" />
+                <Select
+                  className="w-44 text-sm"
+                  placeholder="Sort"
+                  value={sort}
+                  onChange={(value) => setSort(value as typeof sort)}
+                >
+                  <Label className="sr-only">Sort</Label>
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      <ListBox.Item id="name-asc">Name (A-Z)</ListBox.Item>
+                      <ListBox.Item id="name-desc">Name (Z-A)</ListBox.Item>
+                      <ListBox.Item id="size-desc">Size (Largest)</ListBox.Item>
+                      <ListBox.Item id="updated-desc">Recently Updated</ListBox.Item>
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
+            </Card.Footer>
+          </Card>
         </motion.section>
 
         <motion.section className="grid gap-6" variants={containerMotion}>
           {showMods && (
-            <motion.details className="mc-panel p-5" open variants={cardMotion}>
-              <summary
-                className="flex cursor-pointer items-center justify-between font-pixel text-xs tracking-wide"
-                style={{ color: "var(--mc-accent)" }}
-              >
-                Mods ({filteredMods.length})
-              </summary>
-              <motion.div className="mt-4 grid gap-3 md:grid-cols-2" variants={containerMotion}>
-                {pagedMods.length ? (
-                  pagedMods.map((item, index) => (
-                    <motion.div
-                      key={item.filename}
-                      className="mc-panel rounded-xl p-4 text-sm"
-                      variants={cardMotion}
-                      custom={index}
-                      whileHover={{ borderColor: "var(--mc-accent)" }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-semibold" style={{ color: "var(--foreground)" }}>
-                          {item.name}
-                        </div>
-                        <span className="mc-chip">{loaderBadge(item.loader)}</span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                        <span className="truncate">{item.filename}</span>
-                        <button
-                          className="mc-button px-2 py-1 text-xs"
-                          onClick={() => copyFilename(item.filename)}
-                          onMouseEnter={() => play("hover")}
+            <motion.div variants={cardMotion}>
+              <Disclosure isExpanded={modsExpanded} onExpandedChange={setModsExpanded}>
+                <Disclosure.Heading>
+                  <Button slot="trigger" variant="secondary">
+                    Mods ({filteredMods.length})
+                    <Disclosure.Indicator />
+                  </Button>
+                </Disclosure.Heading>
+                <Disclosure.Content>
+                  <Disclosure.Body className="mt-4 grid gap-3 md:grid-cols-2">
+                    {pagedMods.length ? (
+                      pagedMods.map((item, index) => (
+                        <motion.div
+                          key={item.filename}
+                          variants={cardMotion}
+                          custom={index}
                         >
-                          <Copy size={12} />
-                          {copied === item.filename ? "Copied" : "Copy"}
-                        </button>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                        <span>Size: {formatBytes(item.sizeBytes)}</span>
-                        <span>Updated: {formatDate(item.updatedAt)}</span>
-                      </div>
-                    </motion.div>
-                  ))
-                ) : (
-                  <span style={{ color: "var(--mc-muted)" }}>None</span>
-                )}
-              </motion.div>
+                          <Card className="p-4 text-sm">
+                            <Card.Header className="flex items-center justify-between gap-3">
+                              <div className="font-semibold text-[var(--foreground)]">
+                                {item.name}
+                              </div>
+                              <Chip variant="soft">{loaderBadge(item.loader)}</Chip>
+                            </Card.Header>
+                            <Card.Content className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
+                              <span className="truncate">{item.filename}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onPress={() => copyFilename(item.filename)}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                <Copy size={12} />
+                                {copied === item.filename ? "Copied" : "Copy"}
+                              </Button>
+                            </Card.Content>
+                            <Card.Footer className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
+                              <span>Size: {formatBytes(item.sizeBytes)}</span>
+                              <span>Updated: {formatDate(item.updatedAt)}</span>
+                            </Card.Footer>
+                          </Card>
+                        </motion.div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-[var(--muted)]">None</span>
+                    )}
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
               {filteredMods.length > pageSize && (
-                <button
-                  className="mc-button mt-4 w-fit"
-                  onClick={() => {
+                <Button
+                  className="mt-4 w-fit"
+                  onPress={() => {
                     play("click_confirm");
                     setPageSize(pageSize + 24);
                   }}
                   onMouseEnter={() => play("hover")}
                 >
                   Show more mods
-                </button>
+                </Button>
               )}
-            </motion.details>
+            </motion.div>
           )}
 
           {showPlugins && (
-            <motion.details className="mc-panel p-5" open variants={cardMotion}>
-              <summary
-                className="flex cursor-pointer items-center justify-between font-pixel text-xs tracking-wide"
-                style={{ color: "var(--mc-accent)" }}
-              >
-                Plugins ({filteredPlugins.length})
-              </summary>
-              <motion.div className="mt-4 grid gap-3 md:grid-cols-2" variants={containerMotion}>
-                {pagedPlugins.length ? (
-                  pagedPlugins.map((item, index) => (
-                    <motion.div
-                      key={item.filename}
-                      className="mc-panel rounded-xl p-4 text-sm"
-                      variants={cardMotion}
-                      custom={index}
-                      whileHover={{ borderColor: "var(--mc-accent)" }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-semibold" style={{ color: "var(--foreground)" }}>
-                          {item.name}
-                        </div>
-                        <span className="mc-chip">{loaderBadge(item.loader)}</span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                        <span className="truncate">{item.filename}</span>
-                        <button
-                          className="mc-button px-2 py-1 text-xs"
-                          onClick={() => copyFilename(item.filename)}
-                          onMouseEnter={() => play("hover")}
+            <motion.div variants={cardMotion}>
+              <Disclosure isExpanded={pluginsExpanded} onExpandedChange={setPluginsExpanded}>
+                <Disclosure.Heading>
+                  <Button slot="trigger" variant="secondary">
+                    Plugins ({filteredPlugins.length})
+                    <Disclosure.Indicator />
+                  </Button>
+                </Disclosure.Heading>
+                <Disclosure.Content>
+                  <Disclosure.Body className="mt-4 grid gap-3 md:grid-cols-2">
+                    {pagedPlugins.length ? (
+                      pagedPlugins.map((item, index) => (
+                        <motion.div
+                          key={item.filename}
+                          variants={cardMotion}
+                          custom={index}
                         >
-                          <Copy size={12} />
-                          {copied === item.filename ? "Copied" : "Copy"}
-                        </button>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                        <span>Size: {formatBytes(item.sizeBytes)}</span>
-                        <span>Updated: {formatDate(item.updatedAt)}</span>
-                      </div>
-                    </motion.div>
-                  ))
-                ) : (
-                  <span style={{ color: "var(--mc-muted)" }}>None</span>
-                )}
-              </motion.div>
+                          <Card className="p-4 text-sm">
+                            <Card.Header className="flex items-center justify-between gap-3">
+                              <div className="font-semibold text-[var(--foreground)]">
+                                {item.name}
+                              </div>
+                              <Chip variant="soft">{loaderBadge(item.loader)}</Chip>
+                            </Card.Header>
+                            <Card.Content className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
+                              <span className="truncate">{item.filename}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onPress={() => copyFilename(item.filename)}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                <Copy size={12} />
+                                {copied === item.filename ? "Copied" : "Copy"}
+                              </Button>
+                            </Card.Content>
+                            <Card.Footer className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
+                              <span>Size: {formatBytes(item.sizeBytes)}</span>
+                              <span>Updated: {formatDate(item.updatedAt)}</span>
+                            </Card.Footer>
+                          </Card>
+                        </motion.div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-[var(--muted)]">None</span>
+                    )}
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
               {filteredPlugins.length > pageSize && (
-                <button
-                  className="mc-button mt-4 w-fit"
-                  onClick={() => {
+                <Button
+                  className="mt-4 w-fit"
+                  onPress={() => {
                     play("click_confirm");
                     setPageSize(pageSize + 24);
                   }}
                   onMouseEnter={() => play("hover")}
                 >
                   Show more plugins
-                </button>
+                </Button>
               )}
-            </motion.details>
+            </motion.div>
           )}
         </motion.section>
       </motion.main>
 
-      {showUpload && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="mc-panel w-full max-w-xl p-6">
-            <div className="flex items-center justify-between">
-              <div className="font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
-                Add Mods
-              </div>
-              <button
-                className="mc-button"
-                onClick={() => setShowUpload(false)}
-                onMouseEnter={() => play("hover")}
-              >
-                <X size={14} />
-                Close
-              </button>
-            </div>
-            <div className="mt-4 grid gap-4 text-sm">
-              <div className="mc-panel rounded-xl p-4">
-                <div className="flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                  <Upload size={14} />
-                  Upload a mod (.jar/.zip)
+      <Modal>
+        <Modal.Backdrop
+          isOpen={showUpload}
+          onOpenChange={setShowUpload}
+          variant="blur"
+        >
+          <Modal.Container>
+            <Modal.Dialog className="sm:max-w-[640px]">
+              <Modal.Header className="flex items-center justify-between">
+                <div className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+                  Add Mods
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                  <span>Target:</span>
-                  <select
-                    className="mc-select text-xs"
-                    value={target}
-                    onChange={(event) => setTarget(event.target.value as "mods" | "plugins")}
-                  >
-                    <option value="mods">mods</option>
-                    <option value="plugins">plugins</option>
-                  </select>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <input
-                    type="file"
-                    accept=".jar,.zip"
-                    onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-                  />
-                  <button
-                    className="mc-button"
-                    onClick={handleUpload}
-                    disabled={busy}
-                    onMouseEnter={() => play("hover")}
-                  >
-                    Upload
-                  </button>
-                </div>
-                {uploadFile && (
-                  <div className="mt-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                    Selected: {uploadFile.name}
-                  </div>
-                )}
-              </div>
+                <Button
+                  variant="tertiary"
+                  onPress={() => setShowUpload(false)}
+                  onMouseEnter={() => play("hover")}
+                >
+                  <X size={14} />
+                  Close
+                </Button>
+              </Modal.Header>
+              <Modal.Body className="grid gap-4 text-sm">
+                <Card className="rounded-xl p-4">
+                  <Card.Header className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                    <Upload size={14} />
+                    Upload a mod (.jar/.zip)
+                  </Card.Header>
+                  <Card.Content className="mt-3 grid gap-3">
+                    <Select
+                      className="w-40 text-xs"
+                      placeholder="Target"
+                      value={target}
+                      onChange={(value) => setTarget(value as "mods" | "plugins")}
+                    >
+                      <Label className="sr-only">Target</Label>
+                      <Select.Trigger>
+                        <Select.Value />
+                        <Select.Indicator />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <ListBox>
+                          <ListBox.Item id="mods">mods</ListBox.Item>
+                          <ListBox.Item id="plugins">plugins</ListBox.Item>
+                        </ListBox>
+                      </Select.Popover>
+                    </Select>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        type="file"
+                        accept=".jar,.zip"
+                        onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                      />
+                      <Button
+                        onPress={handleUpload}
+                        isDisabled={busy}
+                        onMouseEnter={() => play("hover")}
+                      >
+                        Upload
+                      </Button>
+                    </div>
+                    {uploadFile && (
+                      <div className="text-xs text-[var(--muted)]">
+                        Selected: {uploadFile.name}
+                      </div>
+                    )}
+                  </Card.Content>
+                </Card>
 
-              <div className="mc-panel rounded-xl p-4">
-                <div className="flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                  <Download size={14} />
-                  Download from URL
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: "var(--mc-muted)" }}>
-                  <span>Target:</span>
-                  <select
-                    className="mc-select text-xs"
-                    value={target}
-                    onChange={(event) => setTarget(event.target.value as "mods" | "plugins")}
-                  >
-                    <option value="mods">mods</option>
-                    <option value="plugins">plugins</option>
-                  </select>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  <input
-                    className="mc-input"
-                    placeholder="https://example.com/mod.jar"
-                    value={downloadUrl}
-                    onChange={(event) => setDownloadUrl(event.target.value)}
-                  />
-                  <input
-                    className="mc-input"
-                    placeholder="Optional filename (mod.jar)"
-                    value={downloadName}
-                    onChange={(event) => setDownloadName(event.target.value)}
-                  />
-                  <button
-                    className="mc-button w-fit"
-                    onClick={handleDownload}
-                    disabled={busy}
-                    onMouseEnter={() => play("hover")}
-                  >
-                    Download
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+                <Card className="rounded-xl p-4">
+                  <Card.Header className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                    <Download size={14} />
+                    Download from URL
+                  </Card.Header>
+                  <Card.Content className="mt-3 grid gap-3">
+                    <Select
+                      className="w-40 text-xs"
+                      placeholder="Target"
+                      value={target}
+                      onChange={(value) => setTarget(value as "mods" | "plugins")}
+                    >
+                      <Label className="sr-only">Target</Label>
+                      <Select.Trigger>
+                        <Select.Value />
+                        <Select.Indicator />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <ListBox>
+                          <ListBox.Item id="mods">mods</ListBox.Item>
+                          <ListBox.Item id="plugins">plugins</ListBox.Item>
+                        </ListBox>
+                      </Select.Popover>
+                    </Select>
+                    <TextField>
+                      <Label className="sr-only">Download URL</Label>
+                      <Input
+                        placeholder="https://example.com/mod.jar"
+                        value={downloadUrl}
+                        onChange={(event) => setDownloadUrl(event.target.value)}
+                      />
+                    </TextField>
+                    <TextField>
+                      <Label className="sr-only">Filename</Label>
+                      <Input
+                        placeholder="Optional filename (mod.jar)"
+                        value={downloadName}
+                        onChange={(event) => setDownloadName(event.target.value)}
+                      />
+                    </TextField>
+                    <Button
+                      onPress={handleDownload}
+                      isDisabled={busy}
+                      onMouseEnter={() => play("hover")}
+                    >
+                      Download
+                    </Button>
+                  </Card.Content>
+                </Card>
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </div>
   );
 }

@@ -12,8 +12,8 @@
     "electron:pack": "electron-builder --dir"
   },
   "dependencies": {
-    "@heroui/react": "^3.0.0-beta.2",
-    "@heroui/styles": "^3.0.0-beta.2",
+    "@heroui/react": "^3.0.0-beta.5",
+    "@heroui/styles": "^3.0.0-beta.5",
     "howler": "^2.2.4",
     "lucide-react": "^0.555.0",
     "minecraft-server-util": "^5.4.1",

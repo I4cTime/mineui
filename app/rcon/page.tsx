@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Loader2, Send, ShieldAlert, Users } from "lucide-react";
+import { Button, Card, Chip, TextField, Input } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { useUISound } from "@/app/hooks/useUISound";
 
@@ -28,6 +29,7 @@ const presets = [
 ];
 
 export default function RconPage() {
+  const router = useRouter();
   const [command, setCommand] = useState("");
   const [commandOutput, setCommandOutput] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -75,13 +77,13 @@ export default function RconPage() {
 
   return (
     <div
-      className="min-h-screen mc-grid"
+      className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
-        className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-4xl flex-col gap-6 px-4 py-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
@@ -89,121 +91,132 @@ export default function RconPage() {
         <PageHeader
           title="RCON Tools"
           icon={ShieldAlert}
-          backHref="/players"
-          backLabel="Back to players"
-          actions={
-            <Link
-              className="mc-button"
-              href="/"
-              onClick={() => play("click_confirm")}
-              onMouseEnter={() => play("hover")}
-            >
-              Dashboard
-            </Link>
-          }
+          actions={null}
         />
 
-        <motion.section className="mc-panel p-5" variants={cardMotion}>
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="mc-chip flex items-center gap-2">
-              <ShieldAlert size={14} />
-              RCON Command Panel
-            </span>
-            <span className="text-xs" style={{ color: "var(--mc-muted)" }}>
-              Commands restricted by <code className="font-mono">MINECRAFT_RCON_ALLOWLIST</code>.
-            </span>
-          </div>
+        <motion.section variants={cardMotion}>
+          <Card className="p-5">
+            <Card.Header className="flex flex-wrap items-center gap-3 text-sm">
+              <Chip variant="soft" color="accent" className="flex items-center gap-2">
+                <ShieldAlert size={14} />
+                RCON Command Panel
+              </Chip>
+              <span className="text-xs text-[var(--muted)]">
+                Commands restricted by{" "}
+                <code className="font-mono">MINECRAFT_RCON_ALLOWLIST</code>.
+              </span>
+            </Card.Header>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {presets.map((preset) => (
-              <button
-                key={preset}
-                className="mc-button text-sm"
-                onClick={() => {
-                  play("click_confirm");
-                  setCommand(preset);
+            <Card.Content>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {presets.map((preset) => (
+                  <Button
+                    key={preset}
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => {
+                      play("click_confirm");
+                      setCommand(preset);
+                    }}
+                    onMouseEnter={() => play("hover")}
+                    type="button"
+                  >
+                    {preset}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <TextField className="flex-1">
+                  <Input
+                    placeholder="Enter RCON command, e.g. whitelist add player"
+                    value={command}
+                    onChange={(event) => setCommand(event.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                </TextField>
+                <Button
+                  onPress={sendCommand}
+                  isDisabled={sending}
+                  onMouseEnter={() => play("hover")}
+                >
+                  {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  {sending ? "Sending..." : "Send"}
+                </Button>
+              </div>
+
+              <motion.div
+                className="mt-4 min-h-[120px] rounded-lg border p-4 font-mono text-xs leading-5"
+                style={{
+                  background: "color-mix(in oklab, var(--background) 70%, black)",
+                  borderColor: commandError ? "var(--accent)" : "var(--border)",
+                  color: "var(--foreground)",
                 }}
-                onMouseEnter={() => play("hover")}
-                type="button"
+                animate={{ borderColor: commandError ? "var(--accent)" : "var(--border)" }}
               >
-                {preset}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-3">
-            <input
-              className="mc-input flex-1"
-              placeholder="Enter RCON command, e.g. whitelist add player"
-              value={command}
-              onChange={(event) => setCommand(event.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <button
-              className="mc-button"
-              onClick={sendCommand}
-              disabled={sending}
-              onMouseEnter={() => play("hover")}
-            >
-              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {sending ? "Sending..." : "Send"}
-            </button>
-          </div>
-
-          <motion.div
-            className="mt-4 min-h-[120px] rounded-lg border p-4 font-mono text-xs leading-5"
-            style={{
-              background: "color-mix(in oklab, var(--background) 70%, black)",
-              borderColor: commandError ? "var(--mc-accent)" : "var(--mc-panel-border)",
-              color: "var(--foreground)",
-            }}
-            animate={{ borderColor: commandError ? "var(--mc-accent)" : "var(--mc-panel-border)" }}
-          >
-            {commandError ? (
-              <span style={{ color: "var(--mc-accent)" }}>{commandError}</span>
-            ) : commandOutput ? (
-              <pre className="whitespace-pre-wrap">{commandOutput}</pre>
-            ) : (
-              <span style={{ color: "var(--mc-muted)" }}>Command output will appear here.</span>
-            )}
-          </motion.div>
+                {commandError ? (
+                  <span style={{ color: "var(--accent)" }}>{commandError}</span>
+                ) : commandOutput ? (
+                  <pre className="whitespace-pre-wrap">{commandOutput}</pre>
+                ) : (
+                  <span style={{ color: "var(--muted)" }}>
+                    Command output will appear here.
+                  </span>
+                )}
+              </motion.div>
+            </Card.Content>
+          </Card>
         </motion.section>
 
-        <motion.section className="mc-panel p-5" variants={cardMotion}>
-          <div className="flex items-center gap-3 font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
-            <Users size={16} />
-            Quick Actions
-          </div>
-          <div className="mt-4 grid gap-3 text-sm md:grid-cols-2" style={{ color: "var(--mc-muted)" }}>
-            <div className="flex flex-col rounded-lg border p-4" style={{ borderColor: "var(--mc-panel-border)" }}>
-              <div className="font-semibold" style={{ color: "var(--foreground)" }}>
-                Player Management
-              </div>
-              <p className="mt-1 flex-1 text-xs">Use the Players page for whitelist, op, ban, and kick commands.</p>
-              <Link
-                href="/players"
-                className="mc-button mt-auto w-fit pt-3"
-                onClick={() => play("click_confirm")}
-                onMouseEnter={() => play("hover")}
-              >
-                Go to Players
-              </Link>
-            </div>
-            <div className="flex flex-col rounded-lg border p-4" style={{ borderColor: "var(--mc-panel-border)" }}>
-              <div className="font-semibold" style={{ color: "var(--foreground)" }}>
-                Server Control
-              </div>
-              <p className="mt-1 flex-1 text-xs">Start, stop, restart, and backup from the Dashboard.</p>
-              <Link
-                href="/"
-                className="mc-button mt-auto w-fit pt-3"
-                onClick={() => play("click_confirm")}
-                onMouseEnter={() => play("hover")}
-              >
-                Go to Dashboard
-              </Link>
-            </div>
-          </div>
+        <motion.section variants={cardMotion}>
+          <Card className="p-5">
+            <Card.Header className="flex items-center gap-3 font-pixel text-xs tracking-wide text-[var(--accent)]">
+              <Users size={16} />
+              Quick Actions
+            </Card.Header>
+            <Card.Content className="mt-4 grid gap-3 text-sm text-[var(--muted)] md:grid-cols-2">
+              <Card className="flex flex-col rounded-lg border p-4">
+                <Card.Header className="font-semibold text-[var(--foreground)]">
+                  Player Management
+                </Card.Header>
+                <Card.Content className="mt-1 flex-1 text-xs">
+                  Use the Players page for whitelist, op, ban, and kick commands.
+                </Card.Content>
+                <Card.Footer>
+                  <Button
+                    variant="secondary"
+                    onPress={() => {
+                      play("click_confirm");
+                      router.push("/players");
+                    }}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    Go to Players
+                  </Button>
+                </Card.Footer>
+              </Card>
+              <Card className="flex flex-col rounded-lg border p-4">
+                <Card.Header className="font-semibold text-[var(--foreground)]">
+                  Server Control
+                </Card.Header>
+                <Card.Content className="mt-1 flex-1 text-xs">
+                  Start, stop, restart, and backup from the Dashboard.
+                </Card.Content>
+                <Card.Footer>
+                  <Button
+                    variant="secondary"
+                    onPress={() => {
+                      play("click_confirm");
+                      router.push("/");
+                    }}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    Go to Dashboard
+                  </Button>
+                </Card.Footer>
+              </Card>
+            </Card.Content>
+          </Card>
         </motion.section>
       </motion.main>
     </div>

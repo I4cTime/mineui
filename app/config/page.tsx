@@ -4,6 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import { FileCode2, Loader2, RefreshCcw, Save, Search } from "lucide-react";
+import {
+  Button,
+  Card,
+  Label,
+  ListBox,
+  TextField,
+  Input,
+} from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { Skeleton } from "@/app/components/Skeleton";
@@ -122,7 +130,7 @@ export default function ConfigPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen mc-grid" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen" style={{ background: "var(--background)" }}>
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -136,13 +144,13 @@ export default function ConfigPage() {
 
   return (
     <div
-      className="min-h-screen mc-grid"
+      className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
-        className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
@@ -150,77 +158,85 @@ export default function ConfigPage() {
         <PageHeader title="Server Config Editor" icon={FileCode2} />
 
         <motion.section className="grid gap-6 lg:grid-cols-[320px_1fr]" variants={containerMotion}>
-          <motion.div className="mc-panel flex flex-col gap-4 p-5" variants={cardMotion}>
-            <div className="mc-input flex items-center gap-2 pr-2">
-              <Search size={16} style={{ color: "var(--mc-muted)" }} />
-              <input
-                className="w-full bg-transparent outline-none"
-                placeholder="Search files"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                style={{ color: "var(--foreground)" }}
-              />
-            </div>
-            <div className="max-h-[520px] overflow-auto text-sm">
-              {filteredFiles.length ? (
-                filteredFiles.map((file) => (
-                  <button
-                    key={file}
-                    className="block w-full rounded-lg px-3 py-2 text-left transition"
-                    style={{
-                      background: file === selected ? "var(--mc-accent-soft)" : "transparent",
-                      color: file === selected ? "var(--mc-accent)" : "var(--mc-muted)",
-                    }}
-                    onClick={() => {
+          <motion.div variants={cardMotion}>
+            <Card className="flex flex-col gap-4 p-5 h-full">
+              <div className="flex items-center gap-2">
+                <Search size={16} className="text-[var(--muted)]" />
+                <TextField className="w-full">
+                  <Label className="sr-only">Search files</Label>
+                  <Input
+                    placeholder="Search files"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </TextField>
+              </div>
+              <div className="max-h-[520px] overflow-auto text-sm">
+                {filteredFiles.length ? (
+                  <ListBox
+                    aria-label="Config files"
+                    selectionMode="single"
+                    selectedKeys={selected ? new Set([selected]) : new Set()}
+                    onSelectionChange={(keys) => {
+                      const next = Array.from(keys as Set<string>)[0];
+                      if (!next) return;
                       play("click_confirm");
-                      setSelected(file);
+                      setSelected(String(next));
                     }}
-                    onMouseEnter={() => play("hover")}
                   >
-                    {labelFor(file)}
-                  </button>
-                ))
-              ) : (
-                <span style={{ color: "var(--mc-muted)" }}>No files found.</span>
-              )}
-            </div>
+                    {filteredFiles.map((file) => (
+                      <ListBox.Item key={file} id={file} textValue={labelFor(file)}>
+                        {labelFor(file)}
+                        <ListBox.ItemIndicator />
+                      </ListBox.Item>
+                    ))}
+                  </ListBox>
+                ) : (
+                  <span className="text-[var(--muted)]">No files found.</span>
+                )}
+              </div>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel flex flex-col gap-4 p-5" variants={cardMotion}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="font-pixel text-xs tracking-wide" style={{ color: "var(--mc-accent)" }}>
-                {selected ? labelFor(selected) : "Select a file"}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="mc-button"
-                  onClick={saveFile}
-                  disabled={saving}
-                  onMouseEnter={() => play("hover")}
-                >
-                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {saving ? "Saving..." : "Save"}
-                </button>
-                <button
-                  className="mc-button"
-                  onClick={() => {
-                    play("click_confirm");
-                    setConfirmOpen(true);
-                  }}
-                  disabled={restarting}
-                  onMouseEnter={() => play("hover")}
-                >
-                  <RefreshCcw size={16} />
-                  Restart server
-                </button>
-              </div>
-            </div>
-            <textarea
-              className="mc-input min-h-[520px] w-full resize-y font-mono text-xs"
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="Select a file to load its contents."
-            />
+          <motion.div variants={cardMotion}>
+            <Card className="flex flex-col gap-4 p-5">
+              <Card.Header className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+                  {selected ? labelFor(selected) : "Select a file"}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onPress={saveFile}
+                    isDisabled={saving}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    {saving ? "Saving..." : "Save"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onPress={() => {
+                      play("click_confirm");
+                      setConfirmOpen(true);
+                    }}
+                    isDisabled={restarting}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    <RefreshCcw size={16} />
+                    Restart server
+                  </Button>
+                </div>
+              </Card.Header>
+              <Card.Content>
+                <textarea
+                  className="min-h-[520px] w-full resize-y rounded-lg border bg-[var(--field-background)] p-3 font-mono text-xs text-[var(--foreground)]"
+                  style={{ borderColor: "var(--field-border)" }}
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  placeholder="Select a file to load its contents."
+                />
+              </Card.Content>
+            </Card>
           </motion.div>
         </motion.section>
 

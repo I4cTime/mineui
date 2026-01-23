@@ -11,10 +11,10 @@ import {
   Network,
   Timer,
 } from "lucide-react";
+import { Card, Chip, Separator } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import ProgressRing from "@/app/components/ProgressRing";
 import { SkeletonCard } from "@/app/components/Skeleton";
-import { useUISound } from "@/app/hooks/useUISound";
 
 type StatusResponse = {
   online: boolean;
@@ -102,7 +102,6 @@ export default function StatusPage() {
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [container, setContainer] = useState<ContainerState | null>(null);
   const [loading, setLoading] = useState(true);
-  const { play } = useUISound();
 
   useEffect(() => {
     const fetchAll = () => {
@@ -137,7 +136,7 @@ export default function StatusPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen mc-grid" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen" style={{ background: "var(--background)" }}>
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-6 md:grid-cols-3">
@@ -152,13 +151,13 @@ export default function StatusPage() {
 
   return (
     <div
-      className="min-h-screen mc-grid"
+      className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, var(--mc-accent-soft), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
-        className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
@@ -166,202 +165,223 @@ export default function StatusPage() {
         <PageHeader title="Server Status" icon={Gauge} />
 
         {/* Performance Rings */}
-        <motion.section
-          className="mc-panel flex flex-wrap items-center justify-center gap-8 p-6"
-          variants={cardMotion}
-        >
-          <ProgressRing
-            value={metrics?.cpuPercent ?? 0}
-            label={formatPercent(metrics?.cpuPercent ?? null)}
-            sublabel="CPU"
-            size={110}
-          />
-          <ProgressRing
-            value={metrics?.memPercent ?? 0}
-            label={formatPercent(metrics?.memPercent ?? null)}
-            sublabel="Memory"
-            size={110}
-          />
-          <ProgressRing
-            value={metrics?.disk?.percent ?? 0}
-            label={formatPercent(metrics?.disk?.percent ?? null)}
-            sublabel="Disk"
-            size={110}
-          />
-          <ProgressRing
-            value={Math.min((metrics?.tps?.one ?? 0) * 5, 100)}
-            label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "—"}
-            sublabel="TPS"
-            size={110}
-          />
+        <motion.section variants={cardMotion}>
+          <Card className="flex sm:flex-col md:flex-row justify-center gap-8 p-6">
+            <ProgressRing
+              value={metrics?.cpuPercent ?? 0}
+              label={formatPercent(metrics?.cpuPercent ?? null)}
+              sublabel="CPU"
+              size={110}
+            />
+            <ProgressRing
+              value={metrics?.memPercent ?? 0}
+              label={formatPercent(metrics?.memPercent ?? null)}
+              sublabel="Memory"
+              size={110}
+            />
+            <ProgressRing
+              value={metrics?.disk?.percent ?? 0}
+              label={formatPercent(metrics?.disk?.percent ?? null)}
+              sublabel="Disk"
+              size={110}
+            />
+            <ProgressRing
+              value={Math.min((metrics?.tps?.one ?? 0) * 5, 100)}
+              label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "—"}
+              sublabel="TPS"
+              size={110}
+            />
+          </Card>
         </motion.section>
 
         <motion.section className="grid gap-6 md:grid-cols-3" variants={containerMotion}>
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Activity size={18} />
-              <span className="font-pixel text-xs tracking-wide">Game Status</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              <div className="flex justify-between">
-                <span>Online:</span>
-                <span style={{ color: status?.online ? "var(--mc-accent)" : "inherit" }}>
-                  {status?.online ? "Yes" : "No"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Version:</span>
-                <span>{status?.version ?? "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Players:</span>
-                <span>{status?.players?.online ?? 0}/{status?.players?.max ?? "?"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Ping:</span>
-                <span>{status?.ping ? `${status.ping}ms` : "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>MOTD:</span>
-                <span className="truncate max-w-[150px]">{status?.motd ?? "—"}</span>
-              </div>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5 h-full">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Activity size={18} />
+                <span className="font-pixel text-xs tracking-wide">Game Status</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                <div className="flex justify-between items-center">
+                  <span>Online:</span>
+                  <Chip
+                    size="sm"
+                    variant="soft"
+                    color={status?.online ? "success" : "warning"}
+                  >
+                    {status?.online ? "Yes" : "No"}
+                  </Chip>
+                </div>
+                <div className="flex justify-between">
+                  <span>Version:</span>
+                  <span>{status?.version ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Players:</span>
+                  <span>
+                    {status?.players?.online ?? 0}/{status?.players?.max ?? "?"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Ping:</span>
+                  <span>{status?.ping ? `${status.ping}ms` : "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>MOTD:</span>
+                  <span className="truncate max-w-[150px]">{status?.motd ?? "—"}</span>
+                </div>
+              </Card.Content>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Timer size={18} />
-              <span className="font-pixel text-xs tracking-wide">Uptime & TPS</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              <div className="flex justify-between">
-                <span>Container:</span>
-                <span>{container?.status ?? "unknown"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Uptime:</span>
-                <span>{formatUptime(metrics?.uptime ?? null)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>TPS:</span>
-                <span className="text-xs">{tpsDisplay}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>MSPT:</span>
-                <span className="text-xs">
-                  {metrics?.mspt
-                    ? `${formatMspt(metrics.mspt.one)} / ${formatMspt(metrics.mspt.five)} / ${formatMspt(metrics.mspt.fifteen)}`
-                    : "—"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Chunks:</span>
-                <span>{metrics?.chunks ?? "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Entities:</span>
-                <span>{metrics?.entities ?? "—"}</span>
-              </div>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5 h-full">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Timer size={18} />
+                <span className="font-pixel text-xs tracking-wide">Uptime & TPS</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                <div className="flex justify-between">
+                  <span>Container:</span>
+                  <span>{container?.status ?? "unknown"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Uptime:</span>
+                  <span>{formatUptime(metrics?.uptime ?? null)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>TPS:</span>
+                  <span className="text-xs">{tpsDisplay}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>MSPT:</span>
+                  <span className="text-xs">
+                    {metrics?.mspt
+                      ? `${formatMspt(metrics.mspt.one)} / ${formatMspt(metrics.mspt.five)} / ${formatMspt(metrics.mspt.fifteen)}`
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Chunks:</span>
+                  <span>{metrics?.chunks ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Entities:</span>
+                  <span>{metrics?.entities ?? "—"}</span>
+                </div>
+              </Card.Content>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Cpu size={18} />
-              <span className="font-pixel text-xs tracking-wide">Compute</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              <div className="flex justify-between">
-                <span>CPU Load:</span>
-                <span>{formatPercent(metrics?.cpuPercent ?? null)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Memory:</span>
-                <span>
-                  {formatBytes(metrics?.memUsage?.usedBytes ?? null)} / {formatBytes(metrics?.memUsage?.totalBytes ?? null)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Memory %:</span>
-                <span>{formatPercent(metrics?.memPercent ?? null)}</span>
-              </div>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5 h-full">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Cpu size={18} />
+                <span className="font-pixel text-xs tracking-wide">Compute</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                <div className="flex justify-between">
+                  <span>CPU Load:</span>
+                  <span>{formatPercent(metrics?.cpuPercent ?? null)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Memory:</span>
+                  <span>
+                    {formatBytes(metrics?.memUsage?.usedBytes ?? null)} /{" "}
+                    {formatBytes(metrics?.memUsage?.totalBytes ?? null)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Memory %:</span>
+                  <span>{formatPercent(metrics?.memPercent ?? null)}</span>
+                </div>
+              </Card.Content>
+            </Card>
           </motion.div>
         </motion.section>
 
         <motion.section className="grid gap-6 md:grid-cols-3" variants={containerMotion}>
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Network size={18} />
-              <span className="font-pixel text-xs tracking-wide">Network</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              <div className="flex justify-between">
-                <span>Inbound:</span>
-                <span>{formatBytes(metrics?.netIO?.inputBytes ?? null)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Outbound:</span>
-                <span>{formatBytes(metrics?.netIO?.outputBytes ?? null)}</span>
-              </div>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Network size={18} />
+                <span className="font-pixel text-xs tracking-wide">Network</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                <div className="flex justify-between">
+                  <span>Inbound:</span>
+                  <span>{formatBytes(metrics?.netIO?.inputBytes ?? null)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Outbound:</span>
+                  <span>{formatBytes(metrics?.netIO?.outputBytes ?? null)}</span>
+                </div>
+              </Card.Content>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Database size={18} />
-              <span className="font-pixel text-xs tracking-wide">Disk I/O</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              <div className="flex justify-between">
-                <span>Read:</span>
-                <span>{formatBytes(metrics?.blockIO?.inputBytes ?? null)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Write:</span>
-                <span>{formatBytes(metrics?.blockIO?.outputBytes ?? null)}</span>
-              </div>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5 h-full">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Database size={18} />
+                <span className="font-pixel text-xs tracking-wide">Disk I/O</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                <div className="flex justify-between">
+                  <span>Read:</span>
+                  <span>{formatBytes(metrics?.blockIO?.inputBytes ?? null)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Write:</span>
+                  <span>{formatBytes(metrics?.blockIO?.outputBytes ?? null)}</span>
+                </div>
+              </Card.Content>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <HardDrive size={18} />
-              <span className="font-pixel text-xs tracking-wide">Disk Usage</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              <div className="flex justify-between">
-                <span>Used:</span>
-                <span>
-                  {formatBytes(metrics?.disk?.usedBytes ?? null)} / {formatBytes(metrics?.disk?.totalBytes ?? null)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Usage:</span>
-                <span>{formatPercent(metrics?.disk?.percent ?? null)}</span>
-              </div>
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <HardDrive size={18} />
+                <span className="font-pixel text-xs tracking-wide">Disk Usage</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                <div className="flex justify-between">
+                  <span>Used:</span>
+                  <span>
+                    {formatBytes(metrics?.disk?.usedBytes ?? null)} /{" "}
+                    {formatBytes(metrics?.disk?.totalBytes ?? null)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Usage:</span>
+                  <span>{formatPercent(metrics?.disk?.percent ?? null)}</span>
+                </div>
+              </Card.Content>
+            </Card>
           </motion.div>
 
-          <motion.div className="mc-panel p-5" variants={cardMotion}>
-            <div className="flex items-center gap-3 text-sm" style={{ color: "var(--mc-accent)" }}>
-              <Database size={18} />
-              <span className="font-pixel text-xs tracking-wide">Dimensions</span>
-            </div>
-            <div className="mt-4 grid gap-2 text-sm" style={{ color: "var(--mc-muted)" }}>
-              {dimensionsDisplay.length === 0 ? (
-                <div className="text-xs">—</div>
-              ) : (
-                dimensionsDisplay.map(([dimension, values]) => (
-                  <div key={dimension} className="flex justify-between gap-3">
-                    <span className="truncate max-w-[140px]">{dimension}</span>
-                    <span className="text-xs">
-                      {values.chunks ?? "—"} ch / {values.entities ?? "—"} en
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+          <motion.div variants={cardMotion}>
+            <Card className="p-5 h-full">
+              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                <Database size={18} />
+                <span className="font-pixel text-xs tracking-wide">Dimensions</span>
+              </Card.Header>
+              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+                {dimensionsDisplay.length === 0 ? (
+                  <div className="text-xs">—</div>
+                ) : (
+                  dimensionsDisplay.map(([dimension, values]) => (
+                    <div key={dimension} className="flex justify-between gap-3">
+                      <span className="truncate max-w-[140px]">{dimension}</span>
+                      <span className="text-xs">
+                        {values.chunks ?? "—"} ch / {values.entities ?? "—"} en
+                      </span>
+                    </div>
+                  ))
+                )}
+              </Card.Content>
+            </Card>
           </motion.div>
         </motion.section>
       </motion.main>
