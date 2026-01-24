@@ -1,7 +1,30 @@
 {
   "name": "mineui",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "productName": "MineUI",
+  
+  "author": {
+    "name": "i4cdeath",
+    "email": "i4cdeath660@gmail.com"
+  },
+  "description": "A desktop application for managing your local Minecraft server running in Podman.",
+  "homepage": "https://github.com/i4cdeath/mineui",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/i4cdeath/mineui.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "minecraft",
+    "podman",
+    "desktop",
+    "application",
+    "server",
+    "management",
+    "control",
+    "panel"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -41,6 +64,7 @@
   },
   "main": "electron/main.cjs",
   "build": {
+    "icon": "public/appimage.png",
     "appId": "com.mineui.desktop",
     "productName": "MineUI",
     "directories": {
@@ -50,9 +74,21 @@
       "electron/**/*",
       ".next/**/*",
       "public/**/*",
-      "package.json"
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/loading.html",
+        "to": "electron/loading.html"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/next/**/*"
     ],
     "linux": {
+      "category": "Utility",
       "target": [
         "AppImage",
         "deb"
@@ -65,7 +101,8 @@
     },
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "zip"
       ]
     }
   }

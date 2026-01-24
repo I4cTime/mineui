@@ -167,57 +167,6 @@ export default function RconPage() {
             </Card.Content>
           </Card>
         </motion.section>
-
-        <motion.section variants={cardMotion}>
-          <Card className="p-5">
-            <Card.Header className="flex items-center gap-3 font-pixel text-xs tracking-wide text-[var(--accent)]">
-              <Users size={16} />
-              Quick Actions
-            </Card.Header>
-            <Card.Content className="mt-4 grid gap-3 text-sm text-[var(--muted)] md:grid-cols-2">
-              <Card className="flex flex-col rounded-lg border p-4">
-                <Card.Header className="font-semibold text-[var(--foreground)]">
-                  Player Management
-                </Card.Header>
-                <Card.Content className="mt-1 flex-1 text-xs">
-                  Use the Players page for whitelist, op, ban, and kick commands.
-                </Card.Content>
-                <Card.Footer>
-                  <Button
-                    variant="secondary"
-                    onPress={() => {
-                      play("click_confirm");
-                      router.push("/players");
-                    }}
-                    onMouseEnter={() => play("hover")}
-                  >
-                    Go to Players
-                  </Button>
-                </Card.Footer>
-              </Card>
-              <Card className="flex flex-col rounded-lg border p-4">
-                <Card.Header className="font-semibold text-[var(--foreground)]">
-                  Server Control
-                </Card.Header>
-                <Card.Content className="mt-1 flex-1 text-xs">
-                  Start, stop, restart, and backup from the Dashboard.
-                </Card.Content>
-                <Card.Footer>
-                  <Button
-                    variant="secondary"
-                    onPress={() => {
-                      play("click_confirm");
-                      router.push("/");
-                    }}
-                    onMouseEnter={() => play("hover")}
-                  >
-                    Go to Dashboard
-                  </Button>
-                </Card.Footer>
-              </Card>
-            </Card.Content>
-          </Card>
-        </motion.section>
       </motion.main>
     </div>
   );

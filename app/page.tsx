@@ -248,7 +248,7 @@ export default function Home() {
 
         <motion.section variants={cardMotion}>
           <Card className="p-5">
-            <Card.Header className="flex items-center justify-between gap-3">
+            <Card.Header className="flex flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3 text-sm text-[var(--accent)]">
                 <ScrollText size={18} />
                 <span className="font-pixel text-xs tracking-wide">Server Logs</span>

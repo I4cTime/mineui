@@ -11,14 +11,15 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
 import {
+  Accordion,
   Button,
   Card,
   Chip,
-  Disclosure,
   Label,
   ListBox,
   Modal,
@@ -66,6 +67,7 @@ export default function ModsPage() {
   const [filter, setFilter] = useState<"all" | "mods" | "plugins">("all");
   const [sort, setSort] = useState<"name-asc" | "name-desc" | "size-desc" | "updated-desc">("name-asc");
   const [copied, setCopied] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(24);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -73,8 +75,7 @@ export default function ModsPage() {
   const [downloadName, setDownloadName] = useState("");
   const [target, setTarget] = useState<"mods" | "plugins">("mods");
   const [busy, setBusy] = useState(false);
-  const [modsExpanded, setModsExpanded] = useState(true);
-  const [pluginsExpanded, setPluginsExpanded] = useState(true);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(["mods", "plugins"]));
   const { play } = useUISound();
 
   const refreshMods = () =>
@@ -149,6 +150,14 @@ export default function ModsPage() {
     }
   };
 
+  const fileTypeBadge = (filename: string) => {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith(".jar.disabled")) return "Disabled";
+    if (lower.endsWith(".jar")) return "JAR";
+    if (lower.endsWith(".zip")) return "ZIP";
+    return "File";
+  };
+
   const copyFilename = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -159,6 +168,31 @@ export default function ModsPage() {
     } catch {
       play("error");
       toast.error("Failed to copy");
+    }
+  };
+
+  const handleDelete = async (item: ModEntry, kind: "mods" | "plugins") => {
+    const label = item.name || item.filename;
+    const confirmDelete = window.confirm(`Delete ${label}? This cannot be undone.`);
+    if (!confirmDelete) return;
+
+    setDeleting(`${kind}:${item.filename}`);
+    play("click_confirm");
+    try {
+      const res = await fetch("/api/mods/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: item.filename, target: kind }),
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      play("success");
+      toast.success("Deleted");
+      await refreshMods();
+    } catch {
+      play("error");
+      toast.error("Delete failed");
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -332,33 +366,41 @@ export default function ModsPage() {
         </motion.section>
 
         <motion.section className="grid gap-6" variants={containerMotion}>
-          {showMods && (
-            <motion.div variants={cardMotion}>
-              <Disclosure isExpanded={modsExpanded} onExpandedChange={setModsExpanded}>
-                <Disclosure.Heading>
-                  <Button slot="trigger" variant="secondary">
-                    Mods ({filteredMods.length})
-                    <Disclosure.Indicator />
-                  </Button>
-                </Disclosure.Heading>
-                <Disclosure.Content>
-                  <Disclosure.Body className="mt-4 grid gap-3 md:grid-cols-2">
+          <Accordion
+            allowsMultipleExpanded
+            expandedKeys={expandedKeys}
+            onExpandedChange={(keys) => setExpandedKeys(new Set(Array.from(keys) as string[]))}
+            variant="surface"
+          >
+            {showMods && (
+              <Accordion.Item id="mods">
+                <Accordion.Heading>
+                  <Accordion.Trigger className="flex items-center justify-between gap-3">
+                    <div className="font-semibold">Mods ({filteredMods.length})</div>
+                    <Accordion.Indicator />
+                  </Accordion.Trigger>
+                </Accordion.Heading>
+                <Accordion.Panel>
+                  <Accordion.Body className="mt-4 grid gap-3 md:grid-cols-2">
                     {pagedMods.length ? (
                       pagedMods.map((item, index) => (
-                        <motion.div
-                          key={item.filename}
-                          variants={cardMotion}
-                          custom={index}
-                        >
-                          <Card className="p-4 text-sm">
-                            <Card.Header className="flex items-center justify-between gap-3">
-                              <div className="font-semibold text-[var(--foreground)]">
-                                {item.name}
-                              </div>
-                              <Chip variant="soft">{loaderBadge(item.loader)}</Chip>
+                        <motion.div key={item.filename} variants={cardMotion} custom={index}>
+                          <Card className="p-4 text-sm" variant="secondary">
+                            <Card.Header className="gap-1">
+                              <Card.Title className="text-base">{item.name}</Card.Title>
+                              <Card.Description className="text-xs text-[var(--muted)]">
+                                Updated {formatDate(item.updatedAt)}
+                              </Card.Description>
                             </Card.Header>
-                            <Card.Content className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
-                              <span className="truncate">{item.filename}</span>
+                            <Card.Content className="mt-3 flex flex-row flex-wrap gap-2 text-xs">
+                              <Chip variant="soft">Size: {formatBytes(item.sizeBytes)}</Chip>
+                              <Chip variant="soft">Loader: {loaderBadge(item.loader)}</Chip>
+                              <Chip variant="soft">{fileTypeBadge(item.filename)}</Chip>
+                              <Chip variant="soft" className="max-w-full">
+                                <span className="truncate">File: {item.filename}</span>
+                              </Chip>
+                            </Card.Content>
+                            <Card.Footer className="mt-3 flex flex-wrap items-center gap-2">
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -368,10 +410,17 @@ export default function ModsPage() {
                                 <Copy size={12} />
                                 {copied === item.filename ? "Copied" : "Copy"}
                               </Button>
-                            </Card.Content>
-                            <Card.Footer className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
-                              <span>Size: {formatBytes(item.sizeBytes)}</span>
-                              <span>Updated: {formatDate(item.updatedAt)}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-red-400 hover:text-red-300"
+                                isDisabled={deleting === `mods:${item.filename}`}
+                                onPress={() => handleDelete(item, "mods")}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                <Trash2 size={12} />
+                                Delete
+                              </Button>
                             </Card.Footer>
                           </Card>
                         </motion.div>
@@ -379,51 +428,40 @@ export default function ModsPage() {
                     ) : (
                       <span className="text-sm text-[var(--muted)]">None</span>
                     )}
-                  </Disclosure.Body>
-                </Disclosure.Content>
-              </Disclosure>
-              {filteredMods.length > pageSize && (
-                <Button
-                  className="mt-4 w-fit"
-                  onPress={() => {
-                    play("click_confirm");
-                    setPageSize(pageSize + 24);
-                  }}
-                  onMouseEnter={() => play("hover")}
-                >
-                  Show more mods
-                </Button>
-              )}
-            </motion.div>
-          )}
+                  </Accordion.Body>
+                </Accordion.Panel>
+              </Accordion.Item>
+            )}
 
-          {showPlugins && (
-            <motion.div variants={cardMotion}>
-              <Disclosure isExpanded={pluginsExpanded} onExpandedChange={setPluginsExpanded}>
-                <Disclosure.Heading>
-                  <Button slot="trigger" variant="secondary">
-                    Plugins ({filteredPlugins.length})
-                    <Disclosure.Indicator />
-                  </Button>
-                </Disclosure.Heading>
-                <Disclosure.Content>
-                  <Disclosure.Body className="mt-4 grid gap-3 md:grid-cols-2">
+            {showPlugins && (
+              <Accordion.Item id="plugins">
+                <Accordion.Heading>
+                  <Accordion.Trigger className="flex items-center justify-between gap-3">
+                    <div className="font-semibold">Plugins ({filteredPlugins.length})</div>
+                    <Accordion.Indicator />
+                  </Accordion.Trigger>
+                </Accordion.Heading>
+                <Accordion.Panel>
+                  <Accordion.Body className="mt-4 grid gap-3 md:grid-cols-2">
                     {pagedPlugins.length ? (
                       pagedPlugins.map((item, index) => (
-                        <motion.div
-                          key={item.filename}
-                          variants={cardMotion}
-                          custom={index}
-                        >
+                        <motion.div key={item.filename} variants={cardMotion} custom={index}>
                           <Card className="p-4 text-sm">
-                            <Card.Header className="flex items-center justify-between gap-3">
-                              <div className="font-semibold text-[var(--foreground)]">
-                                {item.name}
-                              </div>
-                              <Chip variant="soft">{loaderBadge(item.loader)}</Chip>
+                            <Card.Header className="gap-1">
+                              <Card.Title className="text-base">{item.name}</Card.Title>
+                              <Card.Description className="text-xs text-[var(--muted)]">
+                                Updated {formatDate(item.updatedAt)}
+                              </Card.Description>
                             </Card.Header>
-                            <Card.Content className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--muted)]">
-                              <span className="truncate">{item.filename}</span>
+                            <Card.Content className="mt-3 flex flex-wrap gap-2 text-xs">
+                              <Chip variant="soft">Size: {formatBytes(item.sizeBytes)}</Chip>
+                              <Chip variant="soft">Loader: {loaderBadge(item.loader)}</Chip>
+                              <Chip variant="soft">{fileTypeBadge(item.filename)}</Chip>
+                              <Chip variant="soft" className="max-w-full">
+                                <span className="truncate">File: {item.filename}</span>
+                              </Chip>
+                            </Card.Content>
+                            <Card.Footer className="mt-3 flex flex-wrap items-center gap-2">
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -433,10 +471,17 @@ export default function ModsPage() {
                                 <Copy size={12} />
                                 {copied === item.filename ? "Copied" : "Copy"}
                               </Button>
-                            </Card.Content>
-                            <Card.Footer className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--muted)]">
-                              <span>Size: {formatBytes(item.sizeBytes)}</span>
-                              <span>Updated: {formatDate(item.updatedAt)}</span>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-red-400 hover:text-red-300"
+                                isDisabled={deleting === `plugins:${item.filename}`}
+                                onPress={() => handleDelete(item, "plugins")}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                <Trash2 size={12} />
+                                Delete
+                              </Button>
                             </Card.Footer>
                           </Card>
                         </motion.div>
@@ -444,22 +489,36 @@ export default function ModsPage() {
                     ) : (
                       <span className="text-sm text-[var(--muted)]">None</span>
                     )}
-                  </Disclosure.Body>
-                </Disclosure.Content>
-              </Disclosure>
-              {filteredPlugins.length > pageSize && (
-                <Button
-                  className="mt-4 w-fit"
-                  onPress={() => {
-                    play("click_confirm");
-                    setPageSize(pageSize + 24);
-                  }}
-                  onMouseEnter={() => play("hover")}
-                >
-                  Show more plugins
-                </Button>
-              )}
-            </motion.div>
+                  </Accordion.Body>
+                </Accordion.Panel>
+              </Accordion.Item>
+            )}
+          </Accordion>
+
+          {showMods && filteredMods.length > pageSize && (
+            <Button
+              className="w-fit"
+              onPress={() => {
+                play("click_confirm");
+                setPageSize(pageSize + 24);
+              }}
+              onMouseEnter={() => play("hover")}
+            >
+              Show more mods
+            </Button>
+          )}
+
+          {showPlugins && filteredPlugins.length > pageSize && (
+            <Button
+              className="w-fit"
+              onPress={() => {
+                play("click_confirm");
+                setPageSize(pageSize + 24);
+              }}
+              onMouseEnter={() => play("hover")}
+            >
+              Show more plugins
+            </Button>
           )}
         </motion.section>
       </motion.main>

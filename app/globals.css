@@ -1,7 +1,4 @@
 @import "tailwindcss";
-@config "../tailwind.config.ts";
-@source "./**/*.{ts,tsx}";
-@source "../components/**/*.{ts,tsx}";
 @import "@heroui/styles";
 
 :root {
