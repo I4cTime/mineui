@@ -72,6 +72,8 @@ fn well_known_candidates() -> Vec<PathBuf> {
                 None,
             ));
             out.extend(scan_install_root(&home.join(".jdks"), &[], None));
+            // Common no-sudo convention: tarballs unpacked under ~/.local/jvm.
+            out.extend(scan_install_root(&home.join(".local/jvm"), &[], None));
         }
     } else if cfg!(target_os = "macos") {
         out.extend(scan_install_root(
@@ -306,6 +308,14 @@ mod tests {
         fake_java(tmp.path(), "node", &[]);
         let hits = scan_install_root(tmp.path(), &[], Some("jdk"));
         assert_eq!(hits, vec![jdk]);
+    }
+
+    #[test]
+    fn scans_local_jvm_tarball_layout() {
+        // Real-world no-sudo layout: ~/.local/jvm/jdk-21.0.12+8-jre/bin/java
+        let tmp = tempfile::tempdir().unwrap();
+        let exe = fake_java(tmp.path(), "jdk-21.0.12+8-jre", &[]);
+        assert_eq!(scan_install_root(tmp.path(), &[], None), vec![exe]);
     }
 
     #[test]
