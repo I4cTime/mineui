@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { Loader2, Send, ShieldAlert, Users } from "lucide-react";
+import { Loader2, Send, ShieldAlert } from "lucide-react";
 import { Button, Card, Chip, TextField, Input } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { useUISound } from "@/app/hooks/useUISound";
+import { runRconCommand, IpcError } from "@/app/lib/ipc";
 
 const containerMotion = {
   hidden: { opacity: 0 },
@@ -29,7 +29,6 @@ const presets = [
 ];
 
 export default function RconPage() {
-  const router = useRouter();
   const [command, setCommand] = useState("");
   const [commandOutput, setCommandOutput] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -43,24 +42,18 @@ export default function RconPage() {
     setCommandError(null);
     setCommandOutput(null);
     try {
-      const res = await fetch("/api/rcon/command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command }),
-      });
-      const payload = await res.json();
-      if (!res.ok || !payload.ok) {
-        play("error");
-        setCommandError(payload.error ?? "Command failed.");
-        toast.error(payload.error ?? "Command failed.");
-      } else {
-        play("success");
-        setCommandOutput(payload.output ?? "OK");
-        toast.success("Command executed");
-      }
+      const { output } = await runRconCommand(command);
+      play("success");
+      setCommandOutput(output || "OK");
+      toast.success("Command executed");
     } catch (error) {
       play("error");
-      const message = error instanceof Error ? error.message : "Command failed.";
+      const message =
+        error instanceof IpcError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Command failed.";
       setCommandError(message);
       toast.error(message);
     } finally {
@@ -102,8 +95,8 @@ export default function RconPage() {
                 RCON Command Panel
               </Chip>
               <span className="text-xs text-[var(--muted)]">
-                Commands restricted by{" "}
-                <code className="font-mono">MINECRAFT_RCON_ALLOWLIST</code>.
+                Commands restricted by the RCON allowlist in{" "}
+                <span className="font-mono">Settings</span>.
               </span>
             </Card.Header>
 

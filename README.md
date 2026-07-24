@@ -1,112 +1,116 @@
 # MineUI
 
-A desktop application for managing your local Minecraft server running in Podman.
+A container-first desktop app for managing Minecraft servers. Built with
+Tauri v2 (Rust backend) and Next.js (static export frontend).
+
+MineUI v2 has two modes:
+
+- **Simple mode (default)** — MineUI creates and runs a vanilla server for
+  you: pick a Minecraft version, set memory, accept the EULA, and MineUI
+  downloads the official server jar (SHA-1 verified), configures RCON, and
+  supervises the Java process. No containers required.
+- **Advanced mode** — attach to an existing Minecraft server container
+  managed by **Podman or Docker** (the v1 feature set behind a runtime
+  adapter): start/stop/restart, logs, players, RCON, mods/plugins, config
+  editing, backups, and container metrics.
 
 ## Features
 
-- **Server Control** - Start, stop, and restart your Minecraft container
-- **Live Status** - View TPS, MSPT, player count, and server version in real-time
-- **Player List** - See who's online with live updates
-- **Logs Viewer** - Stream server logs with filtering
-- **Mods & Plugins** - Browse installed mods/plugins, upload new ones, or download from URLs
-- **Configuration Editor** - Edit server configuration files directly
-- **Backups** - One-click world backups
-- **System Metrics** - CPU, memory, network, and disk usage (requires utility mod)
+- **Server Control** — start, stop, and restart (managed process or container)
+- **Live Status** — TPS, MSPT, player count, and server version
+- **Live Logs** — streamed log viewer (no polling)
+- **Player Management** — online players, history with last-seen and IP, and
+  one-click whitelist/op/ban/kick actions
+- **RCON Console** — allowlisted command panel
+- **Mods & Plugins** — browse, upload from disk, or download from URLs
+- **Configuration Editor** — edit `server.properties` and `config/` files
+- **World Backups** — create, list, restore, and delete `.tar.gz` snapshots
+- **System Metrics** — CPU, memory, disk (plus network/block IO for containers)
 
 ## Requirements
 
-- **Podman** installed and running
-- A Minecraft server container managed by Podman or Podman Compose
-- The Podman socket must be accessible (typically at `/run/user/1000/podman/podman.sock`)
+### Simple mode
+
+- Java 21+ on your PATH (or a Java path override in Settings). Recent
+  Minecraft versions require Java 21; MineUI checks compatibility for you.
+
+### Advanced mode
+
+- **Podman** or **Docker** installed
+- A Minecraft server container (e.g. created with `podman run` / `docker run`
+  or compose). MineUI attaches to an existing container; it does not create one.
 
 ## Getting Started
 
-1. **Launch MineUI** - Open the application
-2. **Configure Settings** - Go to the **Settings** page and enter your server details:
-   - `Container Name` - The name of your Minecraft Podman container (e.g., `minecraft-server`)
-   - `Query Host` / `Query Port` - Minecraft query protocol address (default: `localhost:25565`)
-   - `Podman Socket` - Path to your Podman socket
-   - `RCON` settings - If you want to use RCON commands
-3. **Connect** - Navigate to the **Status** page to see your server
+1. **Launch MineUI.**
+2. **Simple mode**: the dashboard walks you through creating your server —
+   pick a version, set memory, accept the
+   [Minecraft EULA](https://aka.ms/MinecraftEULA), and hit Create.
+3. **Advanced mode**: open **Settings**, switch to Advanced, pick your
+   runtime (Auto tries Podman first, then Docker), and enter your container
+   name, query address, and RCON credentials.
 
-## Optional: MineUI Server Utilities Mod
+Settings are stored by the backend in the platform config directory
+(`settings.json`); there are no environment variables to configure.
 
-For enhanced metrics and features, you can install the **MineUI Server Utilities** Forge mod on your Minecraft server. This is **strongly recommended** but not required.
+## Development
 
-### Compatibility
+Prerequisites: [pnpm](https://pnpm.io) and the
+[Tauri v2 toolchain](https://v2.tauri.app/start/prerequisites/) (Rust stable).
 
-| Minecraft Version | Forge Version | Download |
-|-------------------|---------------|----------|
-| 1.20.1            | 47.4.x        | [mineui-server-utils.jar](#) |
+On Linux you also need the WebKit/GTK build dependencies:
 
-> **Note:** The utility mod is only compatible with **Minecraft 1.20.1** running **Forge 47.4.x**. Other versions are not supported at this time.
+```bash
+sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev
+```
 
-### Installation
+Then:
 
-1. Download the `mineui-server-utils.jar` file
-2. Copy it to your server's `mods/` directory
-3. Restart the Minecraft server
-4. In MineUI **Settings**, set the `Server Utils URL` to `http://<server-ip>:8787`
+```bash
+pnpm install
+pnpm tauri dev     # runs Next.js dev server + Tauri window
+```
 
-### Enhanced Features (with utility mod)
+Other scripts:
 
-When the utility mod is installed, you get:
+- `pnpm dev` — frontend only, in a plain browser (no backend; IPC calls
+  fail soft with a "Backend unavailable" notice)
+- `pnpm build` — static export to `out/` (what Tauri bundles)
+- `pnpm lint` — ESLint
+- `pnpm tauri build` — production desktop bundle
 
-- **Accurate TPS & MSPT** - Direct server metrics instead of estimates
-- **Per-Dimension Stats** - Chunk and entity counts for each dimension
-- **System Metrics** - Host CPU, memory, network I/O, and disk I/O
-- **Container Stats** - Podman container resource usage
-- **Mod List** - Detailed list of installed Forge mods
-- **Direct Player API** - Player list without RCON
+## Optional: MineUI Server Utilities Mod (Advanced mode)
 
-### Without the utility mod
+For enriched metrics (accurate TPS/MSPT, per-dimension chunk/entity counts,
+host system metrics, detailed mod list), a companion Forge mod is planned.
 
-MineUI will still work, but with limited functionality:
+| Minecraft Version | Forge Version | Status      |
+|-------------------|---------------|-------------|
+| 1.20.1            | 47.4.x        | Coming soon |
 
-- Basic server status via Minecraft query protocol
-- Container management (start/stop/restart)
-- Log streaming
-- File-based mod/plugin listing
-- Configuration editing
-- Backups
-
-## Settings Reference
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| Container Name | Podman container name | `minecraft-server` |
-| Query Host | Minecraft server address | `localhost` |
-| Query Port | Minecraft query port | `25565` |
-| Podman Socket | Path to Podman socket | `/run/user/1000/podman/podman.sock` |
-| Podman Binary | Podman executable | `podman` |
-| World Directory | World folder name | `world` |
-| RCON Host | RCON server address | `localhost` |
-| RCON Port | RCON port | `25575` |
-| RCON Password | RCON password | (none) |
-| Server Utils URL | MineUI utility mod URL | (none) |
+Once installed on your server, set **Server utils URL** in Settings (e.g.
+`http://<server-ip>:8787`). Without it, MineUI falls back to the Minecraft
+server list ping and container/process metrics — everything else still works.
 
 ## Troubleshooting
 
-### "Cannot connect to server"
+### "Cannot connect to server" (Advanced)
 
 - Ensure your Minecraft container is running
-- Verify the container name matches your settings
-- Check that the Podman socket path is correct
+- Verify the container name in Settings matches (`podman ps` / `docker ps`)
+- If you use a non-default socket, set the socket path override
 
-### "No metrics available"
+### "No Java found" (Simple)
 
-- Install the MineUI Server Utilities mod for full metrics
-- Verify the `Server Utils URL` is set correctly (e.g., `http://localhost:8787`)
-- Check that the mod loaded successfully in server logs
+- Install Java 21+ (e.g. `sudo apt install openjdk-21-jre-headless`)
+- Or set a Java path override in Settings
 
-### "Player list not showing"
+### "RCON unavailable"
 
-- Enable the query protocol in your `server.properties`:
-  ```properties
-  enable-query=true
-  query.port=25565
-  ```
-- Or install the utility mod for direct player listing
+- Simple mode configures RCON automatically at instance creation — restart
+  the server if you changed ports
+- Advanced mode needs `enable-rcon=true` plus matching port/password in your
+  server's `server.properties` and MineUI Settings
 
 ## License
 

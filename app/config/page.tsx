@@ -16,27 +16,16 @@ import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { Skeleton } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
+import {
+  listConfigFiles,
+  readConfigFile,
+  restartServer,
+  writeConfigFile,
+  IpcError,
+} from "@/app/lib/ipc";
 
-type ConfigListResponse = {
-  ok: boolean;
-  files: string[];
-  error?: string;
-};
-
-type ReadResponse = {
-  ok: boolean;
-  content: string;
-  error?: string;
-};
-
-const fetchJson = async <T,>(path: string, init?: RequestInit): Promise<T> => {
-  const res = await fetch(path, init);
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json() as Promise<T>;
-};
-
-const labelFor = (path: string) =>
-  path === "/data/server.properties" ? "server.properties" : path.replace("/data/config/", "config/");
+// Contract §3.7: config paths are now relative, forward-slash
+// ("server.properties", "config/foo.toml") — display them as-is.
 
 const containerMotion = {
   hidden: { opacity: 0 },
@@ -60,28 +49,28 @@ export default function ConfigPage() {
   const { play } = useUISound();
 
   useEffect(() => {
-    fetchJson<ConfigListResponse>("/api/config/list")
+    listConfigFiles()
       .then((data) => {
-        setFiles(data.files ?? []);
-        if (data.files?.length) {
+        setFiles(data.files);
+        if (data.files.length) {
           setSelected(data.files[0]);
         }
       })
-      .catch((error) => {
-        toast.error(error instanceof Error ? error.message : "Failed to load.");
+      .catch((error: unknown) => {
+        toast.error(
+          error instanceof IpcError ? error.message : "Failed to load.",
+        );
       })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!selected) return;
-    fetchJson<ReadResponse>("/api/config/read", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: selected }),
-    })
-      .then((data) => setContent(data.content ?? ""))
-      .catch((error) => toast.error(error instanceof Error ? error.message : "Read failed."));
+    readConfigFile(selected)
+      .then((data) => setContent(data.content))
+      .catch((error: unknown) =>
+        toast.error(error instanceof IpcError ? error.message : "Read failed."),
+      );
   }, [selected]);
 
   const filteredFiles = useMemo(() => {
@@ -95,34 +84,26 @@ export default function ConfigPage() {
     play("click_confirm");
     setSaving(true);
     try {
-      const res = await fetchJson<{ ok: boolean; error?: string }>("/api/config/write", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: selected, content }),
-      });
-      if (!res.ok) throw new Error(res.error ?? "Save failed.");
+      await writeConfigFile(selected, content);
       play("success");
       toast.success("Saved successfully");
     } catch (error) {
       play("error");
-      toast.error(error instanceof Error ? error.message : "Save failed.");
+      toast.error(error instanceof IpcError ? error.message : "Save failed.");
     } finally {
       setSaving(false);
     }
   };
 
-  const restartServer = async () => {
+  const handleRestart = async () => {
     setRestarting(true);
     try {
-      const res = await fetchJson<{ ok: boolean; error?: string }>("/api/server/restart", {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error(res.error ?? "Restart failed.");
+      await restartServer();
       play("success");
       toast.success("Server restart triggered");
     } catch (error) {
       play("error");
-      toast.error(error instanceof Error ? error.message : "Restart failed.");
+      toast.error(error instanceof IpcError ? error.message : "Restart failed.");
     } finally {
       setRestarting(false);
     }
@@ -185,8 +166,8 @@ export default function ConfigPage() {
                     }}
                   >
                     {filteredFiles.map((file) => (
-                      <ListBox.Item key={file} id={file} textValue={labelFor(file)}>
-                        {labelFor(file)}
+                      <ListBox.Item key={file} id={file} textValue={file}>
+                        {file}
                         <ListBox.ItemIndicator />
                       </ListBox.Item>
                     ))}
@@ -202,7 +183,7 @@ export default function ConfigPage() {
             <Card className="flex flex-col gap-4 p-5">
               <Card.Header className="flex flex-wrap items-center justify-between gap-3">
                 <div className="font-pixel text-xs tracking-wide text-[var(--accent)]">
-                  {selected ? labelFor(selected) : "Select a file"}
+                  {selected ?? "Select a file"}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -243,7 +224,7 @@ export default function ConfigPage() {
         <ConfirmDialog
           isOpen={confirmOpen}
           title="Restart Minecraft server?"
-          description="This will disconnect players and restart the container."
+          description="This will disconnect players and restart the server."
           confirmLabel="Restart"
           cancelLabel="Cancel"
           variant="danger"
@@ -251,7 +232,7 @@ export default function ConfigPage() {
           onCancel={() => setConfirmOpen(false)}
           onConfirm={async () => {
             setConfirmOpen(false);
-            await restartServer();
+            await handleRestart();
           }}
         />
       </motion.main>

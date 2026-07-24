@@ -11,50 +11,19 @@ import {
   Network,
   Timer,
 } from "lucide-react";
-import { Card, Chip, Separator } from "@heroui/react";
+import { Card, Chip } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import ProgressRing from "@/app/components/ProgressRing";
 import { SkeletonCard } from "@/app/components/Skeleton";
-
-type StatusResponse = {
-  online: boolean;
-  version?: string | null;
-  motd?: string | null;
-  players?: { online: number; max: number };
-  ping?: number | null;
-  error?: string;
-};
-
-type MetricsResponse = {
-  ok: boolean;
-  cpuPercent: number | null;
-  memPercent: number | null;
-  memUsage: { usedBytes: number | null; totalBytes: number | null };
-  netIO: { inputBytes: number | null; outputBytes: number | null };
-  blockIO: { inputBytes: number | null; outputBytes: number | null };
-  disk: { usedBytes: number | null; totalBytes: number | null; percent: number | null };
-  uptime: string | null;
-  tps: { one: number; five: number; fifteen: number; raw: string } | null;
-  mspt: { one: number | null; five: number | null; fifteen: number | null } | null;
-  chunks: number | null;
-  entities: number | null;
-  dimensions: Record<string, { chunks: number | null; entities: number | null }> | null;
-  error?: string;
-};
-
-type ContainerState = {
-  exists: boolean;
-  running: boolean;
-  status: string | null;
-  id: string | null;
-  createdAt: string | null;
-};
-
-const fetchJson = async <T,>(path: string): Promise<T> => {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json() as Promise<T>;
-};
+import {
+  getMetrics,
+  getServerState,
+  getServerStatus,
+  onServerState,
+  type Metrics,
+  type ServerState,
+  type ServerStatus,
+} from "@/app/lib/ipc";
 
 const formatBytes = (value: number | null) => {
   if (!value) return "—";
@@ -74,13 +43,18 @@ const formatPercent = (value: number | null) =>
 const formatMspt = (value: number | null) =>
   value === null ? "—" : `${value.toFixed(2)} ms`;
 
-const formatUptime = (value: string | null) => {
-  if (!value) return "—";
-  const started = new Date(value);
-  if (Number.isNaN(started.getTime())) return value;
-  const diff = Date.now() - started.getTime();
-  const hours = Math.floor(diff / 3_600_000);
-  const minutes = Math.floor((diff % 3_600_000) / 60_000);
+const formatUptime = (metrics: Metrics | null) => {
+  if (!metrics) return "—";
+  let seconds = metrics.uptimeSeconds;
+  if (seconds === null && metrics.startedAt) {
+    const started = new Date(metrics.startedAt);
+    if (!Number.isNaN(started.getTime())) {
+      seconds = Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000));
+    }
+  }
+  if (seconds === null) return "—";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${minutes}m`;
 };
 
@@ -98,30 +72,53 @@ const cardMotion = {
 };
 
 export default function StatusPage() {
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
-  const [container, setContainer] = useState<ContainerState | null>(null);
+  const [status, setStatus] = useState<ServerStatus | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [serverState, setServerState] = useState<ServerState | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchAll = () => {
       Promise.allSettled([
-        fetchJson<StatusResponse>("/api/status"),
-        fetchJson<MetricsResponse>("/api/server/metrics"),
-        fetchJson<ContainerState>("/api/server/state"),
-      ]).then(([statusRes, metricsRes, containerRes]) => {
+        getServerStatus(),
+        getMetrics(),
+        getServerState(),
+      ]).then(([statusRes, metricsRes, stateRes]) => {
         if (statusRes.status === "fulfilled") setStatus(statusRes.value);
-        else setStatus({ online: false });
         if (metricsRes.status === "fulfilled") setMetrics(metricsRes.value);
-        if (containerRes.status === "fulfilled") setContainer(containerRes.value);
+        if (stateRes.status === "fulfilled") setServerState(stateRes.value);
         setLoading(false);
       });
     };
 
     fetchAll();
     const interval = setInterval(fetchAll, 30_000);
-    return () => clearInterval(interval);
+
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    onServerState(() => fetchAll()).then((fn) => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+
+    return () => {
+      clearInterval(interval);
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
+
+  const isSimple = serverState?.mode === "simple";
+
+  const stateSummary = useMemo(() => {
+    if (!serverState) return "unknown";
+    if (serverState.mode === "advanced") {
+      return serverState.container?.status ?? serverState.phase;
+    }
+    return serverState.process?.pid
+      ? `${serverState.phase} (pid ${serverState.process.pid})`
+      : serverState.phase;
+  }, [serverState]);
 
   const tpsDisplay = useMemo(() => {
     if (!metrics?.tps) return "—";
@@ -174,8 +171,8 @@ export default function StatusPage() {
               size={110}
             />
             <ProgressRing
-              value={metrics?.memPercent ?? 0}
-              label={formatPercent(metrics?.memPercent ?? null)}
+              value={metrics?.mem.percent ?? 0}
+              label={formatPercent(metrics?.mem.percent ?? null)}
               sublabel="Memory"
               size={110}
             />
@@ -219,16 +216,20 @@ export default function StatusPage() {
                 <div className="flex justify-between">
                   <span>Players:</span>
                   <span>
-                    {status?.players?.online ?? 0}/{status?.players?.max ?? "?"}
+                    {status?.players.online ?? 0}/{status?.players.max ?? "?"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Ping:</span>
-                  <span>{status?.ping ? `${status.ping}ms` : "—"}</span>
+                  <span>{status?.pingMs != null ? `${status.pingMs}ms` : "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>MOTD:</span>
                   <span className="truncate max-w-[150px]">{status?.motd ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Source:</span>
+                  <span>{status?.source ?? "—"}</span>
                 </div>
               </Card.Content>
             </Card>
@@ -242,12 +243,12 @@ export default function StatusPage() {
               </Card.Header>
               <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
                 <div className="flex justify-between">
-                  <span>Container:</span>
-                  <span>{container?.status ?? "unknown"}</span>
+                  <span>{isSimple ? "Process:" : "Container:"}</span>
+                  <span className="truncate max-w-[170px]">{stateSummary}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Uptime:</span>
-                  <span>{formatUptime(metrics?.uptime ?? null)}</span>
+                  <span>{formatUptime(metrics)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>TPS:</span>
@@ -281,19 +282,27 @@ export default function StatusPage() {
               </Card.Header>
               <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
                 <div className="flex justify-between">
+                  <span>Source:</span>
+                  <span>
+                    {metrics
+                      ? `${metrics.base}${metrics.enriched ? " + utils" : ""}`
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span>CPU Load:</span>
                   <span>{formatPercent(metrics?.cpuPercent ?? null)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Memory:</span>
                   <span>
-                    {formatBytes(metrics?.memUsage?.usedBytes ?? null)} /{" "}
-                    {formatBytes(metrics?.memUsage?.totalBytes ?? null)}
+                    {formatBytes(metrics?.mem.usedBytes ?? null)} /{" "}
+                    {formatBytes(metrics?.mem.totalBytes ?? null)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Memory %:</span>
-                  <span>{formatPercent(metrics?.memPercent ?? null)}</span>
+                  <span>{formatPercent(metrics?.mem.percent ?? null)}</span>
                 </div>
               </Card.Content>
             </Card>
@@ -308,14 +317,24 @@ export default function StatusPage() {
                 <span className="font-pixel text-xs tracking-wide">Network</span>
               </Card.Header>
               <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
-                <div className="flex justify-between">
-                  <span>Inbound:</span>
-                  <span>{formatBytes(metrics?.netIO?.inputBytes ?? null)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Outbound:</span>
-                  <span>{formatBytes(metrics?.netIO?.outputBytes ?? null)}</span>
-                </div>
+                {metrics?.net ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Inbound:</span>
+                      <span>{formatBytes(metrics.net.inputBytes)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Outbound:</span>
+                      <span>{formatBytes(metrics.net.outputBytes)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-xs">
+                    {isSimple
+                      ? "Container network stats are available in Advanced mode."
+                      : "—"}
+                  </span>
+                )}
               </Card.Content>
             </Card>
           </motion.div>
@@ -327,14 +346,24 @@ export default function StatusPage() {
                 <span className="font-pixel text-xs tracking-wide">Disk I/O</span>
               </Card.Header>
               <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
-                <div className="flex justify-between">
-                  <span>Read:</span>
-                  <span>{formatBytes(metrics?.blockIO?.inputBytes ?? null)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Write:</span>
-                  <span>{formatBytes(metrics?.blockIO?.outputBytes ?? null)}</span>
-                </div>
+                {metrics?.block ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Read:</span>
+                      <span>{formatBytes(metrics.block.inputBytes)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Write:</span>
+                      <span>{formatBytes(metrics.block.outputBytes)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-xs">
+                    {isSimple
+                      ? "Container block-IO stats are available in Advanced mode."
+                      : "—"}
+                  </span>
+                )}
               </Card.Content>
             </Card>
           </motion.div>

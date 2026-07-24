@@ -3,21 +3,22 @@
   "version": "1.0.0",
   "private": true,
   "productName": "MineUI",
-  
   "author": {
     "name": "i4cdeath",
     "email": "i4cdeath660@gmail.com"
   },
-  "description": "A desktop application for managing your local Minecraft server running in Podman.",
-  "homepage": "https://github.com/i4cdeath/mineui",
+  "description": "A container-first desktop app for managing Minecraft servers with Docker or Podman, or fully managed vanilla instances.",
+  "homepage": "https://github.com/I4cTime/mineui",
   "repository": {
     "type": "git",
-    "url": "https://github.com/i4cdeath/mineui.git"
+    "url": "https://github.com/I4cTime/mineui.git"
   },
   "license": "MIT",
   "keywords": [
     "minecraft",
     "podman",
+    "docker",
+    "tauri",
     "desktop",
     "application",
     "server",
@@ -28,82 +29,32 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
     "lint": "eslint",
-    "dev:electron": "concurrently -k \"pnpm dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build": "electron-builder",
-    "electron:pack": "electron-builder --dir"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@heroui/react": "^3.0.0-beta.5",
     "@heroui/styles": "^3.0.0-beta.5",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
     "howler": "^2.2.4",
     "lucide-react": "^0.555.0",
-    "minecraft-server-util": "^5.4.1",
     "motion": "^12.23.24",
     "next": "16.1.1",
-    "rcon-client": "^4.2.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/howler": "^2.2.12",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "concurrently": "^9.2.1",
-    "electron": "^34.5.0",
-    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.0.5",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "wait-on": "^8.0.4"
-  },
-  "main": "electron/main.cjs",
-  "build": {
-    "icon": "public/appimage.png",
-    "appId": "com.mineui.desktop",
-    "productName": "MineUI",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "electron/**/*",
-      ".next/**/*",
-      "public/**/*",
-      "package.json",
-      "node_modules/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "electron/loading.html",
-        "to": "electron/loading.html"
-      }
-    ],
-    "asar": true,
-    "asarUnpack": [
-      "node_modules/next/**/*"
-    ],
-    "linux": {
-      "category": "Utility",
-      "target": [
-        "AppImage",
-        "deb"
-      ]
-    },
-    "mac": {
-      "target": [
-        "dmg"
-      ]
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ]
-    }
+    "typescript": "^5"
   }
 }

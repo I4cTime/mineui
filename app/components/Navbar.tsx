@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
+  Archive,
   Boxes,
   Gauge,
   Menu,
@@ -44,6 +45,7 @@ const navItems = [
   { href: "/players", label: "Players", icon: Users },
   { href: "/rcon", label: "RCON", icon: Shield },
   { href: "/config", label: "Config", icon: ScrollText },
+  { href: "/backups", label: "Backups", icon: Archive },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -63,6 +65,9 @@ export default function Navbar() {
     const initial = themes.find((item) => item.id === stored)
       ? stored!
       : "emerald";
+    // Theme must be read from localStorage after hydration; the initial
+    // server-rendered value stays "emerald" to avoid a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(initial);
     document.documentElement.dataset.theme = initial;
   }, []);

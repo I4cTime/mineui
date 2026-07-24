@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -8,6 +8,7 @@ import {
   Copy,
   Download,
   Filter,
+  Info,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -30,25 +31,20 @@ import {
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
-
-type ModEntry = {
-  name: string;
-  filename: string;
-  sizeBytes: number;
-  updatedAt: number;
-  loader: "forge" | "neoforge" | "fabric" | "unknown";
-};
-
-type ModsResponse = {
-  mods: ModEntry[];
-  plugins: ModEntry[];
-};
-
-const fetchJson = async <T,>(path: string): Promise<T> => {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json() as Promise<T>;
-};
+import { pickModFile } from "@/app/lib/dialog";
+import {
+  deleteMod,
+  downloadMod,
+  getServerState,
+  listMods,
+  onDownloadProgress,
+  uploadMod,
+  IpcError,
+  type DownloadProgressEvent,
+  type ModEntry,
+  type ModTarget,
+  type ModsList,
+} from "@/app/lib/ipc";
 
 const containerMotion = {
   hidden: { opacity: 0 },
@@ -61,8 +57,9 @@ const cardMotion = {
 };
 
 export default function ModsPage() {
-  const [mods, setMods] = useState<ModsResponse | null>(null);
+  const [mods, setMods] = useState<ModsList | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSimpleMode, setIsSimpleMode] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "mods" | "plugins">("all");
   const [sort, setSort] = useState<"name-asc" | "name-desc" | "size-desc" | "updated-desc">("name-asc");
@@ -70,46 +67,66 @@ export default function ModsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(24);
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [downloadUrl, setDownloadUrl] = useState("");
   const [downloadName, setDownloadName] = useState("");
-  const [target, setTarget] = useState<"mods" | "plugins">("mods");
+  const [target, setTarget] = useState<ModTarget>("mods");
   const [busy, setBusy] = useState(false);
+  const [downloadProgress, setDownloadProgress] =
+    useState<DownloadProgressEvent | null>(null);
+  const activeDownloadId = useRef<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(["mods", "plugins"]));
   const { play } = useUISound();
 
-  const refreshMods = () =>
-    fetchJson<ModsResponse>("/api/mods")
-      .then(setMods)
-      .catch(() => setMods({ mods: [], plugins: [] }));
+  const refreshMods = useCallback(
+    () =>
+      listMods()
+        .then(setMods)
+        .catch(() => setMods({ mods: [], plugins: [] })),
+    [],
+  );
 
   useEffect(() => {
     refreshMods().finally(() => setLoading(false));
-  }, []);
+    getServerState()
+      .then((state) => setIsSimpleMode(state.mode === "simple"))
+      .catch(() => {});
+  }, [refreshMods]);
 
   const normalize = (value: string) => value.toLowerCase().trim();
-  const matchesQuery = (entry: ModEntry) => {
-    const needle = normalize(query);
-    if (!needle) return true;
-    return normalize(entry.name).includes(needle) || normalize(entry.filename).includes(needle);
-  };
+  const matchesQuery = useCallback(
+    (entry: ModEntry) => {
+      const needle = normalize(query);
+      if (!needle) return true;
+      return normalize(entry.name).includes(needle) || normalize(entry.filename).includes(needle);
+    },
+    [query],
+  );
 
-  const sortEntries = (items: ModEntry[]) => {
-    const next = [...items];
-    switch (sort) {
-      case "name-desc":
-        return next.sort((a, b) => b.name.localeCompare(a.name));
-      case "size-desc":
-        return next.sort((a, b) => b.sizeBytes - a.sizeBytes);
-      case "updated-desc":
-        return next.sort((a, b) => b.updatedAt - a.updatedAt);
-      default:
-        return next.sort((a, b) => a.name.localeCompare(b.name));
-    }
-  };
+  const sortEntries = useCallback(
+    (items: ModEntry[]) => {
+      const next = [...items];
+      switch (sort) {
+        case "name-desc":
+          return next.sort((a, b) => b.name.localeCompare(a.name));
+        case "size-desc":
+          return next.sort((a, b) => b.sizeBytes - a.sizeBytes);
+        case "updated-desc":
+          return next.sort((a, b) => b.updatedAtEpochMs - a.updatedAtEpochMs);
+        default:
+          return next.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    },
+    [sort],
+  );
 
-  const filteredMods = useMemo(() => sortEntries((mods?.mods ?? []).filter(matchesQuery)), [mods, query, sort]);
-  const filteredPlugins = useMemo(() => sortEntries((mods?.plugins ?? []).filter(matchesQuery)), [mods, query, sort]);
+  const filteredMods = useMemo(
+    () => sortEntries((mods?.mods ?? []).filter(matchesQuery)),
+    [mods, matchesQuery, sortEntries],
+  );
+  const filteredPlugins = useMemo(
+    () => sortEntries((mods?.plugins ?? []).filter(matchesQuery)),
+    [mods, matchesQuery, sortEntries],
+  );
   const allEntries = useMemo(() => [...filteredMods, ...filteredPlugins], [filteredMods, filteredPlugins]);
   const pagedMods = useMemo(() => filteredMods.slice(0, pageSize), [filteredMods, pageSize]);
   const pagedPlugins = useMemo(() => filteredPlugins.slice(0, pageSize), [filteredPlugins, pageSize]);
@@ -117,7 +134,9 @@ export default function ModsPage() {
   const lastUpdated = useMemo(() => {
     const all = [...(mods?.mods ?? []), ...(mods?.plugins ?? [])];
     if (!all.length) return null;
-    return all.reduce((acc, entry) => (entry.updatedAt > acc.updatedAt ? entry : acc)).updatedAt;
+    return all.reduce((acc, entry) =>
+      entry.updatedAtEpochMs > acc.updatedAtEpochMs ? entry : acc,
+    ).updatedAtEpochMs;
   }, [mods]);
 
   const formatBytes = (value: number) => {
@@ -132,9 +151,10 @@ export default function ModsPage() {
     return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
   };
 
-  const formatDate = (value: number) => {
-    if (!value) return "—";
-    return new Date(value * 1000).toLocaleString();
+  // Contract §7: updatedAtEpochMs is epoch milliseconds (v1 sent unix seconds).
+  const formatDate = (epochMs: number) => {
+    if (!epochMs) return "—";
+    return new Date(epochMs).toLocaleString();
   };
 
   const loaderBadge = (loader: ModEntry["loader"]) => {
@@ -171,7 +191,7 @@ export default function ModsPage() {
     }
   };
 
-  const handleDelete = async (item: ModEntry, kind: "mods" | "plugins") => {
+  const handleDelete = async (item: ModEntry, kind: ModTarget) => {
     const label = item.name || item.filename;
     const confirmDelete = window.confirm(`Delete ${label}? This cannot be undone.`);
     if (!confirmDelete) return;
@@ -179,46 +199,33 @@ export default function ModsPage() {
     setDeleting(`${kind}:${item.filename}`);
     play("click_confirm");
     try {
-      const res = await fetch("/api/mods/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: item.filename, target: kind }),
-      });
-      if (!res.ok) throw new Error("Delete failed");
+      await deleteMod(item.filename, kind);
       play("success");
       toast.success("Deleted");
       await refreshMods();
-    } catch {
+    } catch (error) {
       play("error");
-      toast.error("Delete failed");
+      toast.error(error instanceof IpcError ? error.message : "Delete failed");
     } finally {
       setDeleting(null);
     }
   };
 
+  // v2 has no multipart upload: pick a host path via the Tauri dialog plugin,
+  // then hand the path to the backend (upload_mod).
   const handleUpload = async () => {
-    if (!uploadFile) {
-      toast.error("Choose a mod file first");
-      return;
-    }
     setBusy(true);
     play("click_confirm");
     try {
-      const form = new FormData();
-      form.append("file", uploadFile);
-      form.append("target", target);
-      const res = await fetch("/api/mods/upload", {
-        method: "POST",
-        body: form,
-      });
-      if (!res.ok) throw new Error("Upload failed");
+      const sourcePath = await pickModFile();
+      if (sourcePath === null) return; // user cancelled
+      const { filename } = await uploadMod(sourcePath, target);
       play("success");
-      toast.success("Mod uploaded");
-      setUploadFile(null);
+      toast.success(`Uploaded ${filename}`);
       await refreshMods();
-    } catch {
+    } catch (error) {
       play("error");
-      toast.error("Upload failed");
+      toast.error(error instanceof IpcError ? error.message : "Upload failed");
     } finally {
       setBusy(false);
     }
@@ -230,33 +237,51 @@ export default function ModsPage() {
       return;
     }
     setBusy(true);
+    setDownloadProgress(null);
     play("click_confirm");
+    const unlisten = await onDownloadProgress((event) => {
+      if (event.kind !== "mod") return;
+      if (
+        activeDownloadId.current !== null &&
+        event.downloadId !== activeDownloadId.current
+      ) {
+        return;
+      }
+      setDownloadProgress(event);
+    });
     try {
-      const res = await fetch("/api/mods/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: downloadUrl.trim(),
-          filename: downloadName.trim() || undefined,
-          target,
-        }),
-      });
-      if (!res.ok) throw new Error("Download failed");
+      const { filename, downloadId } = await downloadMod(
+        downloadUrl.trim(),
+        target,
+        downloadName.trim() || undefined,
+      );
+      activeDownloadId.current = downloadId;
       play("success");
-      toast.success("Mod downloaded");
+      toast.success(`Downloaded ${filename}`);
       setDownloadUrl("");
       setDownloadName("");
       await refreshMods();
-    } catch {
+    } catch (error) {
       play("error");
-      toast.error("Download failed");
+      toast.error(error instanceof IpcError ? error.message : "Download failed");
     } finally {
+      unlisten();
+      activeDownloadId.current = null;
       setBusy(false);
+      setDownloadProgress(null);
     }
   };
 
   const showMods = filter === "all" || filter === "mods";
   const showPlugins = filter === "all" || filter === "plugins";
+
+  const downloadPercent =
+    downloadProgress && downloadProgress.totalBytes
+      ? Math.min(
+          100,
+          (downloadProgress.receivedBytes / downloadProgress.totalBytes) * 100,
+        )
+      : null;
 
   if (loading) {
     return (
@@ -286,6 +311,21 @@ export default function ModsPage() {
       >
         <PageHeader title="Mods & Plugins" icon={Boxes} />
 
+        {isSimpleMode && (
+          <motion.section variants={cardMotion}>
+            <Card className="p-4">
+              <Card.Content className="flex items-start gap-3 text-sm text-[var(--muted)]">
+                <Info size={16} className="mt-0.5 shrink-0 text-[var(--accent)]" />
+                <span>
+                  Simple mode runs a vanilla server, which does not load mods or
+                  plugins. Files you manage here are kept in the instance folder
+                  and picked up if you switch to a modded setup later.
+                </span>
+              </Card.Content>
+            </Card>
+          </motion.section>
+        )}
+
         <motion.section variants={cardMotion}>
           <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
             <Card.Content className="flex sm:flex-col md:flex-row justify-center gap-3 text-sm">
@@ -293,8 +333,8 @@ export default function ModsPage() {
                 <Sparkles size={14} />
                 Curated view
               </Chip>
-              <Chip variant="soft">Mods: {mods?.mods?.length ?? 0}</Chip>
-              <Chip variant="soft">Plugins: {mods?.plugins?.length ?? 0}</Chip>
+              <Chip variant="soft">Mods: {mods?.mods.length ?? 0}</Chip>
+              <Chip variant="soft">Plugins: {mods?.plugins.length ?? 0}</Chip>
               <Chip variant="soft">Total: {allEntries.length}</Chip>
               <Chip variant="soft">
                 Last updated: {lastUpdated ? formatDate(lastUpdated) : "—"}
@@ -389,7 +429,7 @@ export default function ModsPage() {
                             <Card.Header className="gap-1">
                               <Card.Title className="text-base">{item.name}</Card.Title>
                               <Card.Description className="text-xs text-[var(--muted)]">
-                                Updated {formatDate(item.updatedAt)}
+                                Updated {formatDate(item.updatedAtEpochMs)}
                               </Card.Description>
                             </Card.Header>
                             <Card.Content className="mt-3 flex flex-row flex-wrap gap-2 text-xs">
@@ -450,7 +490,7 @@ export default function ModsPage() {
                             <Card.Header className="gap-1">
                               <Card.Title className="text-base">{item.name}</Card.Title>
                               <Card.Description className="text-xs text-[var(--muted)]">
-                                Updated {formatDate(item.updatedAt)}
+                                Updated {formatDate(item.updatedAtEpochMs)}
                               </Card.Description>
                             </Card.Header>
                             <Card.Content className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -555,7 +595,7 @@ export default function ModsPage() {
                       className="w-40 text-xs"
                       placeholder="Target"
                       value={target}
-                      onChange={(value) => setTarget(value as "mods" | "plugins")}
+                      onChange={(value) => setTarget(value as ModTarget)}
                     >
                       <Label className="sr-only">Target</Label>
                       <Select.Trigger>
@@ -570,24 +610,15 @@ export default function ModsPage() {
                       </Select.Popover>
                     </Select>
                     <div className="flex flex-wrap items-center gap-3">
-                      <input
-                        type="file"
-                        accept=".jar,.zip"
-                        onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-                      />
                       <Button
                         onPress={handleUpload}
                         isDisabled={busy}
                         onMouseEnter={() => play("hover")}
                       >
-                        Upload
+                        <Upload size={14} />
+                        Choose file & upload
                       </Button>
                     </div>
-                    {uploadFile && (
-                      <div className="text-xs text-[var(--muted)]">
-                        Selected: {uploadFile.name}
-                      </div>
-                    )}
                   </Card.Content>
                 </Card>
 
@@ -601,7 +632,7 @@ export default function ModsPage() {
                       className="w-40 text-xs"
                       placeholder="Target"
                       value={target}
-                      onChange={(value) => setTarget(value as "mods" | "plugins")}
+                      onChange={(value) => setTarget(value as ModTarget)}
                     >
                       <Label className="sr-only">Target</Label>
                       <Select.Trigger>
@@ -626,7 +657,7 @@ export default function ModsPage() {
                     <TextField>
                       <Label className="sr-only">Filename</Label>
                       <Input
-                        placeholder="Optional filename (mod.jar)"
+                        placeholder="Filename (required if the URL has no filename)"
                         value={downloadName}
                         onChange={(event) => setDownloadName(event.target.value)}
                       />
@@ -634,10 +665,42 @@ export default function ModsPage() {
                     <Button
                       onPress={handleDownload}
                       isDisabled={busy}
+                      isPending={busy && downloadProgress !== null}
                       onMouseEnter={() => play("hover")}
                     >
                       Download
                     </Button>
+                    {busy && downloadProgress && (
+                      <div className="grid gap-1">
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full"
+                          style={{ background: "var(--border)" }}
+                          role="progressbar"
+                          aria-valuenow={downloadPercent ?? undefined}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              background: "var(--accent)",
+                              width:
+                                downloadPercent !== null
+                                  ? `${downloadPercent}%`
+                                  : "100%",
+                              opacity: downloadPercent !== null ? 1 : 0.4,
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs text-[var(--muted)]">
+                          {formatBytes(downloadProgress.receivedBytes)}
+                          {downloadProgress.totalBytes
+                            ? ` / ${formatBytes(downloadProgress.totalBytes)}`
+                            : ""}{" "}
+                          — {downloadProgress.filename}
+                        </span>
+                      </div>
+                    )}
                   </Card.Content>
                 </Card>
               </Modal.Body>

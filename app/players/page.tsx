@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { toast } from "sonner";
-import { Filter, Search, Shield, Users } from "lucide-react";
+import { Filter, Search, Users } from "lucide-react";
 import {
   Button,
   Card,
@@ -19,42 +18,14 @@ import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonTable } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
-
-type StatusResponse = {
-  online: boolean;
-  version?: string | null;
-  motd?: string | null;
-  players?: { online: number; max: number; sample: Array<{ name: string }> };
-  ping?: number | null;
-  error?: string;
-};
-
-type UserRow = {
-  username: string;
-  lastSeen: string | null;
-  lastSeenEpoch: number | null;
-  ipAddress: string | null;
-  isOnline: boolean;
-};
-
-type UsersResponse = {
-  ok: boolean;
-  users: UserRow[];
-  online: string[];
-  raw: { list: string } | null;
-  error?: string;
-};
-
-const fetchJson = async <T,>(path: string): Promise<T> => {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return res.json() as Promise<T>;
-};
-
-type PlayerSample = { name?: string; id?: string } | string;
-
-const toPlayerName = (player: PlayerSample) =>
-  typeof player === "string" ? player : player.name ?? player.id ?? "Unknown";
+import {
+  getPlayerHistory,
+  getServerStatus,
+  runRconCommand,
+  IpcError,
+  type PlayerHistoryRow,
+  type ServerStatus,
+} from "@/app/lib/ipc";
 
 const containerMotion = {
   hidden: { opacity: 0 },
@@ -66,10 +37,13 @@ const cardMotion = {
   show: { opacity: 1, y: 0 },
 };
 
+// Timestamps arrive as epoch ms (contract §7) — format client-side.
+const formatLastSeen = (epochMs: number | null) =>
+  epochMs === null ? "—" : new Date(epochMs).toLocaleString();
+
 export default function PlayersPage() {
-  const router = useRouter();
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [users, setUsers] = useState<UsersResponse | null>(null);
+  const [status, setStatus] = useState<ServerStatus | null>(null);
+  const [users, setUsers] = useState<PlayerHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -83,32 +57,25 @@ export default function PlayersPage() {
   const { play } = useUISound();
 
   useEffect(() => {
-    Promise.allSettled([
-      fetchJson<StatusResponse>("/api/status"),
-      fetchJson<UsersResponse>("/api/rcon/users"),
-    ]).then(([statusRes, usersRes]) => {
-      if (statusRes.status === "fulfilled") setStatus(statusRes.value);
-      else setStatus({ online: false });
-      if (usersRes.status === "fulfilled") setUsers(usersRes.value);
-      else setUsers({ ok: false, users: [], online: [], raw: null });
-      setLoading(false);
-    });
+    Promise.allSettled([getServerStatus(), getPlayerHistory()]).then(
+      ([statusRes, usersRes]) => {
+        if (statusRes.status === "fulfilled") setStatus(statusRes.value);
+        if (usersRes.status === "fulfilled") setUsers(usersRes.value.users);
+        setLoading(false);
+      },
+    );
   }, []);
 
   const playerList = useMemo(() => {
-    const sample = status?.players?.sample ?? [];
-    return sample.map(toPlayerName);
+    const sample = status?.players.sample ?? [];
+    return sample.map((player) => player.name);
   }, [status]);
-
-  const userRows = useMemo(() => {
-    return users?.users ?? [];
-  }, [users]);
 
   const normalize = (value: string) => value.toLowerCase().trim();
 
   const filteredUsers = useMemo(() => {
     const needle = normalize(query);
-    return userRows
+    return users
       .filter((row) => {
         if (presence === "online") return row.isOnline;
         if (presence === "offline") return !row.isOnline;
@@ -123,33 +90,25 @@ export default function PlayersPage() {
       })
       .sort((a, b) => {
         if (sort === "last-seen-desc") {
-          return (b.lastSeenEpoch ?? 0) - (a.lastSeenEpoch ?? 0);
+          return (b.lastSeenEpochMs ?? 0) - (a.lastSeenEpochMs ?? 0);
         }
         return a.username.localeCompare(b.username);
       });
-  }, [userRows, query, presence, sort]);
+  }, [users, query, presence, sort]);
 
   const runUserCommand = async (command: string, username: string) => {
     setActionBusy(`${command}:${username}`);
     try {
-      const res = await fetch("/api/rcon/command", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: `${command} ${username}` }),
-      });
-      const payload = await res.json();
-      if (!res.ok || !payload.ok) {
-        play("error");
-        toast.error(payload.error ?? "Command failed.");
-      } else {
-        play("success");
-        toast.success(`${command} ${username} completed`);
-        const updated = await fetchJson<UsersResponse>("/api/rcon/users");
-        setUsers(updated);
-      }
+      await runRconCommand(`${command} ${username}`);
+      play("success");
+      toast.success(`${command} ${username} completed`);
+      const updated = await getPlayerHistory();
+      setUsers(updated.users);
     } catch (error) {
       play("error");
-      toast.error(error instanceof Error ? error.message : "Command failed.");
+      toast.error(
+        error instanceof IpcError ? error.message : "Command failed.",
+      );
     } finally {
       setActionBusy(null);
     }
@@ -200,7 +159,7 @@ export default function PlayersPage() {
                 {status?.online ? "Online" : "Offline"}
               </Chip>
               <Chip variant="soft">
-                Players: {status?.players?.online ?? playerList.length}
+                Players: {status?.players.online ?? playerList.length}
               </Chip>
               <Chip variant="soft">Version: {status?.version ?? "unknown"}</Chip>
             </Card.Content>
@@ -235,9 +194,9 @@ export default function PlayersPage() {
               <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
                 <span>MOTD: {status?.motd ?? "—"}</span>
                 <span>
-                  Players: {status?.players?.online ?? 0}/{status?.players?.max ?? "?"}
+                  Players: {status?.players.online ?? 0}/{status?.players.max ?? "?"}
                 </span>
-                <span>Ping: {status?.ping ? `${status.ping}ms` : "—"}</span>
+                <span>Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}</span>
               </Card.Content>
             </Card>
           </motion.div>
@@ -328,7 +287,9 @@ export default function PlayersPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-[var(--muted)]">{row.lastSeen ?? "—"}</td>
+                        <td className="px-4 py-3 text-[var(--muted)]">
+                          {formatLastSeen(row.lastSeenEpochMs)}
+                        </td>
                         <td className="px-4 py-3 text-[var(--muted)]">{row.ipAddress ?? "—"}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
