@@ -11,10 +11,10 @@ import {
   Network,
   Timer,
 } from "lucide-react";
-import { Card, Chip } from "@heroui/react";
+import { Card, Chip, ProgressCircle } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
-import ProgressRing from "@/app/components/ProgressRing";
 import { SkeletonCard } from "@/app/components/Skeleton";
+import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   getMetrics,
   getServerState,
@@ -58,20 +58,37 @@ const formatUptime = (metrics: Metrics | null) => {
   return `${hours}h ${minutes}m`;
 };
 
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
+// Composes core ProgressCircle at a fixed 110px/8px-stroke size (matches the
+// previous hand-rolled SVG ring) with a centered value/sublabel overlay.
+function MetricRing({
+  value,
+  label,
+  sublabel,
+}: {
+  value: number;
+  label: string;
+  sublabel: string;
+}) {
+  return (
+    <div className="relative inline-flex size-27.5 items-center justify-center">
+      <ProgressCircle aria-label={`${sublabel} usage`} className="size-27.5" color="accent" value={value}>
+        <ProgressCircle.Track cx={55} cy={55} r={51} strokeWidth={8} viewBox="0 0 110 110">
+          <ProgressCircle.TrackCircle cx={55} cy={55} r={51} strokeWidth={8} />
+          <ProgressCircle.FillCircle cx={55} cy={55} r={51} strokeWidth={8} />
+        </ProgressCircle.Track>
+      </ProgressCircle>
+      <div className="absolute flex flex-col items-center justify-center text-center">
+        <span className="font-pixel-num text-lg text-accent">{label}</span>
+        <span className="text-xs text-muted">{sublabel}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function StatusPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [serverState, setServerState] = useState<ServerState | null>(null);
@@ -133,7 +150,7 @@ export default function StatusPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-6 md:grid-cols-3">
@@ -164,29 +181,25 @@ export default function StatusPage() {
         {/* Performance Rings */}
         <motion.section variants={cardMotion}>
           <Card className="flex sm:flex-col md:flex-row justify-center gap-8 p-6">
-            <ProgressRing
+            <MetricRing
               value={metrics?.cpuPercent ?? 0}
               label={formatPercent(metrics?.cpuPercent ?? null)}
               sublabel="CPU"
-              size={110}
             />
-            <ProgressRing
+            <MetricRing
               value={metrics?.mem.percent ?? 0}
               label={formatPercent(metrics?.mem.percent ?? null)}
               sublabel="Memory"
-              size={110}
             />
-            <ProgressRing
+            <MetricRing
               value={metrics?.disk?.percent ?? 0}
               label={formatPercent(metrics?.disk?.percent ?? null)}
               sublabel="Disk"
-              size={110}
             />
-            <ProgressRing
+            <MetricRing
               value={Math.min((metrics?.tps?.one ?? 0) * 5, 100)}
               label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "—"}
               sublabel="TPS"
-              size={110}
             />
           </Card>
         </motion.section>
@@ -194,11 +207,11 @@ export default function StatusPage() {
         <motion.section className="grid gap-6 md:grid-cols-3" variants={containerMotion}>
           <motion.div variants={cardMotion}>
             <Card className="p-5 h-full">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <Activity size={18} />
                 <span className="font-pixel text-xs tracking-wide">Game Status</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 <div className="flex justify-between items-center">
                   <span>Online:</span>
                   <Chip
@@ -215,17 +228,17 @@ export default function StatusPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Players:</span>
-                  <span>
+                  <span className="font-pixel-num">
                     {status?.players.online ?? 0}/{status?.players.max ?? "?"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Ping:</span>
-                  <span>{status?.pingMs != null ? `${status.pingMs}ms` : "—"}</span>
+                  <span className="font-pixel-num">{status?.pingMs != null ? `${status.pingMs}ms` : "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>MOTD:</span>
-                  <span className="truncate max-w-[150px]">{status?.motd ?? "—"}</span>
+                  <span className="truncate max-w-37.5">{status?.motd ?? "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Source:</span>
@@ -237,14 +250,14 @@ export default function StatusPage() {
 
           <motion.div variants={cardMotion}>
             <Card className="p-5 h-full">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <Timer size={18} />
                 <span className="font-pixel text-xs tracking-wide">Uptime & TPS</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 <div className="flex justify-between">
                   <span>{isSimple ? "Process:" : "Container:"}</span>
-                  <span className="truncate max-w-[170px]">{stateSummary}</span>
+                  <span className="truncate max-w-42.5">{stateSummary}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Uptime:</span>
@@ -252,7 +265,7 @@ export default function StatusPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>TPS:</span>
-                  <span className="text-xs">{tpsDisplay}</span>
+                  <span className="font-pixel-num text-xs">{tpsDisplay}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>MSPT:</span>
@@ -276,11 +289,11 @@ export default function StatusPage() {
 
           <motion.div variants={cardMotion}>
             <Card className="p-5 h-full">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <Cpu size={18} />
                 <span className="font-pixel text-xs tracking-wide">Compute</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 <div className="flex justify-between">
                   <span>Source:</span>
                   <span>
@@ -312,11 +325,11 @@ export default function StatusPage() {
         <motion.section className="grid gap-6 md:grid-cols-3" variants={containerMotion}>
           <motion.div variants={cardMotion}>
             <Card className="p-5">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <Network size={18} />
                 <span className="font-pixel text-xs tracking-wide">Network</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 {metrics?.net ? (
                   <>
                     <div className="flex justify-between">
@@ -341,11 +354,11 @@ export default function StatusPage() {
 
           <motion.div variants={cardMotion}>
             <Card className="p-5 h-full">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <Database size={18} />
                 <span className="font-pixel text-xs tracking-wide">Disk I/O</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 {metrics?.block ? (
                   <>
                     <div className="flex justify-between">
@@ -370,11 +383,11 @@ export default function StatusPage() {
 
           <motion.div variants={cardMotion}>
             <Card className="p-5">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <HardDrive size={18} />
                 <span className="font-pixel text-xs tracking-wide">Disk Usage</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 <div className="flex justify-between">
                   <span>Used:</span>
                   <span>
@@ -392,17 +405,17 @@ export default function StatusPage() {
 
           <motion.div variants={cardMotion}>
             <Card className="p-5 h-full">
-              <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+              <Card.Header className="flex items-center gap-3 text-sm text-accent">
                 <Database size={18} />
                 <span className="font-pixel text-xs tracking-wide">Dimensions</span>
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 {dimensionsDisplay.length === 0 ? (
                   <div className="text-xs">—</div>
                 ) : (
                   dimensionsDisplay.map(([dimension, values]) => (
                     <div key={dimension} className="flex justify-between gap-3">
-                      <span className="truncate max-w-[140px]">{dimension}</span>
+                      <span className="truncate max-w-35">{dimension}</span>
                       <span className="text-xs">
                         {values.chunks ?? "—"} ch / {values.entities ?? "—"} en
                       </span>

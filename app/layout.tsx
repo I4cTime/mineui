@@ -1,24 +1,32 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Press_Start_2P } from "next/font/google";
-import { Toaster } from "sonner";
+import { MotionConfig } from "motion/react";
+import { Toast } from "@heroui/react";
+
+// Fonts are self-hosted via @fontsource (offline-safe for the Tauri
+// desktop build — zero runtime network fetches). Which family renders
+// is decided per-theme by the CSS vars in app/themes/*.css.
+// Contract: docs/theme-contract.md.
+import "@fontsource-variable/inter"; // deepslate + quantum sans
+import "@fontsource-variable/jetbrains-mono"; // deepslate + quantum mono
+import "@fontsource-variable/space-grotesk"; // quantum display
+import "@fontsource-variable/ibm-plex-sans"; // phosphor sans
+import "@fontsource/ibm-plex-mono/latin-400.css"; // phosphor mono
+import "@fontsource/ibm-plex-mono/latin-500.css";
+import "@fontsource/ibm-plex-mono/latin-600.css";
+import "@fontsource-variable/figtree"; // softglass sans
+import "@fontsource/commit-mono/latin-400.css"; // softglass mono
+import "@fontsource/commit-mono/latin-500.css";
+// Monocraft (deepslate pixel numerals) is vendored: app/fonts/ + @font-face in globals.css
+
 import "./globals.css";
+// HeroUI Pro component styles. Canonical setup imports this from
+// globals.css directly after "@heroui/styles" (order matters: tailwindcss,
+// then @heroui/styles, then this) — done here instead because this wave's
+// file ownership restricts globals.css edits to the .ui-toast removal only.
+// Same cascade position in practice: this import executes immediately
+// after globals.css above.
+import "@heroui-pro/react/css";
 import Navbar from "@/app/components/Navbar";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const pressStart = Press_Start_2P({
-  variable: "--font-pixel",
-  weight: "400",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "MineUI",
@@ -32,19 +40,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${pressStart.variable} antialiased`}
-        suppressHydrationWarning
-      >
-        <Navbar />
-        {children}
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            className: "ui-toast",
-            duration: 4000,
-          }}
-        />
+      <body className="antialiased" suppressHydrationWarning>
+        {/* Global reduced-motion handling (task: "respect prefers-reduced-
+            motion globally"): Motion auto-strips transform/layout animation
+            for users with the OS-level preference set, app-wide, without
+            every component needing its own useReducedMotion() branch. */}
+        <MotionConfig reducedMotion="user">
+          <Navbar />
+          {children}
+          <Toast.Provider placement="bottom end" />
+        </MotionConfig>
       </body>
     </html>
   );

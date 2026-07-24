@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import { transition } from "@/app/lib/motion";
 
 interface LogoProps {
   size?: number;
@@ -37,18 +38,20 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
       <rect x="6" y="18" width="8" height="8" fill="var(--accent)" opacity="0.6" />
       <rect x="18" y="18" width="8" height="8" fill="var(--accent)" opacity="0.8" />
 
-      {/* Center accent */}
+      {/* Center accent — was an infinite 2s pulse loop (renders in Navbar on
+          every page); now a single-shot bloom-in on mount only. */}
       <motion.rect
         x="12"
         y="12"
         width="8"
         height="8"
         fill="color-mix(in oklab, var(--accent) 80%, white)"
-        animate={{ opacity: [0.7, 1, 0.7] }}
-        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        initial={{ opacity: 0.5 }}
+        animate={{ opacity: 1 }}
+        transition={transition("slow")}
       />
 
-      {/* Glow effect */}
+      {/* Glow effect — was an infinite 3s pulse loop; same fix. */}
       <motion.rect
         x="2"
         y="2"
@@ -58,9 +61,9 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
         fill="none"
         stroke="var(--accent)"
         strokeWidth="1"
-        opacity="0.3"
-        animate={{ opacity: [0.2, 0.5, 0.2] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.3 }}
+        transition={transition("slow")}
       />
     </motion.svg>
   );

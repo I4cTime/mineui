@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import { Archive, ArchiveRestore, Loader2, Plus, Trash2 } from "lucide-react";
-import { Button, Card, Chip } from "@heroui/react";
+import { Button, Card, Chip, Table, toast } from "@heroui/react";
+import { EmptyState } from "@heroui-pro/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonTable } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
+import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   createBackup,
   deleteBackup,
@@ -17,16 +18,6 @@ import {
   IpcError,
   type BackupEntry,
 } from "@/app/lib/ipc";
-
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
 
 const formatBytes = (value: number) => {
   if (!value) return "0 B";
@@ -45,6 +36,9 @@ type PendingAction =
   | { kind: "delete"; filename: string };
 
 export default function BackupsPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -77,7 +71,7 @@ export default function BackupsPage() {
       await refresh();
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Backup failed");
+      toast.danger(error instanceof IpcError ? error.message : "Backup failed");
     } finally {
       setBusy(false);
     }
@@ -99,7 +93,7 @@ export default function BackupsPage() {
       await refresh();
     } catch (error) {
       play("error");
-      toast.error(
+      toast.danger(
         error instanceof IpcError
           ? error.message
           : `${pending.kind === "restore" ? "Restore" : "Delete"} failed`,
@@ -112,7 +106,7 @@ export default function BackupsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <SkeletonTable rows={4} cols={4} />
@@ -159,87 +153,86 @@ export default function BackupsPage() {
               <Chip variant="soft" color="accent">
                 {backups.length} backup{backups.length === 1 ? "" : "s"}
               </Chip>
-              <span className="text-xs text-[var(--muted)]">
+              <span className="text-xs text-muted">
                 Backups can be created while the server runs; run{" "}
                 <code className="font-mono">save-all</code> first for a clean
                 snapshot. Restoring requires the server to be stopped.
               </span>
             </Card.Header>
-            <Card.Content className="mt-4 overflow-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-[var(--surface)] text-[var(--muted)]">
-                  <tr>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Filename</th>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Created</th>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Size</th>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {backups.length ? (
-                    backups.map((entry) => (
-                      <tr
-                        key={entry.filename}
-                        className="border-t"
-                        style={{ borderColor: "var(--border)" }}
-                      >
-                        <td className="px-4 py-3 font-mono text-xs">
-                          {entry.filename}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--muted)]">
-                          {new Date(entry.createdAtEpochMs).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--muted)]">
-                          {formatBytes(entry.sizeBytes)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              isDisabled={busy}
-                              onPress={() => {
-                                play("click_confirm");
-                                setPending({
-                                  kind: "restore",
-                                  filename: entry.filename,
-                                });
-                              }}
-                              onMouseEnter={() => play("hover")}
-                            >
-                              <ArchiveRestore size={12} />
-                              Restore
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-400 hover:text-red-300"
-                              isDisabled={busy}
-                              onPress={() => {
-                                play("click_confirm");
-                                setPending({
-                                  kind: "delete",
-                                  filename: entry.filename,
-                                });
-                              }}
-                              onMouseEnter={() => play("hover")}
-                            >
-                              <Trash2 size={12} />
-                              Delete
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-6 text-[var(--muted)]">
-                        No backups yet. Create one to protect your world.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <Card.Content className="mt-4 p-0">
+              <Table>
+                <Table.ScrollContainer>
+                  <Table.Content aria-label="World backups" className="min-w-180">
+                    <Table.Header>
+                      <Table.Column isRowHeader>Filename</Table.Column>
+                      <Table.Column>Created</Table.Column>
+                      <Table.Column>Size</Table.Column>
+                      <Table.Column>Actions</Table.Column>
+                    </Table.Header>
+                    <Table.Body
+                      items={backups}
+                      renderEmptyState={() => (
+                        <EmptyState size="sm">
+                          <EmptyState.Description>
+                            No backups yet. Create one to protect your world.
+                          </EmptyState.Description>
+                        </EmptyState>
+                      )}
+                    >
+                      {(entry) => (
+                        <Table.Row id={entry.filename}>
+                          <Table.Cell className="font-mono text-xs">
+                            {entry.filename}
+                          </Table.Cell>
+                          <Table.Cell className="text-muted">
+                            {new Date(entry.createdAtEpochMs).toLocaleString()}
+                          </Table.Cell>
+                          <Table.Cell className="text-muted">
+                            {formatBytes(entry.sizeBytes)}
+                          </Table.Cell>
+                          <Table.Cell>
+                            <div className="flex flex-wrap gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                isDisabled={busy}
+                                onPress={() => {
+                                  play("click_confirm");
+                                  setPending({
+                                    kind: "restore",
+                                    filename: entry.filename,
+                                  });
+                                }}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                <ArchiveRestore size={12} />
+                                Restore
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-danger hover:text-danger-soft-foreground"
+                                isDisabled={busy}
+                                onPress={() => {
+                                  play("click_confirm");
+                                  setPending({
+                                    kind: "delete",
+                                    filename: entry.filename,
+                                  });
+                                }}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                <Trash2 size={12} />
+                                Delete
+                              </Button>
+                            </div>
+                          </Table.Cell>
+                        </Table.Row>
+                      )}
+                    </Table.Body>
+                  </Table.Content>
+                </Table.ScrollContainer>
+              </Table>
             </Card.Content>
           </Card>
         </motion.section>

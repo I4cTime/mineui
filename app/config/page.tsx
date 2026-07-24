@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import { FileCode2, Loader2, RefreshCcw, Save, Search } from "lucide-react";
 import {
   Button,
@@ -11,11 +10,13 @@ import {
   ListBox,
   TextField,
   Input,
+  toast,
 } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { Skeleton } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
+import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   listConfigFiles,
   readConfigFile,
@@ -27,17 +28,10 @@ import {
 // Contract §3.7: config paths are now relative, forward-slash
 // ("server.properties", "config/foo.toml") — display them as-is.
 
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
-
 export default function ConfigPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -57,7 +51,7 @@ export default function ConfigPage() {
         }
       })
       .catch((error: unknown) => {
-        toast.error(
+        toast.danger(
           error instanceof IpcError ? error.message : "Failed to load.",
         );
       })
@@ -69,7 +63,7 @@ export default function ConfigPage() {
     readConfigFile(selected)
       .then((data) => setContent(data.content))
       .catch((error: unknown) =>
-        toast.error(error instanceof IpcError ? error.message : "Read failed."),
+        toast.danger(error instanceof IpcError ? error.message : "Read failed."),
       );
   }, [selected]);
 
@@ -89,7 +83,7 @@ export default function ConfigPage() {
       toast.success("Saved successfully");
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Save failed.");
+      toast.danger(error instanceof IpcError ? error.message : "Save failed.");
     } finally {
       setSaving(false);
     }
@@ -103,7 +97,7 @@ export default function ConfigPage() {
       toast.success("Server restart triggered");
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Restart failed.");
+      toast.danger(error instanceof IpcError ? error.message : "Restart failed.");
     } finally {
       setRestarting(false);
     }
@@ -111,7 +105,7 @@ export default function ConfigPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -142,7 +136,7 @@ export default function ConfigPage() {
           <motion.div variants={cardMotion}>
             <Card className="flex flex-col gap-4 p-5 h-full">
               <div className="flex items-center gap-2">
-                <Search size={16} className="text-[var(--muted)]" />
+                <Search size={16} className="text-muted" />
                 <TextField className="w-full">
                   <Label className="sr-only">Search files</Label>
                   <Input
@@ -173,7 +167,7 @@ export default function ConfigPage() {
                     ))}
                   </ListBox>
                 ) : (
-                  <span className="text-[var(--muted)]">No files found.</span>
+                  <span className="text-muted">No files found.</span>
                 )}
               </div>
             </Card>
@@ -182,7 +176,7 @@ export default function ConfigPage() {
           <motion.div variants={cardMotion}>
             <Card className="flex flex-col gap-4 p-5">
               <Card.Header className="flex flex-wrap items-center justify-between gap-3">
-                <div className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+                <div className="font-pixel text-xs tracking-wide text-accent">
                   {selected ?? "Select a file"}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -210,8 +204,7 @@ export default function ConfigPage() {
               </Card.Header>
               <Card.Content>
                 <textarea
-                  className="min-h-[520px] w-full resize-y rounded-lg border bg-[var(--field-background)] p-3 font-mono text-xs text-[var(--foreground)]"
-                  style={{ borderColor: "var(--field-border)" }}
+                  className="min-h-[520px] w-full resize-y rounded-lg border border-field-border bg-field p-3 font-mono text-xs text-foreground"
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
                   placeholder="Select a file to load its contents."

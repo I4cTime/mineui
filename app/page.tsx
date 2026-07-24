@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { toast } from "sonner";
+import { listStagger, scaleIn, transition } from "@/app/lib/motion";
 import {
   Activity,
   Archive,
@@ -16,7 +16,8 @@ import {
   Square,
   Users,
 } from "lucide-react";
-import { Button, Card, Chip, Separator } from "@heroui/react";
+import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/react";
+import { EmptyState, KPI, NumberValue } from "@heroui-pro/react";
 import { useUISound } from "@/app/hooks/useUISound";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
@@ -148,7 +149,7 @@ export default function Home() {
       // Event is a change notification; refetch the full state for detail.
       getServerState().then(setServerState).catch(() => {});
       if (event.phase === "crashed") {
-        toast.error(
+        toast.danger(
           `Server crashed${event.exitCode !== null ? ` (exit code ${event.exitCode})` : ""}`,
         );
       }
@@ -207,7 +208,7 @@ export default function Home() {
       await refreshPolled();
     } catch (error) {
       play("error");
-      toast.error(
+      toast.danger(
         error instanceof IpcError ? error.message : `${label} failed`,
       );
     } finally {
@@ -221,23 +222,15 @@ export default function Home() {
     refreshPolled();
   };
 
-  const containerMotion = {
-    hidden: { opacity: 0, y: 12 },
-    show: {
-      opacity: 1,
-      y: 0,
-      transition: { staggerChildren: 0.08, duration: 0.4 },
-    },
-  };
-
-  const cardMotion = {
-    hidden: { opacity: 0, y: 14, scale: 0.98 },
-    show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.35 } },
-  };
+  // Read fresh on every render so a theme switch (data-theme changes at
+  // runtime, see Navbar.tsx) is picked up on next navigation/mount —
+  // presets must never be frozen module-level constants (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <SkeletonCard />
@@ -253,16 +246,16 @@ export default function Home() {
 
   if (backendError !== null) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-6 px-4 py-10 md:px-6">
           <Card className="p-6">
-            <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+            <Card.Header className="flex items-center gap-3 text-sm text-accent">
               <Server size={18} />
               <span className="font-pixel text-xs tracking-wide">
                 Backend unavailable
               </span>
             </Card.Header>
-            <Card.Content className="mt-4 grid gap-3 text-sm text-[var(--muted)]">
+            <Card.Content className="mt-4 grid gap-3 text-sm text-muted">
               <p>{backendError}</p>
               <p>
                 Launch MineUI with{" "}
@@ -296,21 +289,22 @@ export default function Home() {
         variants={containerMotion}
       >
         <motion.header className="flex flex-col gap-3" variants={cardMotion}>
-          <span className="text-xs uppercase tracking-[0.3em] text-[var(--muted)]">
+          <span className="text-xs uppercase tracking-[0.3em] text-muted">
             Home Server Control
           </span>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="relative">
-              <motion.div
-                className="absolute -inset-4 rounded-full"
+              {/* Static glow — was an infinite 4s pulse loop; the contract
+                  forbids ambient loops (docs/theme-contract.md §6), and the
+                  dashboard only budgets one (the online-status dot below). */}
+              <div
+                className="absolute -inset-4 rounded-full opacity-40"
                 style={{
                   background:
                     "radial-gradient(circle, color-mix(in oklab, var(--accent) 25%, transparent), transparent 70%)",
                 }}
-                animate={{ opacity: [0.2, 0.6, 0.3] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               />
-              <h1 className="font-pixel text-2xl uppercase tracking-[0.2em] text-[var(--accent)]">
+              <h1 className="font-pixel text-2xl uppercase tracking-[0.2em] text-accent">
                 MineUI
               </h1>
             </div>
@@ -320,21 +314,37 @@ export default function Home() {
               </Chip>
               {!needsOnboarding && (
                 <>
-                  <Chip
-                    variant="soft"
-                    color={phaseChipColor(serverState?.phase)}
+                  {/* Signature moment: brief scale/glow on every stopped→
+                      starting→running (etc.) transition, keyed to
+                      --motion-base. Remounting on phase change is what
+                      drives the "enter" animation below — no loop. */}
+                  <motion.span
+                    key={serverState?.phase ?? "unknown"}
+                    className="inline-flex"
+                    initial={{ opacity: 0, scale: 0.92, filter: "brightness(1.5)" }}
+                    animate={{ opacity: 1, scale: 1, filter: "brightness(1)" }}
+                    transition={transition("base")}
                   >
-                    Server: {phaseLabel(serverState?.phase)}
-                  </Chip>
+                    <Chip
+                      variant="soft"
+                      color={phaseChipColor(serverState?.phase)}
+                    >
+                      Server: {phaseLabel(serverState?.phase)}
+                    </Chip>
+                  </motion.span>
                   <Chip
                     variant="soft"
                     color={serverOnline ? "success" : "warning"}
                   >
                     {serverOnline ? (
                       <span className="flex items-center gap-1.5">
+                        {/* The one sanctioned ambient loop on this screen
+                            (docs/theme-contract.md §6 / audit finding) —
+                            everything else on this page is state-triggered
+                            or static. Reduced-motion guard: globals.css
+                            "motion" section. */}
                         <span
-                          className="inline-block h-2 w-2 rounded-full animate-pulse"
-                          style={{ background: "var(--accent)" }}
+                          className="inline-block h-2 w-2 rounded-full animate-pulse bg-accent"
                         />
                         Online
                       </span>
@@ -378,28 +388,31 @@ export default function Home() {
             <motion.section variants={cardMotion}>
               <Card className="p-5">
                 <Card.Header className="flex flex-row items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 text-sm text-[var(--accent)]">
+                  <div className="flex items-center gap-3 text-sm text-accent">
                     <ScrollText size={18} />
                     <span className="font-pixel text-xs tracking-wide">
                       Server Logs
                     </span>
                   </div>
+                  {/* Was an infinite 2s pulse loop; now a finite flash that
+                      fires only when a new log batch actually arrives
+                      (remounts via `key`), then settles — state-change-
+                      triggered per the audit, not ambient. */}
                   <motion.div
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: "var(--accent)" }}
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 2, repeat: Infinity }}
+                    key={logLines.length}
+                    className="h-2 w-2 rounded-full bg-accent"
+                    initial={{ opacity: 1 }}
+                    animate={{ opacity: 0.4 }}
+                    transition={transition("slow")}
                   />
                 </Card.Header>
                 <Card.Content>
-                  <div
+                  <ScrollShadow
                     ref={logsRef}
-                    className="mt-4 max-h-[420px] overflow-auto rounded-lg border p-4 text-xs leading-5 font-mono"
+                    className="mt-4 max-h-105 rounded-lg border border-border p-4 text-xs leading-5 font-mono text-foreground"
                     style={{
                       background:
                         "color-mix(in oklab, var(--background) 70%, black)",
-                      borderColor: "var(--border)",
-                      color: "var(--foreground)",
                     }}
                   >
                     {logLines.length ? (
@@ -408,14 +421,13 @@ export default function Home() {
                       </pre>
                     ) : (
                       <div
-                        className="flex items-center gap-2"
-                        style={{ color: "var(--muted)" }}
+                        className="flex items-center gap-2 text-muted"
                       >
                         <Activity size={16} />
                         Waiting for logs...
                       </div>
                     )}
-                  </div>
+                  </ScrollShadow>
                 </Card.Content>
               </Card>
             </motion.section>
@@ -425,26 +437,33 @@ export default function Home() {
               variants={containerMotion}
             >
               <motion.div variants={cardMotion}>
-                <Card className="flex h-full flex-col p-5">
-                  <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
-                    <Server size={18} />
-                    <span className="font-pixel text-xs tracking-wide">Status</span>
-                  </Card.Header>
-                  <Card.Content className="mt-4 flex flex-1 flex-col gap-2 text-sm">
-                    <div className="text-lg font-semibold">
-                      {serverOnline ? "Online" : "Offline"}
+                <KPI className="flex h-full flex-col p-5">
+                  <KPI.Header>
+                    <KPI.Icon
+                      className="text-accent"
+                      status={serverOnline ? "success" : undefined}
+                    >
+                      <Server size={16} />
+                    </KPI.Icon>
+                    <KPI.Title>Status</KPI.Title>
+                  </KPI.Header>
+                  <KPI.Content className="items-start">
+                    <div className="grid flex-1 gap-2 text-sm">
+                      <div className="text-lg font-semibold">
+                        {serverOnline ? "Online" : "Offline"}
+                      </div>
+                      <div className="text-muted">
+                        Version: {status?.version ?? "unknown"}
+                      </div>
+                      <div className="text-muted">
+                        MOTD: {status?.motd ?? "—"}
+                      </div>
+                      <div className="text-muted font-pixel-num">
+                        Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}
+                      </div>
                     </div>
-                    <div className="text-[var(--muted)]">
-                      Version: {status?.version ?? "unknown"}
-                    </div>
-                    <div className="text-[var(--muted)]">
-                      MOTD: {status?.motd ?? "—"}
-                    </div>
-                    <div className="text-[var(--muted)]">
-                      Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}
-                    </div>
-                  </Card.Content>
-                  <Card.Footer className="mt-auto flex flex-wrap gap-2 pt-4">
+                  </KPI.Content>
+                  <KPI.Footer className="mt-auto flex flex-wrap gap-2 pt-4">
                     <Button
                       onPress={() => runAction(startServer, "Start")}
                       isDisabled={
@@ -479,36 +498,47 @@ export default function Home() {
                       <RefreshCcw size={16} />
                       Restart
                     </Button>
-                  </Card.Footer>
-                </Card>
+                  </KPI.Footer>
+                </KPI>
               </motion.div>
 
               <motion.div variants={cardMotion}>
-                <Card className="flex h-full flex-col p-5">
-                  <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
-                    <Users size={18} />
-                    <span className="font-pixel text-xs tracking-wide">Players</span>
-                  </Card.Header>
-                  <Card.Content className="mt-4 flex flex-1 flex-col">
-                    <div className="flex items-center gap-3">
-                      <span className="font-pixel text-2xl text-[var(--accent)]">
-                        {playerCount}/{maxPlayers || "?"}
-                      </span>
-                      <span className="text-sm text-[var(--muted)]">Online now</span>
+                <KPI className="flex h-full flex-col p-5">
+                  <KPI.Header>
+                    <KPI.Icon
+                      className="text-accent"
+                      status={playerCount > 0 ? "success" : undefined}
+                    >
+                      <Users size={16} />
+                    </KPI.Icon>
+                    <KPI.Title>Players</KPI.Title>
+                  </KPI.Header>
+                  <KPI.Content className="items-start">
+                    <div className="flex-1">
+                      <KPI.Value className="font-pixel-num" value={playerCount}>
+                        {(formatted) => (
+                          <>
+                            {formatted}
+                            <NumberValue.Suffix>/{maxPlayers || "?"}</NumberValue.Suffix>
+                          </>
+                        )}
+                      </KPI.Value>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {playerCount === 0 ? (
+                          <EmptyState size="sm" className="items-start text-left">
+                            <EmptyState.Description>
+                              No players online
+                            </EmptyState.Description>
+                          </EmptyState>
+                        ) : (
+                          <Chip variant="soft" color="accent">
+                            {playerCount} online
+                          </Chip>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {playerCount === 0 ? (
-                        <span className="text-sm text-[var(--muted)]">
-                          No players online
-                        </span>
-                      ) : (
-                        <Chip variant="soft" color="accent">
-                          {playerCount} online
-                        </Chip>
-                      )}
-                    </div>
-                  </Card.Content>
-                  <Card.Footer className="mt-auto pt-4">
+                  </KPI.Content>
+                  <KPI.Footer className="mt-auto pt-4">
                     <Button
                       variant="secondary"
                       onPress={() => {
@@ -519,38 +549,36 @@ export default function Home() {
                     >
                       View players
                     </Button>
-                  </Card.Footer>
-                </Card>
+                  </KPI.Footer>
+                </KPI>
               </motion.div>
 
               <motion.div variants={cardMotion}>
-                <Card className="flex h-full flex-col p-5">
-                  <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
-                    <Boxes size={18} />
-                    <span className="font-pixel text-xs tracking-wide">
-                      Mods & Plugins
-                    </span>
-                  </Card.Header>
-                  <Card.Content className="mt-4 flex flex-1 flex-col gap-3 text-sm">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Mods
+                <KPI className="flex h-full flex-col p-5">
+                  <KPI.Header>
+                    <KPI.Icon className="text-accent">
+                      <Boxes size={16} />
+                    </KPI.Icon>
+                    <KPI.Title>Mods & Plugins</KPI.Title>
+                  </KPI.Header>
+                  <KPI.Content className="flex-1 gap-3 text-sm">
+                    <div className="flex gap-6">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-muted">
+                          Mods
+                        </div>
+                        <KPI.Value className="mt-2 text-lg" value={mods?.mods.length ?? 0} />
                       </div>
-                      <div className="mt-2">
-                        <Chip variant="soft">{mods?.mods.length ?? 0} total</Chip>
-                      </div>
-                    </div>
-                    <Separator />
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
-                        Plugins
-                      </div>
-                      <div className="mt-2">
-                        <Chip variant="soft">{mods?.plugins.length ?? 0} total</Chip>
+                      <Separator orientation="vertical" className="h-auto self-stretch" />
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-muted">
+                          Plugins
+                        </div>
+                        <KPI.Value className="mt-2 text-lg" value={mods?.plugins.length ?? 0} />
                       </div>
                     </div>
-                  </Card.Content>
-                  <Card.Footer className="mt-auto pt-4">
+                  </KPI.Content>
+                  <KPI.Footer className="mt-auto pt-4">
                     <Button
                       variant="secondary"
                       onPress={() => {
@@ -561,8 +589,8 @@ export default function Home() {
                     >
                       View mods
                     </Button>
-                  </Card.Footer>
-                </Card>
+                  </KPI.Footer>
+                </KPI>
               </motion.div>
             </motion.section>
           </>

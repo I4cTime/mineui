@@ -1,0 +1,83 @@
+/* ============================================================
+   Theme: Deepslate & Emerald  (id: deepslate) — DEFAULT
+   "The tool the game would ship if Mojang made professional
+   server software." Deepslate stone, emerald signal, redstone
+   alarm, one pixel-font wink (Monocraft, numerals only).
+   Spec: docs/aesthetic-directions.md — Direction 2.
+   Contract: docs/theme-contract.md.
+
+   This block doubles as the :root fallback, so unknown/legacy
+   data-theme ids (emerald, ember, aether, void) resolve here.
+   ============================================================ */
+
+:root,
+[data-theme="deepslate"] {
+  color-scheme: dark;
+
+  /* -- Base ---------------------------------------------- */
+  --background: #0f1214;
+  --foreground: #e9edea;
+  --surface: #171b1e;
+  --surface-foreground: var(--foreground);
+  --surface-secondary: #1b2023;
+  --surface-secondary-foreground: var(--foreground);
+  --surface-tertiary: #1f2429;
+  --surface-tertiary-foreground: var(--foreground);
+  --overlay: #1f2429;
+  --overlay-foreground: var(--foreground);
+  --muted: #9ba8a0;
+  --subtle: #5f6b65;
+  --default: #212729;
+  --default-foreground: var(--foreground);
+
+  /* -- Brand / status ------------------------------------ */
+  --accent: #3ddc84;
+  --accent-foreground: #08110c;
+  /* success IS the accent — deliberate: "green means the server lives" */
+  --success: #3ddc84;
+  --success-foreground: #08110c;
+  --warning: #f7b733;
+  --warning-foreground: #191104;
+  --danger: #ff5d5d;
+  --danger-foreground: #1c0808;
+
+  /* -- Fields (MC slot: darker inset, crisp 1px border) --- */
+  --field-background: #14181b;
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --field-border: #2a3138;
+  --field-border-width: 1px;
+
+  /* -- Misc ----------------------------------------------- */
+  --segment: #232a2f;
+  --segment-foreground: var(--foreground);
+  --border: #2a3138;
+  --separator: #242b31;
+  --focus: var(--accent);
+  --link: var(--accent);
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --scrollbar: #39424a;
+
+  /* -- Shape ---------------------------------------------- */
+  --radius: 0.25rem; /* 4px — blocky, not literal squares */
+
+  /* -- Shadows: flat; depth = bg steps + the MC slot bevel - */
+  --surface-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --overlay-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 32px rgba(0, 0, 0, 0.45);
+  --field-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  /* -- Type ------------------------------------------------ */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-display: var(--font-sans);
+  /* Monocraft: NUMERALS ONLY via .font-pixel-num (see globals.css) */
+  --font-numeric: "Monocraft", var(--font-mono);
+
+  /* -- Motion: chunky, stepped, instant, deliberate -------- */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+}

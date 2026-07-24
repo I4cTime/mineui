@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { interactiveTransition, transition } from "@/app/lib/motion";
 import {
   Archive,
   Boxes,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   Button,
+  Description,
   Label,
   ListBox,
   Popover,
@@ -31,12 +33,36 @@ import {
 import Logo from "./Logo";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
 
+// Registry per docs/theme-contract.md §1. Legacy ids (emerald/ember/aether/
+// void) have no CSS block anymore and resolve to :root = deepslate; any
+// value read back from localStorage that isn't one of these four falls
+// back to deepslate below.
 const themes = [
-  { id: "emerald", label: "Emerald" },
-  { id: "ember", label: "Ember" },
-  { id: "aether", label: "Aether" },
-  { id: "void", label: "Void" },
-];
+  {
+    id: "deepslate",
+    label: "Deepslate & Emerald",
+    description:
+      "Deepslate stone, emerald signal — the tool Mojang would ship.",
+  },
+  {
+    id: "phosphor",
+    label: "Phosphor Amber",
+    description: "Near-black ops console with an amber phosphor glow.",
+  },
+  {
+    id: "quantum",
+    label: "Quantum Fluidity",
+    description: "Deep-space black, cyan signal, violet glow — the I4C look.",
+  },
+  {
+    id: "softglass",
+    label: "Soft Glass",
+    description: "Calm, rounded, native-grade — one warm apricot accent.",
+  },
+] as const;
+
+const THEME_IDS = themes.map((item) => item.id);
+const DEFAULT_THEME = "deepslate";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: Server },
@@ -52,21 +78,25 @@ const navItems = [
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [theme, setTheme] = useState<string | null>("emerald");
+  const [theme, setTheme] = useState<string | null>(DEFAULT_THEME);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showKofi, setShowKofi] = useState(false);
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
   const { play } = useUISound();
-  const currentTheme = typeof theme === "string" ? theme : "emerald";
+  const currentTheme = typeof theme === "string" ? theme : DEFAULT_THEME;
 
   useEffect(() => {
     const stored = window.localStorage.getItem("mineui-theme");
-    const initial = themes.find((item) => item.id === stored)
+    // Legacy ids (emerald/ember/aether/void) and anything unrecognized fall
+    // back to deepslate per docs/theme-contract.md §1 — they already
+    // resolve to :root in CSS, this just keeps the picker's own state
+    // consistent with that.
+    const initial = (THEME_IDS as readonly string[]).includes(stored ?? "")
       ? stored!
-      : "emerald";
+      : DEFAULT_THEME;
     // Theme must be read from localStorage after hydration; the initial
-    // server-rendered value stays "emerald" to avoid a hydration mismatch.
+    // server-rendered value stays deepslate to avoid a hydration mismatch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(initial);
     document.documentElement.dataset.theme = initial;
@@ -105,19 +135,19 @@ export default function Navbar() {
 
   return (
     <Surface
-      className="sticky top-0 z-40 border-b backdrop-blur"
-      style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--background) 85%, transparent)" }}
+      className="sticky top-0 z-40 border-b border-border backdrop-blur"
+      style={{ background: "color-mix(in oklab, var(--background) 85%, transparent)" }}
     >
       <div className="relative mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
-        {/* Animated glow background */}
-        <motion.div
-          className="pointer-events-none absolute inset-0 opacity-50"
+        {/* Static glow background — was an infinite 6s pulse loop running on
+            every page (it's in the navbar); the contract forbids ambient
+            loops (docs/theme-contract.md §6), so this is now a fixed decal. */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-30"
           style={{
             background:
               "radial-gradient(ellipse at 20% 50%, color-mix(in oklab, var(--accent) 25%, transparent), transparent 55%)",
           }}
-          animate={{ opacity: [0.2, 0.5, 0.25] }}
-          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
         />
 
         {/* Logo + Brand */}
@@ -128,7 +158,7 @@ export default function Navbar() {
           onMouseEnter={() => play("hover")}
         >
           <Logo size={28} />
-          <span className="font-pixel text-sm tracking-wide text-[var(--accent)]">
+          <span className="font-pixel text-sm tracking-wide text-accent">
             MineUI
           </span>
         </Link>
@@ -156,7 +186,7 @@ export default function Navbar() {
                       background:
                         "color-mix(in oklab, var(--accent) 18%, transparent)",
                     }}
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                    transition={interactiveTransition()}
                   />
                 )}
                 <Icon size={16} className="relative z-10" />
@@ -181,7 +211,7 @@ export default function Navbar() {
 
           {/* Theme selector */}
           <Select
-            className="text-xs w-26"
+            className="text-xs w-36"
             placeholder="Theme"
             value={theme}
             onChange={handleThemeChange}
@@ -192,10 +222,15 @@ export default function Navbar() {
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover>
-              <ListBox>
+              <ListBox className="w-72">
                 {themes.map((item) => (
                   <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
-                    {item.label}
+                    <div className="flex flex-col">
+                      <Label>{item.label}</Label>
+                      <Description className="text-xs">
+                        {item.description}
+                      </Description>
+                    </div>
                     <ListBox.ItemIndicator />
                   </ListBox.Item>
                 ))}
@@ -217,11 +252,11 @@ export default function Navbar() {
               </Button>
             </Popover.Trigger>
             <Popover.Content className="p-0" placement="bottom end">
-              <Popover.Dialog className="w-[340px] overflow-hidden rounded-xl">
+              <Popover.Dialog className="w-85 overflow-hidden rounded-xl">
                 <iframe
                   src="https://ko-fi.com/i4cdeath/?hidefeed=true&widget=true&embed=true&preview=true"
                   title="i4cdeath Ko-fi"
-                  className="h-[570px] w-full"
+                  className="h-142.5 w-full"
                   style={{
                     border: "none",
                     padding: 4,
@@ -236,7 +271,7 @@ export default function Navbar() {
           <Button
             isIconOnly
             variant="ghost"
-            className="md:!hidden"
+            className="md:hidden!"
             onPress={() => {
               play("click_confirm");
               setMobileMenuOpen(!mobileMenuOpen);
@@ -254,9 +289,8 @@ export default function Navbar() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden border-t md:hidden"
-            style={{ borderColor: "var(--border)" }}
+            transition={transition("base")}
+            className="overflow-hidden border-t border-border md:hidden"
           >
             <div className="flex flex-col gap-2 p-4">
               {navItems.map((item) => {
@@ -290,7 +324,12 @@ export default function Navbar() {
                   <ListBox>
                     {themes.map((item) => (
                       <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
-                        {item.label}
+                        <div className="flex flex-col">
+                          <Label>{item.label}</Label>
+                          <Description className="text-xs">
+                            {item.description}
+                          </Description>
+                        </div>
                         <ListBox.ItemIndicator />
                       </ListBox.Item>
                     ))}

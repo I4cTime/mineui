@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { ArrowLeft, type LucideIcon } from "lucide-react";
 import { Button, Card } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
+import { fadeUp, transition } from "@/app/lib/motion";
 
 interface PageHeaderProps {
   title: string;
@@ -27,9 +28,9 @@ export default function PageHeader({
   return (
     <motion.header
       className="w-full"
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
+      initial="hidden"
+      animate="show"
+      variants={fadeUp("base")}
     >
       <Card variant="transparent" className="w-full">
         <Card.Header className="flex flex-wrap items-center justify-between gap-4">
@@ -38,13 +39,13 @@ export default function PageHeader({
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.1 }}
+                transition={transition("fast", { delay: 0.1 })}
               >
-                <Icon size={22} className="text-[var(--accent)]" />
+                <Icon size={22} className="text-accent" />
               </motion.div>
             )}
             <div>
-              <h1 className="font-pixel text-lg uppercase tracking-[0.2em] text-[var(--accent)]">
+              <h1 className="font-pixel text-lg uppercase tracking-[0.2em] text-accent">
                 {title}
               </h1>
             </div>

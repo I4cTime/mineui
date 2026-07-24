@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react";
 import { Card, Skeleton as HeroSkeleton } from "@heroui/react";
+import { transition } from "@/app/lib/motion";
 
 interface SkeletonProps {
   className?: string;
@@ -45,7 +46,7 @@ export function SkeletonCard({ className = "" }: { className?: string }) {
       className={className}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
+      transition={transition("base")}
     >
       <Card className="p-5">
         <Card.Header className="flex items-center gap-3">
@@ -69,15 +70,15 @@ export function SkeletonTable({
   cols?: number;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border" style={{ borderColor: "var(--border)" }}>
-      <div className="bg-[var(--surface)] p-4">
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className="bg-surface p-4">
         <div className="flex gap-4">
           {Array.from({ length: cols }).map((_, i) => (
             <Skeleton key={i} height={12} className="flex-1 rounded" />
           ))}
         </div>
       </div>
-      <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+      <div className="divide-y divide-border">
         {Array.from({ length: rows }).map((_, row) => (
           <div key={row} className="flex gap-4 p-4">
             {Array.from({ length: cols }).map((_, col) => (

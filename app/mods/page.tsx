@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "motion/react";
-import { toast } from "sonner";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Boxes,
+  CheckCircle2,
   Copy,
   Download,
   Filter,
@@ -24,14 +24,17 @@ import {
   Label,
   ListBox,
   Modal,
+  ProgressBar,
   Select,
   TextField,
   Input,
+  toast,
 } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
 import { pickModFile } from "@/app/lib/dialog";
+import { listStagger, scaleIn, transition } from "@/app/lib/motion";
 import {
   deleteMod,
   downloadMod,
@@ -46,17 +49,10 @@ import {
   type ModsList,
 } from "@/app/lib/ipc";
 
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.05 } },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 10, scale: 0.98 },
-  show: { opacity: 1, y: 0, scale: 1 },
-};
-
 export default function ModsPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [mods, setMods] = useState<ModsList | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSimpleMode, setIsSimpleMode] = useState(false);
@@ -187,7 +183,7 @@ export default function ModsPage() {
       setTimeout(() => setCopied(null), 1500);
     } catch {
       play("error");
-      toast.error("Failed to copy");
+      toast.danger("Failed to copy");
     }
   };
 
@@ -205,7 +201,7 @@ export default function ModsPage() {
       await refreshMods();
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Delete failed");
+      toast.danger(error instanceof IpcError ? error.message : "Delete failed");
     } finally {
       setDeleting(null);
     }
@@ -225,7 +221,7 @@ export default function ModsPage() {
       await refreshMods();
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Upload failed");
+      toast.danger(error instanceof IpcError ? error.message : "Upload failed");
     } finally {
       setBusy(false);
     }
@@ -233,7 +229,7 @@ export default function ModsPage() {
 
   const handleDownload = async () => {
     if (!downloadUrl.trim()) {
-      toast.error("Enter a URL");
+      toast.danger("Enter a URL");
       return;
     }
     setBusy(true);
@@ -263,7 +259,7 @@ export default function ModsPage() {
       await refreshMods();
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Download failed");
+      toast.danger(error instanceof IpcError ? error.message : "Download failed");
     } finally {
       unlisten();
       activeDownloadId.current = null;
@@ -285,7 +281,7 @@ export default function ModsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-4 md:grid-cols-2">
@@ -314,8 +310,8 @@ export default function ModsPage() {
         {isSimpleMode && (
           <motion.section variants={cardMotion}>
             <Card className="p-4">
-              <Card.Content className="flex items-start gap-3 text-sm text-[var(--muted)]">
-                <Info size={16} className="mt-0.5 shrink-0 text-[var(--accent)]" />
+              <Card.Content className="flex items-start gap-3 text-sm text-muted">
+                <Info size={16} className="mt-0.5 shrink-0 text-accent" />
                 <span>
                   Simple mode runs a vanilla server, which does not load mods or
                   plugins. Files you manage here are kept in the instance folder
@@ -346,7 +342,7 @@ export default function ModsPage() {
                 Add mod
               </Button>
               <div className="flex items-center gap-2">
-                <Search size={16} className="text-[var(--muted)]" />
+                <Search size={16} className="text-muted" />
                 <TextField className="w-56">
                   <Label className="sr-only">Search mods</Label>
                   <Input
@@ -357,7 +353,7 @@ export default function ModsPage() {
                 </TextField>
               </div>
               <div className="flex items-center gap-2">
-                <Filter size={16} className="text-[var(--muted)]" />
+                <Filter size={16} className="text-muted" />
                 <Select
                   className="w-36 text-sm"
                   placeholder="Filter"
@@ -379,7 +375,7 @@ export default function ModsPage() {
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <SlidersHorizontal size={16} className="text-[var(--muted)]" />
+                <SlidersHorizontal size={16} className="text-muted" />
                 <Select
                   className="w-44 text-sm"
                   placeholder="Sort"
@@ -428,7 +424,7 @@ export default function ModsPage() {
                           <Card className="p-4 text-sm" variant="secondary">
                             <Card.Header className="gap-1">
                               <Card.Title className="text-base">{item.name}</Card.Title>
-                              <Card.Description className="text-xs text-[var(--muted)]">
+                              <Card.Description className="text-xs text-muted">
                                 Updated {formatDate(item.updatedAtEpochMs)}
                               </Card.Description>
                             </Card.Header>
@@ -453,7 +449,7 @@ export default function ModsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-red-400 hover:text-red-300"
+                                className="text-danger hover:text-danger-soft-foreground"
                                 isDisabled={deleting === `mods:${item.filename}`}
                                 onPress={() => handleDelete(item, "mods")}
                                 onMouseEnter={() => play("hover")}
@@ -466,7 +462,7 @@ export default function ModsPage() {
                         </motion.div>
                       ))
                     ) : (
-                      <span className="text-sm text-[var(--muted)]">None</span>
+                      <span className="text-sm text-muted">None</span>
                     )}
                   </Accordion.Body>
                 </Accordion.Panel>
@@ -489,7 +485,7 @@ export default function ModsPage() {
                           <Card className="p-4 text-sm">
                             <Card.Header className="gap-1">
                               <Card.Title className="text-base">{item.name}</Card.Title>
-                              <Card.Description className="text-xs text-[var(--muted)]">
+                              <Card.Description className="text-xs text-muted">
                                 Updated {formatDate(item.updatedAtEpochMs)}
                               </Card.Description>
                             </Card.Header>
@@ -514,7 +510,7 @@ export default function ModsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-red-400 hover:text-red-300"
+                                className="text-danger hover:text-danger-soft-foreground"
                                 isDisabled={deleting === `plugins:${item.filename}`}
                                 onPress={() => handleDelete(item, "plugins")}
                                 onMouseEnter={() => play("hover")}
@@ -527,7 +523,7 @@ export default function ModsPage() {
                         </motion.div>
                       ))
                     ) : (
-                      <span className="text-sm text-[var(--muted)]">None</span>
+                      <span className="text-sm text-muted">None</span>
                     )}
                   </Accordion.Body>
                 </Accordion.Panel>
@@ -570,9 +566,9 @@ export default function ModsPage() {
           variant="blur"
         >
           <Modal.Container>
-            <Modal.Dialog className="sm:max-w-[640px]">
+            <Modal.Dialog className="sm:max-w-160">
               <Modal.Header className="flex items-center justify-between">
-                <div className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+                <div className="font-pixel text-xs tracking-wide text-accent">
                   Add Mods
                 </div>
                 <Button
@@ -586,7 +582,7 @@ export default function ModsPage() {
               </Modal.Header>
               <Modal.Body className="grid gap-4 text-sm">
                 <Card className="rounded-xl p-4">
-                  <Card.Header className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <Card.Header className="flex items-center gap-2 text-xs text-muted">
                     <Upload size={14} />
                     Upload a mod (.jar/.zip)
                   </Card.Header>
@@ -623,7 +619,7 @@ export default function ModsPage() {
                 </Card>
 
                 <Card className="rounded-xl p-4">
-                  <Card.Header className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                  <Card.Header className="flex items-center gap-2 text-xs text-muted">
                     <Download size={14} />
                     Download from URL
                   </Card.Header>
@@ -672,32 +668,40 @@ export default function ModsPage() {
                     </Button>
                     {busy && downloadProgress && (
                       <div className="grid gap-1">
-                        <div
-                          className="h-2 w-full overflow-hidden rounded-full"
-                          style={{ background: "var(--border)" }}
-                          role="progressbar"
-                          aria-valuenow={downloadPercent ?? undefined}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
+                        <ProgressBar
+                          className="progress-bar-steps"
+                          aria-label="Mod download progress"
+                          size="sm"
+                          value={downloadPercent ?? 0}
+                          isIndeterminate={downloadPercent === null}
                         >
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              background: "var(--accent)",
-                              width:
-                                downloadPercent !== null
-                                  ? `${downloadPercent}%`
-                                  : "100%",
-                              opacity: downloadPercent !== null ? 1 : 0.4,
-                            }}
-                          />
-                        </div>
-                        <span className="text-xs text-[var(--muted)]">
+                          <ProgressBar.Track>
+                            <ProgressBar.Fill />
+                          </ProgressBar.Track>
+                        </ProgressBar>
+                        <span className="flex items-center gap-2 text-xs text-muted">
                           {formatBytes(downloadProgress.receivedBytes)}
                           {downloadProgress.totalBytes
                             ? ` / ${formatBytes(downloadProgress.totalBytes)}`
                             : ""}{" "}
                           — {downloadProgress.filename}
+                          {/* Completion tick — separate element, not layered
+                              onto ProgressBar.Fill (that width transition is
+                              owned by HeroUI's own CSS). */}
+                          <AnimatePresence>
+                            {downloadPercent === 100 && (
+                              <motion.span
+                                key="done"
+                                initial={{ opacity: 0, scale: 0.6 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.6 }}
+                                transition={transition("fast")}
+                                className="inline-flex text-success"
+                              >
+                                <CheckCircle2 size={14} />
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
                         </span>
                       </div>
                     )}

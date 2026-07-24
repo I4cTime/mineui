@@ -1,107 +1,92 @@
+/* ============================================================
+   MineUI v2 — global styles + theme system
+   Token contract: docs/theme-contract.md (binding).
+   Four themes, one per [data-theme] on <html>:
+     deepslate (default / :root fallback), phosphor, quantum,
+     softglass. Legacy ids (emerald/ember/aether/void) have no
+     block and therefore resolve to the :root deepslate values.
+   Rules:
+   - Components never hardcode hex/oklch — tokens only.
+   - Never set HeroUI color-mix derived vars (--*-hover, --*-soft,
+     --border-secondary/tertiary, …) — they derive automatically.
+   ============================================================ */
+
 @import "tailwindcss";
 @import "@heroui/styles";
 
+@import "./themes/deepslate.css";
+@import "./themes/phosphor.css";
+@import "./themes/quantum.css";
+@import "./themes/softglass.css";
+
+/* Monocraft (OFL, IdreesInc) — vendored, subset to Basic Latin,
+   5.5 KB. Deepslate NUMERALS ONLY, via .font-pixel-num. */
+@font-face {
+  font-family: "Monocraft";
+  src: url("./fonts/Monocraft-basic-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Theme-independent layout vars */
 :root {
-  --background: #0b0f0b;
-  --foreground: #eaf5ea;
   --navbar-height: 64px;
-  --surface: #131813;
-  --surface-foreground: var(--foreground);
-  --overlay: #1a211a;
-  --overlay-foreground: var(--foreground);
-  --muted: #97a697;
-  --accent: #67f78f;
-  --accent-foreground: #0b0f0b;
-  --default: #1a221a;
-  --default-foreground: var(--foreground);
-  --field-background: #101510;
-  --field-foreground: var(--foreground);
-  --field-placeholder: var(--muted);
-  --field-border: #2a352a;
-  --separator: #2a352a;
-  --border: #2a352a;
-  --focus: var(--accent);
-  --radius: 0.75rem;
-
 }
 
-[data-theme="emerald"] {
-  --background: #0b0f0b;
-  --foreground: #eaf5ea;
-  --surface: #131813;
-  --overlay: #1a211a;
-  --muted: #97a697;
-  --accent: #67f78f;
-  --accent-foreground: #0b0f0b;
-  --default: #1a221a;
-  --field-background: #101510;
-  --field-border: #2a352a;
-  --separator: #2a352a;
-  --border: #2a352a;
-}
-
-[data-theme="ember"] {
-  --background: #120b0a;
-  --foreground: #ffece3;
-  --surface: #1a1210;
-  --overlay: #231715;
-  --muted: #c9a292;
-  --accent: #ff8a4c;
-  --accent-foreground: #120b0a;
-  --default: #241915;
-  --field-background: #1b120f;
-  --field-border: #3a241c;
-  --separator: #3a241c;
-  --border: #3a241c;
-}
-
-[data-theme="aether"] {
-  --background: #0a0f14;
-  --foreground: #e7f4ff;
-  --surface: #121a23;
-  --overlay: #1a2531;
-  --muted: #8fb4c9;
-  --accent: #6fd6ff;
-  --accent-foreground: #0a0f14;
-  --default: #1c2733;
-  --field-background: #101720;
-  --field-border: #243545;
-  --separator: #243545;
-  --border: #243545;
-}
-
-[data-theme="void"] {
-  --background: #07070b;
-  --foreground: #f0e9ff;
-  --surface: #120f1c;
-  --overlay: #1a1528;
-  --muted: #a8a0c4;
-  --accent: #c08bff;
-  --accent-foreground: #07070b;
-  --default: #1a1626;
-  --field-background: #100c17;
-  --field-border: #2a2340;
-  --separator: #2a2340;
-  --border: #2a2340;
-}
-
+/* Tailwind utility bridge — inline so utilities resolve the
+   per-theme cascade value at the element, not a snapshot. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-pixel: var(--font-pixel);
+  --color-surface: var(--surface);
+  --color-overlay: var(--overlay);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-border: var(--border);
+  --color-separator: var(--separator);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+  /* legacy alias — .font-pixel / font-pixel now mean "display font".
+     Slated for cleanup once pages migrate to font-display. */
+  --font-pixel: var(--font-display);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
-/* Pixel font for headings */
+html {
+  scrollbar-color: var(--scrollbar) transparent;
+  scrollbar-width: thin;
+}
+
+/* Legacy class: previously Press Start 2P on every card header.
+   Now resolves to the theme's display font. Keep until pages
+   migrate to `font-display`, then delete. */
 .font-pixel {
-  font-family: var(--font-pixel), monospace;
+  font-family: var(--font-display);
+}
+
+/* Pixel numerals — the ONLY place Monocraft may appear, and only
+   deepslate maps --font-numeric to it (other themes map it to
+   their mono). Usage: stat values only — player count, TPS, ping,
+   download % . Never headings, labels, or body text. */
+.font-pixel-num {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 @layer utilities {
@@ -109,14 +94,44 @@ body {
     min-height: calc(100vh - var(--navbar-height));
   }
 
-  .ui-toast {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--foreground) !important;
-    font-family: var(--font-geist-sans), system-ui, sans-serif !important;
+  /* Quantum-only glow (no-op elsewhere: --shadow-quantum is
+     undefined outside [data-theme="quantum"]). Accented/hero
+     cards only — ordinary cards stay flat. */
+  .shadow-quantum {
+    box-shadow: var(--shadow-quantum, none);
   }
+}
 
-  .ui-toast [data-title] {
-    color: var(--accent) !important;
+/* ============================================================
+   Motion section (owned by the motion wave — docs/theme-contract.md §6).
+   JS-driven Motion transitions live in app/lib/motion.ts and read the
+   --motion-* vars directly; this section is only for the handful of
+   things Motion components can't express: a CSS-keyframe utility, and a
+   reduced-motion guard for the one ambient loop left in the app (the
+   Tailwind `animate-pulse` on the dashboard's online-status dot and the
+   matching indicator wherever it's reused — everything else is either a
+   Motion transition honoring --motion-* or a state-triggered, non-looping
+   animation; see app/page.tsx, Navbar.tsx, Logo.tsx).
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  /* Tailwind's core .animate-pulse utility isn't Motion, so MotionConfig's
+     reducedMotion="user" (app/layout.tsx) doesn't reach it — guard it here. */
+  .animate-pulse {
+    animation: none;
+  }
+}
+
+/* Deepslate signature moment (§6: "steps(20) progress + 0.96→1 place-pop").
+   Opt-in utility class for ProgressBar (CreateServerFlow, mods download) —
+   deepslate-scoped per the contract's per-theme motion table; a no-op
+   everywhere else since the selector requires [data-theme="deepslate"].
+   Only active under prefers-reduced-motion: no-preference — HeroUI's own
+   .progress-bar__fill already carries a motion-reduce guard
+   (progress-bar.css) and this must not fight it. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-theme="deepslate"] .progress-bar-steps .progress-bar__fill {
+    transition-timing-function: steps(20);
+    transition-duration: var(--motion-slow);
   }
 }

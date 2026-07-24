@@ -1,0 +1,75 @@
+/* ============================================================
+   Theme: Phosphor Amber  (id: phosphor)
+   "k9s grew a GPU" — near-black ops console, hairline grid,
+   amber phosphor accent, mono promoted to UI labels.
+   Spec: docs/aesthetic-directions.md — Direction 3.
+   Note: global density is fixed per leader constraint; the
+   Phase-1 compact-density recommendations are NOT applied.
+   ============================================================ */
+
+[data-theme="phosphor"] {
+  color-scheme: dark;
+
+  /* -- Base ---------------------------------------------- */
+  --background: #0b0c0e;
+  --foreground: #dee3e7;
+  --surface: #111316;
+  --surface-foreground: var(--foreground);
+  --surface-secondary: #14171a;
+  --surface-secondary-foreground: var(--foreground);
+  --surface-tertiary: #17191d;
+  --surface-tertiary-foreground: var(--foreground);
+  --overlay: #17191d;
+  --overlay-foreground: var(--foreground);
+  --muted: #8b949e;
+  --subtle: #5b636d;
+  --default: #1b1f24;
+  --default-foreground: var(--foreground);
+
+  /* -- Brand / status ------------------------------------ */
+  --accent: #ffb224; /* amber phosphor — the ONE vivid color */
+  --accent-foreground: #1c1300;
+  --success: #3fb950; /* steady green — quiet, not neon */
+  --success-foreground: #041008;
+  --warning: #d29922; /* dimmer amber, subordinate to accent */
+  --warning-foreground: #171002;
+  --danger: #f85149;
+  --danger-foreground: #1b0604;
+
+  /* -- Fields --------------------------------------------- */
+  --field-background: #0e1013;
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --field-border: #22262b;
+  --field-border-width: 1px;
+
+  /* -- Misc ----------------------------------------------- */
+  --segment: #1d2126;
+  --segment-foreground: var(--foreground);
+  --border: #22262b;
+  --separator: #1d2126;
+  --focus: var(--accent);
+  --link: var(--accent);
+  --backdrop: rgba(0, 0, 0, 0.65);
+  --scrollbar: #333a42;
+
+  /* -- Shape ---------------------------------------------- */
+  --radius: 0.375rem; /* 6px everywhere — uniformity is the point */
+
+  /* -- Shadows: none. Hierarchy = borders + bg steps. ------ */
+  --surface-shadow: 0 0 0 0 transparent;
+  --overlay-shadow: 0 0 0 0 transparent;
+  --field-shadow: 0 0 0 0 transparent;
+
+  /* -- Type: IBM Plex; mono is promoted to labels/stats ---- */
+  --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: var(--font-mono);
+  --font-numeric: var(--font-mono);
+
+  /* -- Motion: instant, terse, precise, unsentimental ------ */
+  --motion-fast: 100ms;
+  --motion-base: 140ms;
+  --motion-slow: 180ms;
+  --motion-ease: cubic-bezier(0, 0, 0.2, 1);
+}

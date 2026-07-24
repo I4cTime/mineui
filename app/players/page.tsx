@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import { Filter, Search, Users } from "lucide-react";
 import {
   Button,
@@ -11,13 +10,17 @@ import {
   Label,
   ListBox,
   Select,
+  Table,
   TextField,
   Input,
+  toast,
 } from "@heroui/react";
+import { EmptyState } from "@heroui-pro/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonTable } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
+import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   getPlayerHistory,
   getServerStatus,
@@ -27,21 +30,14 @@ import {
   type ServerStatus,
 } from "@/app/lib/ipc";
 
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
-
 // Timestamps arrive as epoch ms (contract §7) — format client-side.
 const formatLastSeen = (epochMs: number | null) =>
   epochMs === null ? "—" : new Date(epochMs).toLocaleString();
 
 export default function PlayersPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [users, setUsers] = useState<PlayerHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +102,7 @@ export default function PlayersPage() {
       setUsers(updated.users);
     } catch (error) {
       play("error");
-      toast.error(
+      toast.danger(
         error instanceof IpcError ? error.message : "Command failed.",
       );
     } finally {
@@ -121,7 +117,7 @@ export default function PlayersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <SkeletonTable rows={6} cols={4} />
@@ -169,7 +165,7 @@ export default function PlayersPage() {
         <motion.section className="grid gap-6 md:grid-cols-2" variants={containerMotion}>
           <motion.div variants={cardMotion}>
             <Card className="p-5 h-full">
-              <Card.Header className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+              <Card.Header className="font-pixel text-xs tracking-wide text-accent">
                 Online Players
               </Card.Header>
               <Card.Content className="mt-4 flex flex-wrap gap-2">
@@ -180,7 +176,7 @@ export default function PlayersPage() {
                     </Chip>
                   ))
                 ) : (
-                  <span className="text-sm text-[var(--muted)]">No players online</span>
+                  <span className="text-sm text-muted">No players online</span>
                 )}
               </Card.Content>
             </Card>
@@ -188,10 +184,10 @@ export default function PlayersPage() {
 
           <motion.div variants={cardMotion}>
             <Card className="p-5">
-              <Card.Header className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+              <Card.Header className="font-pixel text-xs tracking-wide text-accent">
                 Server Details
               </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
                 <span>MOTD: {status?.motd ?? "—"}</span>
                 <span>
                   Players: {status?.players.online ?? 0}/{status?.players.max ?? "?"}
@@ -204,13 +200,13 @@ export default function PlayersPage() {
 
         <motion.section variants={cardMotion}>
           <Card className="overflow-hidden">
-            <Card.Header className="border-b p-5" style={{ borderColor: "var(--border)" }}>
-              <div className="font-pixel text-xs tracking-wide text-[var(--accent)]">
+            <Card.Header className="border-b border-border p-5">
+              <div className="font-pixel text-xs tracking-wide text-accent">
                 User Management
               </div>
               <div className="mt-4 flex flex-wrap gap-3 text-sm">
                 <div className="flex items-center gap-2">
-                  <Search size={16} className="text-[var(--muted)]" />
+                  <Search size={16} className="text-muted" />
                   <TextField className="w-56">
                     <Label className="sr-only">Search</Label>
                     <Input
@@ -221,7 +217,7 @@ export default function PlayersPage() {
                   </TextField>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Filter size={16} className="text-[var(--muted)]" />
+                  <Filter size={16} className="text-muted" />
                   <Select
                     className="w-32 text-sm"
                     placeholder="Presence"
@@ -262,62 +258,69 @@ export default function PlayersPage() {
                 </Select>
               </div>
             </Card.Header>
-            <Card.Content className="overflow-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-[var(--surface)] text-[var(--muted)]">
-                  <tr>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Username</th>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Last Seen</th>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">IP Address</th>
-                    <th className="px-4 py-3 text-xs uppercase tracking-[0.2em]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.length ? (
-                    filteredUsers.map((row) => (
-                      <tr key={row.username} className="border-t" style={{ borderColor: "var(--border)" }}>
-                        <td className="px-4 py-3 font-semibold">
-                          <div className="flex items-center gap-2">
-                            {row.username}
-                            {row.isOnline && (
-                              <span
-                                className="inline-block h-2 w-2 rounded-full animate-pulse"
-                                style={{ background: "var(--accent)" }}
-                              />
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-[var(--muted)]">
-                          {formatLastSeen(row.lastSeenEpochMs)}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--muted)]">{row.ipAddress ?? "—"}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {["whitelist add", "op", "deop", "ban", "pardon", "kick"].map((cmd) => (
-                              <Button
-                                key={cmd}
-                                size="sm"
-                                variant="ghost"
-                                onPress={() => confirmAction(cmd, row.username)}
-                                isDisabled={actionBusy === `${cmd}:${row.username}`}
-                                onMouseEnter={() => play("hover")}
-                              >
-                                {cmd.split(" ").pop()}
-                              </Button>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-6 text-[var(--muted)]">
-                        No player data available.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+            <Card.Content className="p-0">
+              <Table>
+                <Table.ScrollContainer>
+                  <Table.Content aria-label="Player history" className="min-w-180">
+                    <Table.Header>
+                      <Table.Column isRowHeader>Username</Table.Column>
+                      <Table.Column>Last Seen</Table.Column>
+                      <Table.Column>IP Address</Table.Column>
+                      <Table.Column>Actions</Table.Column>
+                    </Table.Header>
+                    <Table.Body
+                      items={filteredUsers}
+                      renderEmptyState={() => (
+                        <EmptyState size="sm">
+                          <EmptyState.Description>
+                            No player data available.
+                          </EmptyState.Description>
+                        </EmptyState>
+                      )}
+                    >
+                      {(row) => (
+                        <Table.Row id={row.username}>
+                          <Table.Cell>
+                            <div className="flex items-center gap-2 font-semibold">
+                              {row.username}
+                              {row.isOnline && (
+                                // Static, not animate-pulse: the dashboard's
+                                // online-status dot is the one ambient loop
+                                // this app budgets (docs/theme-contract.md §6);
+                                // a pulsing dot per online player here would
+                                // multiply that on a single screen.
+                                <span className="inline-block h-2 w-2 rounded-full bg-accent" />
+                              )}
+                            </div>
+                          </Table.Cell>
+                          <Table.Cell className="text-muted">
+                            {formatLastSeen(row.lastSeenEpochMs)}
+                          </Table.Cell>
+                          <Table.Cell className="text-muted">
+                            {row.ipAddress ?? "—"}
+                          </Table.Cell>
+                          <Table.Cell>
+                            <div className="flex flex-wrap gap-1">
+                              {["whitelist add", "op", "deop", "ban", "pardon", "kick"].map((cmd) => (
+                                <Button
+                                  key={cmd}
+                                  size="sm"
+                                  variant="ghost"
+                                  onPress={() => confirmAction(cmd, row.username)}
+                                  isDisabled={actionBusy === `${cmd}:${row.username}`}
+                                  onMouseEnter={() => play("hover")}
+                                >
+                                  {cmd.split(" ").pop()}
+                                </Button>
+                              ))}
+                            </div>
+                          </Table.Cell>
+                        </Table.Row>
+                      )}
+                    </Table.Body>
+                  </Table.Content>
+                </Table.ScrollContainer>
+              </Table>
             </Card.Content>
           </Card>
         </motion.section>

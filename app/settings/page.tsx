@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import {
   Coffee,
   Container,
@@ -21,10 +20,12 @@ import {
   Select,
   Skeleton,
   TextField,
+  toast,
 } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { useUISound } from "@/app/hooks/useUISound";
+import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   deleteInstance,
   detectRuntimes,
@@ -43,22 +44,15 @@ import {
   type SimpleModeSettings,
 } from "@/app/lib/ipc";
 
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.08 } },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0 },
-};
-
 const numberFrom = (event: React.ChangeEvent<HTMLInputElement>) => {
   const value = event.target.valueAsNumber;
   return Number.isFinite(value) ? value : 0;
 };
 
 export default function SettingsPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -125,7 +119,7 @@ export default function SettingsPage() {
       toast.success("Settings saved");
     } catch (error) {
       play("error");
-      toast.error(error instanceof IpcError ? error.message : "Save failed");
+      toast.danger(error instanceof IpcError ? error.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -141,7 +135,7 @@ export default function SettingsPage() {
       setDraft(await getSettings());
     } catch (error) {
       play("error");
-      toast.error(
+      toast.danger(
         error instanceof IpcError ? error.message : "Delete failed",
       );
     } finally {
@@ -152,7 +146,7 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <Card className="p-6">
@@ -179,16 +173,16 @@ export default function SettingsPage() {
 
   if (loadError !== null || draft === null) {
     return (
-      <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      <div className="min-h-screen bg-background">
         <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center gap-6 px-4 py-10 md:px-6">
           <Card className="p-6">
-            <Card.Header className="flex items-center gap-3 text-sm text-[var(--accent)]">
+            <Card.Header className="flex items-center gap-3 text-sm text-accent">
               <SettingsIcon size={18} />
               <span className="font-pixel text-xs tracking-wide">
                 Settings unavailable
               </span>
             </Card.Header>
-            <Card.Content className="mt-4 grid gap-3 text-sm text-[var(--muted)]">
+            <Card.Content className="mt-4 grid gap-3 text-sm text-muted">
               <p>{loadError ?? "Settings could not be loaded."}</p>
               <p>
                 Launch MineUI with{" "}
@@ -266,7 +260,7 @@ export default function SettingsPage() {
               </Card.Header>
               <Card.Content className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2 text-sm">
-                  <span className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted">
                     Instance
                   </span>
                   <div className="flex flex-wrap items-center gap-2">
@@ -279,12 +273,12 @@ export default function SettingsPage() {
                         : "No instance yet"}
                     </Chip>
                     {instance?.exists && instance.createdAt && (
-                      <span className="text-xs text-[var(--muted)]">
+                      <span className="text-xs text-muted">
                         created {new Date(instance.createdAt).toLocaleString()}
                       </span>
                     )}
                   </div>
-                  <span className="truncate text-xs text-[var(--muted)]">
+                  <span className="truncate text-xs text-muted">
                     {draft.simple.instanceDir}
                   </span>
                   {java && (
@@ -369,8 +363,8 @@ export default function SettingsPage() {
                 </TextField>
               </Card.Content>
               {instance?.exists && (
-                <Card.Footer className="mt-4 flex items-center justify-between gap-3 border-t pt-4" style={{ borderColor: "var(--border)" }}>
-                  <span className="text-xs text-[var(--muted)]">
+                <Card.Footer className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-4">
+                  <span className="text-xs text-muted">
                     Deleting the instance removes the world, configs, and
                     server jar from disk.
                   </span>
@@ -599,7 +593,7 @@ export default function SettingsPage() {
           <Card className="p-6">
             <Card.Header className="flex-col items-start gap-1">
               <div className="flex items-center gap-2">
-                <Shield size={16} className="text-[var(--accent)]" />
+                <Shield size={16} className="text-accent" />
                 <Card.Title>RCON allowlist</Card.Title>
               </div>
               <Card.Description>

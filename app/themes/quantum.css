@@ -1,0 +1,89 @@
+/* ============================================================
+   Theme: Quantum Fluidity  (id: quantum)
+   I4C brand extension — deep-space black, cyan signal, violet
+   glow. Palette lifted from i4c.studio (globals.css +
+   lib/palette.ts); the portfolio is the source of truth —
+   do not invent variants.
+   Spec: docs/aesthetic-directions.md — Direction 1.
+   ============================================================ */
+
+[data-theme="quantum"] {
+  color-scheme: dark;
+
+  /* -- Base ---------------------------------------------- */
+  --background: #000102; /* eclipse */
+  --foreground: #f3f5f9; /* snow */
+  --surface: #0b0d14;
+  --surface-foreground: var(--foreground);
+  --surface-secondary: #10131a;
+  --surface-secondary-foreground: var(--foreground);
+  --surface-tertiary: #13161d;
+  --surface-tertiary-foreground: var(--foreground);
+  --overlay: #13161d;
+  --overlay-foreground: var(--foreground);
+  --muted: #828690;
+  --subtle: #5c6069;
+  --default: #171a22;
+  --default-foreground: var(--foreground);
+
+  /* -- Brand / status ------------------------------------ */
+  --accent: #00d1ff; /* quantum cyan */
+  --accent-foreground: #000102;
+  --success: #22c373;
+  --success-foreground: #01130a;
+  --warning: #eba941;
+  --warning-foreground: #1a1204;
+  --danger: #c72c4c; /* fill/signal; per i4c, danger text = snow on fill */
+  --danger-foreground: #f3f5f9;
+  /* soft-chip text override: #c72c4c is only 3.6:1 as small text on
+     surface — soft variants read in a lighter, text-safe red instead */
+  --danger-soft-foreground: #f0718a;
+
+  /* Quantum-only decor tokens — undefined in other themes; never
+     reference outside a [data-theme="quantum"] guard. */
+  --quantum-violet: #7b2dff; /* glows/gradients/fills ONLY */
+  --quantum-violet-text: #a082ff; /* text-safe violet, 7.1:1 */
+
+  /* -- Fields --------------------------------------------- */
+  --field-background: #0b0d14;
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --field-border: #1e2129;
+  --field-border-width: 1px;
+
+  /* -- Misc ----------------------------------------------- */
+  --segment: #1a1e27;
+  --segment-foreground: var(--foreground);
+  --border: #1e2129;
+  --separator: #191c24;
+  --focus: var(--accent);
+  --link: var(--accent);
+  --backdrop: rgba(0, 1, 2, 0.7);
+  --scrollbar: #2a2e38;
+
+  /* -- Shape ---------------------------------------------- */
+  --radius: 0.625rem; /* 10px (refined from Phase-1 12px; see contract) */
+
+  /* -- Shadows: glow-tinged. Ordinary cards stay flat; the
+     signature glow is opt-in via .shadow-quantum. ----------- */
+  --surface-shadow: 0 0 0 0 transparent;
+  --overlay-shadow:
+    0 0 24px oklch(0.79 0.15 220 / 10%),
+    0 16px 40px rgba(0, 0, 0, 0.5);
+  --field-shadow: 0 0 0 0 transparent;
+  --shadow-quantum:
+    0 0 20px oklch(0.79 0.15 220 / 12%),
+    0 0 40px oklch(0.55 0.28 290 / 8%);
+
+  /* -- Type ------------------------------------------------ */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-display: "Space Grotesk Variable", var(--font-sans);
+  --font-numeric: var(--font-mono);
+
+  /* -- Motion: fluid, glowy, drifting, cinematic ----------- */
+  --motion-fast: 200ms;
+  --motion-base: 300ms;
+  --motion-slow: 500ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}

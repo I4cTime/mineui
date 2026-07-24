@@ -2,22 +2,12 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
-import { toast } from "sonner";
 import { Loader2, Send, ShieldAlert } from "lucide-react";
-import { Button, Card, Chip, TextField, Input } from "@heroui/react";
+import { Button, Card, Chip, ScrollShadow, TextField, Input, toast } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { useUISound } from "@/app/hooks/useUISound";
+import { listStagger, scaleIn, transition } from "@/app/lib/motion";
 import { runRconCommand, IpcError } from "@/app/lib/ipc";
-
-const containerMotion = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-};
-
-const cardMotion = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
 
 const presets = [
   "list",
@@ -29,6 +19,9 @@ const presets = [
 ];
 
 export default function RconPage() {
+  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
+  const containerMotion = listStagger();
+  const cardMotion = scaleIn();
   const [command, setCommand] = useState("");
   const [commandOutput, setCommandOutput] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -55,7 +48,7 @@ export default function RconPage() {
             ? error.message
             : "Command failed.";
       setCommandError(message);
-      toast.error(message);
+      toast.danger(message);
     } finally {
       setSending(false);
     }
@@ -94,7 +87,7 @@ export default function RconPage() {
                 <ShieldAlert size={14} />
                 RCON Command Panel
               </Chip>
-              <span className="text-xs text-[var(--muted)]">
+              <span className="text-xs text-muted">
                 Commands restricted by the RCON allowlist in{" "}
                 <span className="font-mono">Settings</span>.
               </span>
@@ -139,23 +132,29 @@ export default function RconPage() {
               </div>
 
               <motion.div
-                className="mt-4 min-h-[120px] rounded-lg border p-4 font-mono text-xs leading-5"
+                className="mt-4 overflow-hidden rounded-lg border"
                 style={{
-                  background: "color-mix(in oklab, var(--background) 70%, black)",
                   borderColor: commandError ? "var(--accent)" : "var(--border)",
-                  color: "var(--foreground)",
                 }}
                 animate={{ borderColor: commandError ? "var(--accent)" : "var(--border)" }}
+                transition={transition("fast")}
               >
-                {commandError ? (
-                  <span style={{ color: "var(--accent)" }}>{commandError}</span>
-                ) : commandOutput ? (
-                  <pre className="whitespace-pre-wrap">{commandOutput}</pre>
-                ) : (
-                  <span style={{ color: "var(--muted)" }}>
-                    Command output will appear here.
-                  </span>
-                )}
+                <ScrollShadow
+                  className="min-h-30 max-h-80 p-4 font-mono text-xs leading-5 text-foreground"
+                  style={{
+                    background: "color-mix(in oklab, var(--background) 70%, black)",
+                  }}
+                >
+                  {commandError ? (
+                    <span className="text-accent">{commandError}</span>
+                  ) : commandOutput ? (
+                    <pre className="whitespace-pre-wrap">{commandOutput}</pre>
+                  ) : (
+                    <span className="text-muted">
+                      Command output will appear here.
+                    </span>
+                  )}
+                </ScrollShadow>
               </motion.div>
             </Card.Content>
           </Card>
