@@ -307,8 +307,10 @@ export default function ModsPage() {
       >
         <PageHeader title="Mods & Plugins" icon={Boxes} />
 
+        {/* Mounts after the async settings fetch, past the parent's stagger —
+            must drive its own enter animation. */}
         {isSimpleMode && (
-          <motion.section variants={cardMotion}>
+          <motion.section variants={cardMotion} initial="hidden" animate="show">
             <Card className="p-4">
               <Card.Content className="flex items-start gap-3 text-sm text-muted">
                 <Info size={16} className="mt-0.5 shrink-0 text-accent" />

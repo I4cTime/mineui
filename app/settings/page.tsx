@@ -257,9 +257,10 @@ export default function SettingsPage() {
           </Card>
         </motion.section>
 
-        {/* Simple mode section */}
+        {/* Simple mode section — mounts on mode toggle after the parent's
+            stagger has finished, so it must drive its own enter animation. */}
         {isSimple && (
-          <motion.section variants={cardMotion}>
+          <motion.section variants={cardMotion} initial="hidden" animate="show">
             <Card className="p-6">
               <Card.Header className="flex-col items-start gap-1">
                 <Card.Title>Simple mode</Card.Title>
@@ -412,9 +413,9 @@ export default function SettingsPage() {
           </motion.section>
         )}
 
-        {/* Advanced mode section */}
+        {/* Advanced mode section — same late-mount rule as Simple above. */}
         {!isSimple && (
-          <motion.section variants={cardMotion}>
+          <motion.section variants={cardMotion} initial="hidden" animate="show">
             <Card className="p-6">
               <Card.Header className="flex-col items-start gap-1">
                 <Card.Title>Advanced mode</Card.Title>
