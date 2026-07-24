@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - v2-tauri
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      # HEROUI_AUTH_TOKEN gates @heroui-pro/react's own postinstall lifecycle
+      # script: the package published to the public npm registry is a small
+      # stub with no components — the real dist is fetched from HeroUI's CDN
+      # by that postinstall script, which looks for this env var (CI path)
+      # before falling back to an interactive login. Without it, install
+      # "succeeds" but the Pro components are missing and build/typecheck
+      # fail downstream. See HEROUI_AUTH_TOKEN in repo secrets.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: pnpm build
+
+  rust:
+    name: Rust (fmt, clippy, tests, tauri shell check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      # mineui-core is a pure lib (no Tauri/system deps) — keep it fast.
+      - name: cargo clippy -p mineui-core
+        run: cargo clippy -p mineui-core --all-targets -- -D warnings
+
+      - name: cargo test -p mineui-core
+        run: cargo test -p mineui-core
+
+      # Only src-tauri needs these; installed here (not job-wide) so the
+      # mineui-core steps above stay fast and dependency-free.
+      - name: Install Tauri Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev
+
+      # This is the only place the Tauri shell gets compile-checked in CI.
+      - name: cargo check -p mineui-tauri
+        run: cargo check -p mineui-tauri

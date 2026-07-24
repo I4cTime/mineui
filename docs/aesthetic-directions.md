@@ -1,6 +1,10 @@
 # MineUI v2 — Aesthetic Directions
 
-Phase 1 deliverable from the theme coordinator. Four directions for the owner to choose from.
+Phase 1 deliverable from the theme coordinator. Superseded by the binding
+implementation contract: [`docs/theme-contract.md`](theme-contract.md). Kept
+here as the design rationale for the four directions it implements.
+
+Four directions for the owner to choose from.
 No implementation has been done; every value below is a proposal. Contrast ratios were computed
 (WCAG relative luminance) for every pairing stated.
 

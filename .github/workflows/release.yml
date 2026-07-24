@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Created once, up front, so the four parallel build-tauri matrix jobs all
+  # upload to the *same* release instead of racing to create one each.
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create-release.outputs.result }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Create draft release
+        id: create-release
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `MineUI ${tag}`,
+              draft: true,
+              prerelease: false,
+              generate_release_notes: true,
+            });
+            return data.id;
+
+  build-tauri:
+    name: Build (${{ matrix.platform }}${{ matrix.arch && format(' / {0}', matrix.arch) || '' }})
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-latest
+            arch: ""
+            rust-target: ""
+            args: ""
+          - platform: windows-latest
+            arch: ""
+            rust-target: ""
+            args: ""
+          - platform: macos-latest
+            arch: aarch64
+            rust-target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+          - platform: macos-latest
+            arch: x86_64
+            rust-target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
+        with:
+          # Workspace root Cargo.toml lives at repo root (members: crates/mineui-core, src-tauri).
+          workspaces: ". -> target"
+          key: ${{ matrix.platform }}-${{ matrix.arch }}
+
+      - name: Install Tauri Linux system deps
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev
+
+      # Same HEROUI_AUTH_TOKEN gate as ci.yml — see the comment there.
+      # `pnpm build` (the frontend static export) runs on this runner too,
+      # via tauri.conf.json's beforeBuildCommand, so the Pro artifacts must
+      # already be resolved before tauri-action invokes it.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+
+      # macOS note: src-tauri/icons has no icon.icns, only PNGs (32/128/128@2x)
+      # + icon.ico. Verified against tauri-bundler's macOS icon step
+      # (bundle/macos/icon.rs::create_icns_file): it generates the .icns at
+      # build time from whatever PNGs are declared in tauri.conf.json's
+      # bundle.icon list, and 32/128/256px (128@2x) are all valid native icns
+      # sizes — it does not require a pre-existing .icns and does not hard-fail
+      # here. If the generated icon looks soft, regenerate the whole icon set
+      # from a >=1024px source via `pnpm tauri icon` (this also needs updating
+      # tauri.conf.json's bundle.icon list) rather than hand-adding an .icns.
+      - name: Build and release
+        uses: tauri-apps/tauri-action@944946e3e4cac6603d1fe8f514171e9ecd3c78aa # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
+          # --- Code signing: not configured yet, no certs exist. ---
+          # macOS notarization/signing — add these secrets and uncomment when
+          # an Apple Developer cert is available:
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows code signing — add when a cert is available:
+          # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # Tauri updater artifact signing (independent of OS code signing):
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.args }}

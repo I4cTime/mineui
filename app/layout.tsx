@@ -19,13 +19,6 @@ import "@fontsource/commit-mono/latin-500.css";
 // Monocraft (deepslate pixel numerals) is vendored: app/fonts/ + @font-face in globals.css
 
 import "./globals.css";
-// HeroUI Pro component styles. Canonical setup imports this from
-// globals.css directly after "@heroui/styles" (order matters: tailwindcss,
-// then @heroui/styles, then this) — done here instead because this wave's
-// file ownership restricts globals.css edits to the .ui-toast removal only.
-// Same cascade position in practice: this import executes immediately
-// after globals.css above.
-import "@heroui-pro/react/css";
 import Navbar from "@/app/components/Navbar";
 
 export const metadata: Metadata = {

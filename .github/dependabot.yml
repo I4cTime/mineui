@@ -1,0 +1,50 @@
+version: 2
+
+updates:
+  # Frontend: pnpm (Dependabot's "npm" ecosystem understands pnpm-lock.yaml)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Beta-adjacent, hand-rolled theme contract — manual upgrades only.
+      - dependency-name: "@heroui/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@heroui-pro/react"
+        update-types: ["version-update:semver-major"]
+      # Next.js majors need a manual migration pass.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+
+  # Rust workspace (root Cargo.toml: crates/mineui-core + src-tauri)
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
