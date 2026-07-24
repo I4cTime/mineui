@@ -1,8 +1,12 @@
 //! World backups (contract §3.8).
 //!
 //! Advanced: argv-array `tar`/`mv`/`rm` execs in the container (constant
-//! `sh -c` only for the stat listing, zero interpolation). Simple: host-side
-//! tar.gz via the `tar` + `flate2` crates.
+//! `sh -c` only for the stat listing, zero interpolation). Restore requires
+//! the server stopped, and `exec` cannot run in a stopped container — so
+//! restore runs its `test`/`mv`/`tar` steps in a throwaway helper container
+//! sharing the target's volumes (`run --rm --volumes-from`, still pure argv;
+//! verified live against rootless podman 4.9.3). Simple: host-side tar.gz via
+//! the `tar` + `flate2` crates.
 
 use crate::error::{Error, Result};
 use crate::model::BackupEntry;
@@ -211,15 +215,24 @@ pub async fn restore(core: &crate::Core, filename: &str) -> Result<()> {
             let world_dir = settings.advanced.world_dir.clone();
             let archive = format!("/data/backups/{filename}");
 
-            let exists = runtime.exec(name, &["test", "-f", &archive]).await?;
+            // The container is stopped here (require_stopped above), so every
+            // step runs in a helper container over the same volumes — `exec`
+            // would fail with "can only … on running containers".
+            let exists = runtime
+                .run_with_volumes_from(name, &["test", "-f", &archive])
+                .await?;
             if !exists.success() {
                 return Err(Error::InvalidInput(format!("backup not found: {filename}")));
             }
             let world_abs = format!("/data/{world_dir}");
-            let world_present = runtime.exec(name, &["test", "-d", &world_abs]).await?;
+            let world_present = runtime
+                .run_with_volumes_from(name, &["test", "-d", &world_abs])
+                .await?;
             if world_present.success() {
                 let preserved = format!("/data/{world_dir}.pre-restore-{stamp}");
-                let mv = runtime.exec(name, &["mv", &world_abs, &preserved]).await?;
+                let mv = runtime
+                    .run_with_volumes_from(name, &["mv", &world_abs, &preserved])
+                    .await?;
                 if !mv.success() {
                     return Err(Error::Io(format!(
                         "failed to preserve current world: {}",
@@ -228,7 +241,7 @@ pub async fn restore(core: &crate::Core, filename: &str) -> Result<()> {
                 }
             }
             let tar = runtime
-                .exec(name, &["tar", "-xzf", &archive, "-C", "/data"])
+                .run_with_volumes_from(name, &["tar", "-xzf", &archive, "-C", "/data"])
                 .await?;
             if !tar.success() {
                 return Err(Error::Io(format!("restore failed: {}", tar.stderr)));

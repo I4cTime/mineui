@@ -106,7 +106,10 @@ pub fn is_done_line(line: &str) -> bool {
 }
 
 /// Normalize a runtime-reported timestamp to RFC 3339, best effort.
-/// Podman inspect: "2026-07-23 10:00:00.123456789 +0000 UTC";
+/// Podman inspect: "2026-07-23 10:00:00.123456789 +0000 UTC" — but the zone
+/// abbreviation follows the host's local zone (live 4.9.3:
+/// "2026-07-24 15:50:31.847979382 -0500 CDT"), so any trailing alphabetic
+/// zone name is stripped (the numeric offset is what gets parsed).
 /// Docker inspect: "2026-07-23T10:00:00.123456789Z".
 pub fn normalize_timestamp(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -116,9 +119,16 @@ pub fn normalize_timestamp(raw: &str) -> Option<String> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(trimmed) {
         return Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
     }
-    let without_utc = trimmed.trim_end_matches(" UTC").trim();
+    // Strip a trailing zone abbreviation ("UTC", "CDT", ...) — chrono's %z
+    // parses the numeric offset only.
+    let without_zone_name = match trimmed.rsplit_once(' ') {
+        Some((head, tail)) if !tail.is_empty() && tail.chars().all(|c| c.is_ascii_alphabetic()) => {
+            head.trim()
+        }
+        _ => trimmed,
+    };
     for fmt in ["%Y-%m-%d %H:%M:%S%.f %z", "%Y-%m-%d %H:%M:%S %z"] {
-        if let Ok(dt) = chrono::DateTime::parse_from_str(without_utc, fmt) {
+        if let Ok(dt) = chrono::DateTime::parse_from_str(without_zone_name, fmt) {
             return Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
         }
     }
@@ -234,6 +244,17 @@ mod tests {
         assert!(normalize_timestamp("2026-07-23 10:00:00.123456789 +0000 UTC").is_some());
         assert_eq!(normalize_timestamp("0001-01-01T00:00:00Z"), None);
         assert_eq!(normalize_timestamp(""), None);
+    }
+
+    #[test]
+    fn normalize_timestamp_local_zone_abbreviation() {
+        // Verbatim podman 4.9.3 `inspect -f {{.State.StartedAt}}` output on a
+        // host in America/Chicago — the old parser only stripped " UTC" and
+        // returned None for this.
+        let normalized = normalize_timestamp("2026-07-24 15:50:31.847979382 -0500 CDT").unwrap();
+        assert_eq!(normalized, "2026-07-24T15:50:31.847-05:00");
+        // No zone abbreviation at all (offset only) also parses.
+        assert!(normalize_timestamp("2026-07-24 15:50:31 -0500").is_some());
     }
 
     #[test]

@@ -118,8 +118,21 @@ pub async fn write(core: &crate::Core, path: &str, content: &str) -> Result<()> 
     match settings.active_mode {
         Mode::Advanced => {
             let abs = crate::validate::join_under_root(std::path::Path::new(ADVANCED_ROOT), path)?;
+            let parent = abs
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| ADVANCED_ROOT.to_string());
             let abs = abs.to_string_lossy().to_string();
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
+
+            // `cp` cannot create missing parent directories (verified live:
+            // rootless podman 4.9.3 fails with "could not be found on
+            // container" when /data/config does not exist yet). Best-effort
+            // mkdir, mirroring mods::place_file; a real failure surfaces via
+            // the cp below.
+            let _ = runtime
+                .exec(&settings.advanced.container_name, &["mkdir", "-p", &parent])
+                .await;
 
             let tmp_dir = core.paths.data_dir.join("tmp");
             tokio::fs::create_dir_all(&tmp_dir)

@@ -53,7 +53,14 @@ pub trait Runtime: Send + Sync {
     /// Spawn `logs --follow --tail 0 <name>`; caller owns the child.
     async fn spawn_follow_logs(&self, name: &str) -> Result<tokio::process::Child>;
     /// `exec <name> <argv...>` — argv array, never a shell string.
+    /// Only works on a **running** container.
     async fn exec(&self, name: &str, argv: &[&str]) -> Result<ExecOutput>;
+    /// `run --rm --volumes-from <name> --entrypoint <argv0> <image> <argv1..>`
+    /// where `<image>` is `<name>`'s own image (via inspect). Unlike `exec`
+    /// this works while the container is **stopped** (verified live on
+    /// rootless podman 4.9.3) — restore uses it, since restore requires the
+    /// server stopped and `exec` cannot run in a stopped container.
+    async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput>;
     /// `cp <host_src> <name>:<container_dest>`.
     async fn cp_to(&self, name: &str, host_src: &Path, container_dest: &str) -> Result<()>;
     /// `stats --no-stream --format json <name>`.
@@ -103,9 +110,11 @@ impl CliBackend {
                 Error::RuntimeNotFound(format!("failed to run {}: {e}", self.binary))
             })?;
         Ok(ExecOutput {
-            stdout: String::from_utf8_lossy(&output.stdout)
-                .trim_end()
-                .to_string(),
+            // stdout must stay raw: `exec cat` powers read_config_file, and
+            // trimming here silently ate files' trailing newlines (caught by
+            // the live round-trip test). Parsers trim at their own call
+            // sites; stderr is only ever used in error messages.
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr)
                 .trim_end()
                 .to_string(),
@@ -121,9 +130,9 @@ impl CliBackend {
                 self.binary,
                 args.first().unwrap_or(&""),
                 if out.stderr.is_empty() {
-                    &out.stdout
+                    out.stdout.trim_end()
                 } else {
-                    &out.stderr
+                    out.stderr.as_str()
                 }
             )));
         }
@@ -276,6 +285,36 @@ impl Runtime for CliBackend {
         self.run(&args).await
     }
 
+    async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput> {
+        let image_out = self.run(&["inspect", "-f", "{{.Image}}", name]).await?;
+        if !image_out.success() {
+            return Err(Error::ContainerNotFound(format!(
+                "cannot inspect container '{name}': {}",
+                image_out.stderr
+            )));
+        }
+        let image = image_out.stdout.trim().to_string();
+        if image.is_empty() {
+            return Err(Error::ContainerNotFound(format!(
+                "container '{name}' has no image"
+            )));
+        }
+        let Some((entrypoint, rest)) = argv.split_first() else {
+            return Err(Error::Internal("helper run needs a non-empty argv".into()));
+        };
+        let mut args: Vec<&str> = vec![
+            "run",
+            "--rm",
+            "--volumes-from",
+            name,
+            "--entrypoint",
+            entrypoint,
+            &image,
+        ];
+        args.extend_from_slice(rest);
+        self.run(&args).await
+    }
+
     async fn cp_to(&self, name: &str, host_src: &Path, container_dest: &str) -> Result<()> {
         let src = host_src.to_string_lossy().to_string();
         let dest = format!("{name}:{container_dest}");
@@ -335,6 +374,9 @@ macro_rules! delegate_runtime {
             }
             async fn exec(&self, name: &str, argv: &[&str]) -> Result<ExecOutput> {
                 self.0.exec(name, argv).await
+            }
+            async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput> {
+                self.0.run_with_volumes_from(name, argv).await
             }
             async fn cp_to(&self, name: &str, host_src: &Path, dest: &str) -> Result<()> {
                 self.0.cp_to(name, host_src, dest).await
@@ -506,6 +548,78 @@ mod tests {
         assert_eq!(stats.net_input_bytes, Some(1000));
         assert_eq!(stats.net_output_bytes, Some(2000));
         assert_eq!(stats.block_output_bytes, Some(3_000_000));
+    }
+
+    #[test]
+    fn parses_stats_podman_493_snake_case_keys() {
+        // Verbatim (trimmed) `podman stats --no-stream --format json` from a
+        // live rootless podman 4.9.3 — snake_case keys, decimal units,
+        // lowercase "kB" spelling.
+        let stdout = r#"[
+ {
+  "id": "9758e78b8c7e",
+  "name": "minecraft-server",
+  "cpu_time": "51.374424s",
+  "cpu_percent": "190.35%",
+  "avg_cpu": "190.35%",
+  "mem_usage": "1.895GB / 33.31GB",
+  "mem_percent": "5.69%",
+  "net_io": "61.69MB / 126kB",
+  "block_io": "0B / 0B",
+  "pids": "104"
+ }
+]"#;
+        let stats = parse_stats_json(stdout);
+        assert_eq!(stats.cpu_percent, Some(190.35));
+        assert_eq!(stats.mem_used_bytes, Some(1_895_000_000));
+        assert_eq!(stats.mem_total_bytes, Some(33_310_000_000));
+        assert_eq!(stats.mem_percent, Some(5.69));
+        assert_eq!(stats.net_input_bytes, Some(61_690_000));
+        assert_eq!(stats.net_output_bytes, Some(126_000));
+        assert_eq!(stats.block_input_bytes, Some(0));
+        assert_eq!(stats.block_output_bytes, Some(0));
+    }
+
+    #[test]
+    fn parses_stats_podman_493_stopped_container_zeros() {
+        // podman 4.9.3 `stats` on a *stopped* container exits 0 and reports
+        // zeroed values (it does not fail as docker does) — verified live.
+        let stdout = r#"[{"id":"9758e78b8c7e","name":"minecraft-server","cpu_percent":"0.00%","mem_usage":"0B / 0B","mem_percent":"0.00%","net_io":"0B / 0B","block_io":"0B / 0B","pids":"0"}]"#;
+        let stats = parse_stats_json(stdout);
+        assert_eq!(stats.cpu_percent, Some(0.0));
+        assert_eq!(stats.mem_used_bytes, Some(0));
+        assert_eq!(stats.mem_total_bytes, Some(0));
+    }
+
+    #[test]
+    fn parses_podman_493_ps_shape() {
+        // Trimmed verbatim `podman ps --all --filter name=^minecraft-server$
+        // --format json` from live podman 4.9.3: note the human-relative
+        // "CreatedAt" string and the *numeric* "Created"/"StartedAt" epochs
+        // (which str_field correctly ignores — startedAt comes from inspect).
+        let stdout = r#"[
+  {
+    "CreatedAt": "16 seconds ago",
+    "Exited": false,
+    "ExitCode": 0,
+    "Id": "9758e78b8c7e18bbb13686245be58c4e9a26b9415bd05b2dcc4cd60b01385bd2",
+    "Image": "docker.io/itzg/minecraft-server:latest",
+    "Names": ["minecraft-server"],
+    "StartedAt": 1784926231,
+    "State": "running",
+    "Status": "Up 16 seconds",
+    "Created": 1784926231
+  }
+]"#;
+        let entry = parse_ps_json(stdout).unwrap();
+        assert_eq!(str_field(&entry, &["State", "Status"]).unwrap(), "running");
+        assert!(str_field(&entry, &["Id", "ID"])
+            .unwrap()
+            .starts_with("9758e78b"));
+        assert_eq!(
+            str_field(&entry, &["CreatedAt", "Created"]).unwrap(),
+            "16 seconds ago"
+        );
     }
 
     #[test]
