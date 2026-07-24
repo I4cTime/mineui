@@ -20,6 +20,7 @@ import "@fontsource/commit-mono/latin-500.css";
 
 import "./globals.css";
 import Navbar from "@/app/components/Navbar";
+import ModeProvider from "@/app/components/ModeProvider";
 
 export const metadata: Metadata = {
   title: "MineUI",
@@ -39,9 +40,11 @@ export default function RootLayout({
             for users with the OS-level preference set, app-wide, without
             every component needing its own useReducedMotion() branch. */}
         <MotionConfig reducedMotion="user">
-          <Navbar />
-          {children}
-          <Toast.Provider placement="bottom end" />
+          <ModeProvider>
+            <Navbar />
+            {children}
+            <Toast.Provider placement="bottom end" />
+          </ModeProvider>
         </MotionConfig>
       </body>
     </html>

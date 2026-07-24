@@ -33,12 +33,12 @@ import {
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
+import { useMode } from "@/app/components/ModeProvider";
 import { pickModFile } from "@/app/lib/dialog";
 import { listStagger, scaleIn, transition } from "@/app/lib/motion";
 import {
   deleteMod,
   downloadMod,
-  getServerState,
   listMods,
   onDownloadProgress,
   uploadMod,
@@ -55,7 +55,10 @@ export default function ModsPage() {
   const cardMotion = scaleIn();
   const [mods, setMods] = useState<ModsList | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSimpleMode, setIsSimpleMode] = useState(false);
+  // Shared app-wide mode (app/components/ModeProvider.tsx) — reacts live to a
+  // navbar toggle instead of the old per-mount getServerState() snapshot.
+  const { mode } = useMode();
+  const isSimpleMode = mode === "simple";
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "mods" | "plugins">("all");
   const [sort, setSort] = useState<"name-asc" | "name-desc" | "size-desc" | "updated-desc">("name-asc");
@@ -83,9 +86,6 @@ export default function ModsPage() {
 
   useEffect(() => {
     refreshMods().finally(() => setLoading(false));
-    getServerState()
-      .then((state) => setIsSimpleMode(state.mode === "simple"))
-      .catch(() => {});
   }, [refreshMods]);
 
   const normalize = (value: string) => value.toLowerCase().trim();

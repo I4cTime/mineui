@@ -8,6 +8,7 @@ import { interactiveTransition, transition } from "@/app/lib/motion";
 import {
   Archive,
   Boxes,
+  Container,
   Gauge,
   Menu,
   ScrollText,
@@ -16,6 +17,7 @@ import {
   Shield,
   Users,
   Coffee,
+  Sparkles,
   Volume2,
   VolumeX,
   X,
@@ -29,9 +31,14 @@ import {
   Select,
   Separator,
   Surface,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@heroui/react";
+import type { Key } from "@heroui/react";
 import Logo from "./Logo";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
+import { useMode } from "@/app/components/ModeProvider";
+import type { Mode } from "@/app/lib/ipc";
 
 // Registry per docs/theme-contract.md §1. Legacy ids (emerald/ember/aether/
 // void) have no CSS block anymore and resolve to :root = deepslate; any
@@ -126,6 +133,7 @@ export default function Navbar() {
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
   const { play } = useUISound();
+  const { mode, switching, setMode } = useMode();
   const currentTheme = typeof theme === "string" ? theme : DEFAULT_THEME;
 
   useEffect(() => {
@@ -159,6 +167,16 @@ export default function Navbar() {
     if (newTheme === null) return;
     play("toggle_on");
     setTheme(String(newTheme));
+  };
+
+  // Shared by the desktop control and its mobile-menu duplicate below.
+  // Simple is the base/"off" state, Advanced is the "on" (more-powered) one —
+  // same on/off sense the sound toggle already uses toggle_on/toggle_off for.
+  const handleModeChange = (keys: Set<Key>) => {
+    const next = Array.from(keys)[0] as Mode | undefined;
+    if (!next || next === mode) return;
+    play(next === "advanced" ? "toggle_on" : "toggle_off");
+    setMode(next);
   };
 
   const toggleSound = () => {
@@ -205,8 +223,11 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Desktop Nav */}
-        <div className="relative z-10 hidden items-center gap-1 md:flex">
+        {/* Desktop Nav. gap-0.5 (not gap-1): the last few px needed to fit
+            the new mode toggle in the right-controls group at 1280px —
+            see that control's comment for the full set of changes and
+            measurements this was verified against. */}
+        <div className="relative z-10 hidden items-center gap-0.5 md:flex">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -238,8 +259,13 @@ export default function Navbar() {
           })}
         </div>
 
-        {/* Right controls */}
-        <div className="relative z-10 flex items-center gap-2">
+        {/* Right controls. gap-1 (not the gap-2 the rest of this file's
+            control rows use): with the mode toggle added, gap-2 here left
+            the theme picker's trigger ~17px past the 1280px viewport this
+            must fit (measured: getBoundingClientRect().right vs
+            window.innerWidth) even after deferring the Ko-fi button below
+            (see that control's comment) — this closes the rest of it. */}
+        <div className="relative z-10 flex items-center gap-1">
           {/* Sound toggle */}
           <Button
             isIconOnly
@@ -250,6 +276,51 @@ export default function Navbar() {
           >
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </Button>
+
+          {/* Simple/Advanced mode switch. Persists app-wide via ModeProvider
+              (app/components/ModeProvider.tsx) — every page reads the same
+              context, so this and the Settings page "Mode" section always
+              agree without a remount.
+
+              Two measured fit constraints shaped this, not assumption (the
+              picker-width lesson this comment references):
+              1. Icon-only, always: with text labels shown at `sm`+ (the
+                 design's first draft) the row's scrollWidth measured 1414px
+                 against a 1152px content box at 1280px viewport — a ~260px
+                 overflow, because the row already carries 8 full-label nav
+                 items. Icon-only removes ~120px and the row fits at 1280px
+                 (with the Ko-fi-defers-to-1340px change below).
+              2. `hidden md:flex` (not shown below `md`): this navbar had
+                 *zero* width slack at 390px even in the pre-existing code
+                 with nothing added (measured: scrollWidth === innerWidth) —
+                 the exact same tightness the Select's own w-32-below-`sm`
+                 comment already documents. `md` is also where the desktop
+                 nav items and (originally) Ko-fi already disappear, i.e.
+                 where this navbar already "collapses" — so hiding here too
+                 isn't a new threshold, it's the existing one. Below `md`,
+                 the mode toggle lives only in the mobile-menu duplicate
+                 (full "Simple"/"Advanced" labels, plenty of row width there)
+                 instead of this control; `aria-label` here keeps the
+                 accessible name (e.g. "Switch to Simple mode") intact at
+                 `md`+ regardless of the icon-only display. */}
+          <ToggleButtonGroup
+            aria-label="App mode"
+            size="sm"
+            selectionMode="single"
+            disallowEmptySelection
+            isDisabled={switching}
+            selectedKeys={[mode]}
+            onSelectionChange={handleModeChange}
+            className="hidden md:flex"
+          >
+            <ToggleButton id="simple" isIconOnly aria-label="Switch to Simple mode">
+              <Sparkles size={14} />
+            </ToggleButton>
+            <ToggleButton id="advanced" isIconOnly aria-label="Switch to Advanced mode">
+              <ToggleButtonGroup.Separator />
+              <Container size={14} />
+            </ToggleButton>
+          </ToggleButtonGroup>
 
           {/* Theme selector. Fixed widths (not min-width) so switching
               between theme names never shifts navbar layout. sm:w-48
@@ -292,9 +363,17 @@ export default function Navbar() {
             </Select.Popover>
           </Select>
 
-          {/* Ko-fi popover */}
+          {/* Ko-fi popover. Deferred from `md:block` to a wider custom
+              breakpoint: this row had zero width slack at 1280px even
+              before the mode toggle existed (measured: scrollWidth ===
+              innerWidth with nothing added), so the toggle's own footprint
+              had nowhere to come from without removing something. This is
+              the one non-essential control in the row (a support link, not
+              app functionality) and the mode toggle is unconditional
+              functionality, so it steps aside in the 768–1339px band and
+              reappears once there's genuinely room. */}
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
-            <Popover.Trigger className="hidden md:block">
+            <Popover.Trigger className="hidden min-[1340px]:block">
               <Button
                 isIconOnly
                 variant="ghost"
@@ -363,6 +442,28 @@ export default function Navbar() {
                 );
               })}
               <Separator className="my-2" />
+              <div className="flex flex-col gap-2">
+                <Label>Mode</Label>
+                <ToggleButtonGroup
+                  aria-label="App mode"
+                  selectionMode="single"
+                  disallowEmptySelection
+                  isDisabled={switching}
+                  fullWidth
+                  selectedKeys={[mode]}
+                  onSelectionChange={handleModeChange}
+                >
+                  <ToggleButton id="simple" aria-label="Switch to Simple mode">
+                    <Sparkles size={16} />
+                    Simple
+                  </ToggleButton>
+                  <ToggleButton id="advanced" aria-label="Switch to Advanced mode">
+                    <ToggleButtonGroup.Separator />
+                    <Container size={16} />
+                    Advanced
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </div>
               <Select
                 className="w-full"
                 placeholder="Theme"

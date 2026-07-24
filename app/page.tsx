@@ -19,6 +19,7 @@ import {
 import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/react";
 import { EmptyState, KPI, NumberValue } from "@heroui-pro/react";
 import { useUISound } from "@/app/hooks/useUISound";
+import { useMode } from "@/app/components/ModeProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
 import {
@@ -86,22 +87,33 @@ export default function Home() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const logsRef = useRef<HTMLDivElement>(null);
   const { play } = useUISound();
+  // Shared app-wide mode (app/components/ModeProvider.tsx) — not derived from
+  // this page's own `settings` fetch anymore, so a navbar toggle updates this
+  // page live instead of only on next remount. `settings` below is kept only
+  // for fields useMode() doesn't carry (e.g. simple.memoryMb for
+  // CreateServerFlow's default).
+  const { mode, loading: modeLoading } = useMode();
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
   const maxPlayers = status?.players.max ?? 0;
 
-  const isSimple = settings?.activeMode === "simple";
+  const isSimple = mode === "simple";
   const needsOnboarding =
     isSimple && instance !== null && !instance.exists;
   const showDashboard = !loading && backendError === null && !needsOnboarding;
 
+  // Depends on `mode`/`modeLoading` so a live mode toggle (no remount) also
+  // refetches the mode-dependent data below (instanceStatus is simple-mode
+  // only) instead of leaving this page showing stale data for the old mode
+  // (docs/theme-contract.md's live-mode-toggle requirement).
   const bootstrap = useCallback(async () => {
+    if (modeLoading) return; // wait for the provider's first mode read
     try {
       const loadedSettings = await getSettings();
       setSettings(loadedSettings);
       setServerState(await getServerState());
-      if (loadedSettings.activeMode === "simple") {
+      if (mode === "simple") {
         setInstance(await instanceStatus());
       } else {
         setInstance(null);
@@ -114,7 +126,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mode, modeLoading]);
 
   useEffect(() => {
     bootstrap();
@@ -393,7 +405,17 @@ export default function Home() {
           />
         ) : (
           <>
-            <motion.section variants={cardMotion}>
+            {/* Live mode toggling (no remount) means this branch can now
+                mount for the first time well after the page's initial
+                containerMotion stagger already resolved (previously this
+                only ever mounted at first paint or after a full-page
+                setLoading(true) remount) — must drive its own enter
+                animation per the same fix as commit 1090c51. */}
+            <motion.section
+              variants={cardMotion}
+              initial="hidden"
+              animate="show"
+            >
               <Card className="p-5">
                 <Card.Header className="flex flex-row items-center justify-between gap-3">
                   <div className="flex items-center gap-3 text-sm text-accent">
@@ -440,9 +462,15 @@ export default function Home() {
               </Card>
             </motion.section>
 
+            {/* Same late-mount rule as the Server Logs section above — this
+                stagger container itself must re-fire its entrance so its
+                cardMotion children animate in instead of inheriting a
+                long-settled parent state. */}
             <motion.section
               className="grid gap-6 md:grid-cols-3"
               variants={containerMotion}
+              initial="hidden"
+              animate="show"
             >
               <motion.div variants={cardMotion}>
                 <KPI className="flex h-full flex-col p-5">

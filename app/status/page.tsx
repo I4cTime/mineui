@@ -14,6 +14,7 @@ import {
 import { Card, Chip, ProgressCircle } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { SkeletonCard } from "@/app/components/Skeleton";
+import { useMode } from "@/app/components/ModeProvider";
 import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   getMetrics,
@@ -101,6 +102,13 @@ export default function StatusPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [serverState, setServerState] = useState<ServerState | null>(null);
   const [loading, setLoading] = useState(true);
+  // Shared app-wide mode (app/components/ModeProvider.tsx), not the
+  // payload's own `serverState.mode` — this is what makes the "Container:"/
+  // "Process:" labeling below (and the network/disk-IO fallback copy)
+  // update the instant a navbar toggle fires instead of waiting on the next
+  // 30s poll or state event to notice the backend agrees.
+  const { mode } = useMode();
+  const isSimple = mode === "simple";
 
   useEffect(() => {
     const fetchAll = () => {
@@ -131,19 +139,19 @@ export default function StatusPage() {
       disposed = true;
       unlisten?.();
     };
-  }, []);
-
-  const isSimple = serverState?.mode === "simple";
+    // Re-run on a mode toggle so this page refetches immediately instead of
+    // showing data fetched under the previous mode until the next poll/event.
+  }, [mode]);
 
   const stateSummary = useMemo(() => {
     if (!serverState) return "unknown";
-    if (serverState.mode === "advanced") {
+    if (mode === "advanced") {
       return serverState.container?.status ?? serverState.phase;
     }
     return serverState.process?.pid
       ? `${serverState.phase} (pid ${serverState.process.pid})`
       : serverState.phase;
-  }, [serverState]);
+  }, [serverState, mode]);
 
   const tpsDisplay = useMemo(() => {
     if (!metrics?.tps) return "—";

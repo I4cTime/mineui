@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
-  Coffee,
+  Sparkles,
   Container,
   RefreshCw,
   Save,
@@ -26,6 +26,7 @@ import {
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { useUISound } from "@/app/hooks/useUISound";
+import { useMode } from "@/app/components/ModeProvider";
 import { listStagger, scaleIn } from "@/app/lib/motion";
 import {
   deleteInstance,
@@ -38,7 +39,6 @@ import {
   type AdvancedModeSettings,
   type InstanceStatus,
   type JavaCheck,
-  type Mode,
   type RuntimeKind,
   type RuntimeProbe,
   type Settings,
@@ -66,6 +66,16 @@ export default function SettingsPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { play } = useUISound();
+  // Shared app-wide mode (app/components/ModeProvider.tsx). Mode switching
+  // lives here now, not in the draft/Save flow below — clicking Simple/
+  // Advanced persists instantly through the same path the navbar toggle
+  // uses, so this section and the navbar always agree.
+  const {
+    mode,
+    switching: modeSwitching,
+    setMode: setSharedMode,
+    refresh: refreshMode,
+  } = useMode();
 
   const recheckJava = useCallback(() => {
     setJavaChecking(true);
@@ -106,9 +116,10 @@ export default function SettingsPage() {
       prev ? { ...prev, advanced: { ...prev.advanced, ...patch } } : prev,
     );
 
-  const setMode = (mode: Mode) => {
-    play("toggle_on");
-    setDraft((prev) => (prev ? { ...prev, activeMode: mode } : prev));
+  const handleModeChange = (nextMode: "simple" | "advanced") => {
+    if (nextMode === mode) return;
+    play(nextMode === "advanced" ? "toggle_on" : "toggle_off");
+    setSharedMode(nextMode);
   };
 
   const saveSettings = async () => {
@@ -118,6 +129,11 @@ export default function SettingsPage() {
     try {
       const normalized = await saveSettingsIpc({
         ...draft,
+        // The mode buttons below persist through ModeProvider the instant
+        // they're pressed, not through this draft — draft.activeMode can be
+        // stale (loaded before a navbar toggle happened elsewhere). Always
+        // send the provider's current mode so Save can't stomp that toggle.
+        activeMode: mode,
         rconAllowlist: allowlistText
           .split(",")
           .map((item) => item.trim().toLowerCase())
@@ -125,6 +141,9 @@ export default function SettingsPage() {
       });
       setDraft(normalized);
       setAllowlistText(normalized.rconAllowlist.join(", "));
+      // Re-sync ModeProvider in case the backend normalized activeMode to
+      // something other than what we sent.
+      await refreshMode();
       play("success");
       toast.success("Settings saved");
     } catch (error) {
@@ -143,6 +162,7 @@ export default function SettingsPage() {
       toast.success("Instance deleted");
       setInstance(await instanceStatus().catch(() => null));
       setDraft(await getSettings());
+      await refreshMode();
     } catch (error) {
       play("error");
       toast.danger(
@@ -209,7 +229,7 @@ export default function SettingsPage() {
     );
   }
 
-  const isSimple = draft.activeMode === "simple";
+  const isSimple = mode === "simple";
 
   return (
     <div
@@ -239,15 +259,17 @@ export default function SettingsPage() {
             <Card.Content className="mt-4 flex flex-wrap gap-3">
               <Button
                 variant={isSimple ? "primary" : "secondary"}
-                onPress={() => setMode("simple")}
+                isDisabled={modeSwitching}
+                onPress={() => handleModeChange("simple")}
                 onMouseEnter={() => play("hover")}
               >
-                <Coffee size={16} />
+                <Sparkles size={16} />
                 Simple
               </Button>
               <Button
                 variant={!isSimple ? "primary" : "secondary"}
-                onPress={() => setMode("advanced")}
+                isDisabled={modeSwitching}
+                onPress={() => handleModeChange("advanced")}
                 onMouseEnter={() => play("hover")}
               >
                 <Container size={16} />
