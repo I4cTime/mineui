@@ -64,6 +64,27 @@ const themes = [
 const THEME_IDS = themes.map((item) => item.id);
 const DEFAULT_THEME = "deepslate";
 
+// Select.Value's default render shows the selected ListBox.Item's full
+// children (Label + Description both — see HeroUI docs "Custom Value"
+// example, which needs this same override to avoid leaking item
+// descriptions into the trigger). Render just the theme name so the closed
+// trigger stays compact; the Label + Description pair below remains
+// dropdown-only.
+const renderThemeValue = ({
+  defaultChildren,
+  isPlaceholder,
+  state,
+}: {
+  defaultChildren: React.ReactNode;
+  isPlaceholder: boolean;
+  state: { selectedItems: { key: React.Key }[] };
+}) => {
+  if (isPlaceholder || state.selectedItems.length === 0) return defaultChildren;
+  const selected = themes.find((item) => item.id === state.selectedItems[0]?.key);
+  if (!selected) return defaultChildren;
+  return <span className="truncate">{selected.label}</span>;
+};
+
 const navItems = [
   { href: "/", label: "Dashboard", icon: Server },
   { href: "/status", label: "Status", icon: Gauge },
@@ -218,7 +239,7 @@ export default function Navbar() {
           >
             <Label className="sr-only">Theme</Label>
             <Select.Trigger onMouseEnter={() => play("hover")}>
-              <Select.Value />
+              <Select.Value>{renderThemeValue}</Select.Value>
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover>
@@ -317,7 +338,7 @@ export default function Navbar() {
               >
                 <Label>Theme</Label>
                 <Select.Trigger>
-                  <Select.Value />
+                  <Select.Value>{renderThemeValue}</Select.Value>
                   <Select.Indicator />
                 </Select.Trigger>
                 <Select.Popover>

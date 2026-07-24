@@ -58,8 +58,16 @@ const formatUptime = (metrics: Metrics | null) => {
   return `${hours}h ${minutes}m`;
 };
 
-// Composes core ProgressCircle at a fixed 110px/8px-stroke size (matches the
-// previous hand-rolled SVG ring) with a centered value/sublabel overlay.
+// Composes core ProgressCircle at a ~110px size with a centered value/sublabel
+// overlay. HeroUI's ProgressCircle keeps a fixed internal 36x36 viewBox/radius
+// (see progress-circle.tsx: CENTER/RADIUS/CIRCUMFERENCE are module constants)
+// and scales purely via the `.progress-circle__track` CSS box size — the
+// FillCircle's stroke-dasharray/dashoffset are computed from that fixed
+// radius, so overriding cx/cy/r/strokeWidth/viewBox to arbitrary values (as
+// this previously did) desyncs the dash math from the actual rendered
+// circle, producing tiny broken arc fragments. Enlarge via a Tailwind size
+// class on Track only, per the documented "Sizes"/"Passing Tailwind CSS
+// classes" pattern — never touch the SVG geometry props.
 function MetricRing({
   value,
   label,
@@ -71,10 +79,10 @@ function MetricRing({
 }) {
   return (
     <div className="relative inline-flex size-27.5 items-center justify-center">
-      <ProgressCircle aria-label={`${sublabel} usage`} className="size-27.5" color="accent" value={value}>
-        <ProgressCircle.Track cx={55} cy={55} r={51} strokeWidth={8} viewBox="0 0 110 110">
-          <ProgressCircle.TrackCircle cx={55} cy={55} r={51} strokeWidth={8} />
-          <ProgressCircle.FillCircle cx={55} cy={55} r={51} strokeWidth={8} />
+      <ProgressCircle aria-label={`${sublabel} usage`} color="accent" value={value}>
+        <ProgressCircle.Track className="size-27.5">
+          <ProgressCircle.TrackCircle />
+          <ProgressCircle.FillCircle />
         </ProgressCircle.Track>
       </ProgressCircle>
       <div className="absolute flex flex-col items-center justify-center text-center">

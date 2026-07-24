@@ -1,30 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { ArrowLeft, type LucideIcon } from "lucide-react";
-import { Button, Card } from "@heroui/react";
-import { useUISound } from "@/app/hooks/useUISound";
+import { type LucideIcon } from "lucide-react";
+import { Card } from "@heroui/react";
 import { fadeUp, transition } from "@/app/lib/motion";
 
 interface PageHeaderProps {
   title: string;
   icon?: LucideIcon;
-  backHref?: string;
-  backLabel?: string;
   actions?: React.ReactNode;
 }
 
-export default function PageHeader({
-  title,
-  icon: Icon,
-  backHref = "/",
-  backLabel = "Back to dashboard",
-  actions,
-}: PageHeaderProps) {
-  const router = useRouter();
-  const { play } = useUISound();
-
+export default function PageHeader({ title, icon: Icon, actions }: PageHeaderProps) {
   return (
     <motion.header
       className="w-full"
@@ -50,20 +37,9 @@ export default function PageHeader({
               </h1>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {actions}
-            <Button
-              variant="secondary"
-              onPress={() => {
-                play("click_back");
-                router.push(backHref);
-              }}
-              onMouseEnter={() => play("hover")}
-            >
-              <ArrowLeft size={16} />
-              {backLabel}
-            </Button>
-          </div>
+          {actions && (
+            <div className="flex flex-wrap items-center gap-3">{actions}</div>
+          )}
         </Card.Header>
       </Card>
     </motion.header>
