@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import {
   Coffee,
   Container,
+  RefreshCw,
   Save,
   Settings as SettingsIcon,
   Shield,
@@ -60,10 +61,19 @@ export default function SettingsPage() {
   const [allowlistText, setAllowlistText] = useState("");
   const [instance, setInstance] = useState<InstanceStatus | null>(null);
   const [java, setJava] = useState<JavaCheck | null>(null);
+  const [javaChecking, setJavaChecking] = useState(false);
   const [runtimes, setRuntimes] = useState<RuntimeProbe | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { play } = useUISound();
+
+  const recheckJava = useCallback(() => {
+    setJavaChecking(true);
+    javaCheck()
+      .then(setJava)
+      .catch(() => setJava(null))
+      .finally(() => setJavaChecking(false));
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -282,25 +292,42 @@ export default function SettingsPage() {
                     {draft.simple.instanceDir}
                   </span>
                   {java && (
-                    <Chip
-                      variant="soft"
-                      color={
-                        java.found
-                          ? java.compatible === false
-                            ? "warning"
-                            : "success"
-                          : "warning"
-                      }
-                      className="w-fit"
-                    >
-                      {java.found
-                        ? `Java ${java.version ?? "?"}${
-                            java.requiredMajor !== null
-                              ? ` (needs ${java.requiredMajor}+)`
-                              : ""
-                          }`
-                        : "Java not found"}
-                    </Chip>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Chip
+                        variant="soft"
+                        color={
+                          java.found
+                            ? java.compatible === false
+                              ? "warning"
+                              : "success"
+                            : "warning"
+                        }
+                        className="w-fit"
+                      >
+                        {java.found
+                          ? `Java ${java.version ?? "?"}${
+                              java.requiredMajor !== null
+                                ? ` (needs ${java.requiredMajor}+)`
+                                : ""
+                            }`
+                          : "Java not found"}
+                      </Chip>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        isDisabled={javaChecking}
+                        onPress={() => {
+                          play("click_confirm");
+                          recheckJava();
+                        }}
+                      >
+                        <RefreshCw
+                          size={13}
+                          className={javaChecking ? "animate-spin" : undefined}
+                        />
+                        Re-check
+                      </Button>
+                    </div>
                   )}
                 </div>
 

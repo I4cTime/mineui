@@ -22,6 +22,7 @@ import {
   Download,
   HardDrive,
   Loader2,
+  RefreshCw,
   Rocket,
 } from "lucide-react";
 import { fadeUp, transition } from "@/app/lib/motion";
@@ -73,6 +74,7 @@ export default function CreateServerFlow({
   );
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [java, setJava] = useState<JavaCheck | null>(null);
+  const [javaChecking, setJavaChecking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
   const createdRef = useRef(false);
@@ -98,12 +100,18 @@ export default function CreateServerFlow({
       .finally(() => setVersionsLoading(false));
   }, []);
 
-  useEffect(() => {
-    loadVersions(false);
+  const recheckJava = useCallback(() => {
+    setJavaChecking(true);
     javaCheck()
       .then(setJava)
-      .catch(() => setJava(null));
-  }, [loadVersions]);
+      .catch(() => setJava(null))
+      .finally(() => setJavaChecking(false));
+  }, []);
+
+  useEffect(() => {
+    loadVersions(false);
+    recheckJava();
+  }, [loadVersions, recheckJava]);
 
   const handleCreate = async () => {
     if (!selectedVersion || !eulaAccepted || creating) return;
@@ -282,6 +290,21 @@ export default function CreateServerFlow({
                 <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
                   <Coffee size={14} />
                   Java
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    isDisabled={javaChecking}
+                    onPress={() => {
+                      play("click_confirm");
+                      recheckJava();
+                    }}
+                  >
+                    <RefreshCw
+                      size={13}
+                      className={javaChecking ? "animate-spin" : undefined}
+                    />
+                    Re-check
+                  </Button>
                 </span>
                 {java === null ? (
                   <span className="text-xs text-muted">Checking Java...</span>
@@ -309,7 +332,8 @@ export default function CreateServerFlow({
                       <code className="font-mono">
                         sudo apt install openjdk-21-jre-headless
                       </code>
-                      ) or set a Java path override in Settings, then try again.
+                      ) or set a Java path override in Settings, then hit
+                      Re-check.
                     </span>
                   </div>
                 )}
