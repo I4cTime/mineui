@@ -296,15 +296,23 @@ export default function Home() {
             <div className="relative">
               {/* Static glow — was an infinite 4s pulse loop; the contract
                   forbids ambient loops (docs/theme-contract.md §6), and the
-                  dashboard only budgets one (the online-status dot below). */}
+                  dashboard only budgets one (the online-status dot below).
+                  Shape is "ellipse farthest-side" (not the previous bare
+                  "circle", which defaults to farthest-corner sizing): on a
+                  box this much wider than tall, farthest-corner math makes
+                  the gradient's radius so large that the "transparent 70%"
+                  stop never resolves before the box's own top/bottom edges,
+                  so the halo was hard-cut there instead of fading out.
+                  farthest-side sizes each axis to its own edge, so the fade
+                  always completes symmetrically before any edge. */}
               <div
-                className="absolute -inset-4 rounded-full opacity-40"
+                className="pointer-events-none absolute -inset-8 opacity-40"
                 style={{
                   background:
-                    "radial-gradient(circle, color-mix(in oklab, var(--accent) 25%, transparent), transparent 70%)",
+                    "radial-gradient(ellipse farthest-side, color-mix(in oklab, var(--accent) 25%, transparent), transparent 70%)",
                 }}
               />
-              <h1 className="font-pixel text-2xl uppercase tracking-[0.2em] text-accent">
+              <h1 className="font-pixel text-2xl uppercase tracking-[0.2em] text-accent -mr-[0.2em]">
                 MineUI
               </h1>
             </div>

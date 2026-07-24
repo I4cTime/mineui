@@ -70,6 +70,27 @@ const DEFAULT_THEME = "deepslate";
 // descriptions into the trigger). Render just the theme name so the closed
 // trigger stays compact; the Label + Description pair below remains
 // dropdown-only.
+//
+// The rendered span sets its own `text-xs`: HeroUI's `.select__trigger`
+// hardcodes `text-sm`, and `.select__value` itself hardcodes
+// `text-base sm:text-sm` (16px below the `sm` breakpoint, 14px at/above
+// it) — both are direct declarations on those elements, so a `text-xs`
+// className on the outer <Select> (inherited, not direct) never wins
+// against them. Setting it directly on this span is what actually takes
+// effect, and it's also what keeps the trigger's fixed width (below)
+// correct on every viewport instead of only above `sm`.
+//
+// `block w-full` is load-bearing, not decoration: Tailwind's `truncate`
+// (overflow-hidden + text-overflow-ellipsis + whitespace-nowrap) only
+// clips an element that has a *constrained* width smaller than its
+// content. A bare inline <span> ignores `width` entirely, so `truncate`
+// alone silently did nothing — the text just overflowed the trigger's
+// border with no ellipsis (verified: shrinking the trigger below the
+// text's natural width left the label spilling past the rounded box).
+// `block w-full` lets the span take its ancestor's (constrained, see
+// Select.Value's `min-w-0` at both call sites) width instead of its own
+// content width, which is what lets the ellipsis actually engage as the
+// safety net the width choices below rely on.
 const renderThemeValue = ({
   defaultChildren,
   isPlaceholder,
@@ -82,7 +103,7 @@ const renderThemeValue = ({
   if (isPlaceholder || state.selectedItems.length === 0) return defaultChildren;
   const selected = themes.find((item) => item.id === state.selectedItems[0]?.key);
   if (!selected) return defaultChildren;
-  return <span className="truncate">{selected.label}</span>;
+  return <span className="block w-full truncate text-xs">{selected.label}</span>;
 };
 
 const navItems = [
@@ -230,16 +251,28 @@ export default function Navbar() {
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </Button>
 
-          {/* Theme selector */}
+          {/* Theme selector. Fixed widths (not min-width) so switching
+              between theme names never shifts navbar layout. sm:w-48
+              (192px) comfortably fits the longest name, "Deepslate &
+              Emerald" (~134px at the text-xs renderThemeValue forces
+              below), plus the trigger's px-3 start padding and pe-7
+              indicator reserve (HeroUI Select CSS). Below sm there isn't
+              enough row width for that without pushing the mobile-menu
+              toggle off-screen (icon-only sound + hamburger buttons +
+              gaps already claim most of a narrow viewport), so it's w-32
+              there and leans on the truncate safety net instead — see
+              renderThemeValue and its min-w-0 below for why truncation
+              needs both to actually engage rather than silently
+              overflowing the trigger's border. */}
           <Select
-            className="text-xs w-36"
+            className="w-32 shrink-0 sm:w-48"
             placeholder="Theme"
             value={theme}
             onChange={handleThemeChange}
           >
             <Label className="sr-only">Theme</Label>
             <Select.Trigger onMouseEnter={() => play("hover")}>
-              <Select.Value>{renderThemeValue}</Select.Value>
+              <Select.Value className="min-w-0">{renderThemeValue}</Select.Value>
               <Select.Indicator />
             </Select.Trigger>
             <Select.Popover>
@@ -275,8 +308,8 @@ export default function Navbar() {
             <Popover.Content className="p-0" placement="bottom end">
               <Popover.Dialog className="w-85 overflow-hidden rounded-xl">
                 <iframe
-                  src="https://ko-fi.com/i4cdeath/?hidefeed=true&widget=true&embed=true&preview=true"
-                  title="i4cdeath Ko-fi"
+                  src="https://ko-fi.com/i4ctime/?hidefeed=true&widget=true&embed=true&preview=true"
+                  title="i4ctime Ko-fi"
                   className="h-142.5 w-full"
                   style={{
                     border: "none",
@@ -331,14 +364,14 @@ export default function Navbar() {
               })}
               <Separator className="my-2" />
               <Select
-                className="w-full text-xs"
+                className="w-full"
                 placeholder="Theme"
                 value={theme}
                 onChange={handleThemeChange}
               >
                 <Label>Theme</Label>
                 <Select.Trigger>
-                  <Select.Value>{renderThemeValue}</Select.Value>
+                  <Select.Value className="min-w-0">{renderThemeValue}</Select.Value>
                   <Select.Indicator />
                 </Select.Trigger>
                 <Select.Popover>
