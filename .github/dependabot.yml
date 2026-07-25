@@ -7,6 +7,9 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"
     groups:
       npm-minor-patch:
         applies-to: version-updates
@@ -29,6 +32,9 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
     groups:
       cargo-minor-patch:
         applies-to: version-updates
@@ -42,6 +48,9 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github_actions"
     groups:
       actions-minor-patch:
         applies-to: version-updates
