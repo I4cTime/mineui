@@ -14,7 +14,7 @@
     "type": "git",
     "url": "https://github.com/I4cTime/mineui.git"
   },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "keywords": [
     "minecraft",
     "podman",

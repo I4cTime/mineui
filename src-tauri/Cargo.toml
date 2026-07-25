@@ -3,7 +3,7 @@ name = "mineui-tauri"
 version = "2.0.0"
 edition = "2021"
 description = "MineUI — Minecraft server manager (Tauri shell)"
-license = "MIT"
+license = "AGPL-3.0-only"
 
 [lib]
 name = "mineui_tauri_lib"
