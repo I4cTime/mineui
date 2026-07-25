@@ -86,4 +86,37 @@
   --motion-base: 300ms;
   --motion-slow: 500ms;
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* -- Header: floating glow rail (contract §9) -------------
+     Elevated translucent rail: blurred surface, cyan underglow
+     falling onto the page, cyan→violet gradient hairline at the
+     bottom edge. Tallest bar of the four. Active nav item =
+     cyan glow capsule. */
+  --header-height: 60px;
+  --header-inset: 0px;
+  --header-bg: color-mix(in oklab, var(--surface) 80%, transparent);
+  --header-blur: 14px;
+  --header-border: transparent;
+  --header-border-width: 0px;
+  --header-radius: 0px;
+  --header-shadow: 0 10px 32px -12px oklch(0.79 0.15 220 / 22%); /* cyan underglow */
+  --header-edge-top: transparent;
+  --header-edge-bottom: linear-gradient(
+    90deg,
+    transparent,
+    oklch(0.79 0.15 220 / 45%) 30%,
+    oklch(0.55 0.28 290 / 35%) 70%,
+    transparent
+  ); /* cyan→violet gradient hairline */
+  --nav-label-font: var(--font-display); /* Space Grotesk */
+  --nav-label-size: 0.8125rem; /* 13px */
+  --nav-label-weight: 500;
+  --nav-label-tracking: 0.02em;
+  --nav-label-case: none;
+  --nav-active-bg: #0a2833; /* cyan-tinted well (solid; ratio is exact) */
+  --nav-active-fg: var(--accent); /* 8.5:1 on --nav-active-bg */
+  --nav-active-shadow: 0 0 14px oklch(0.79 0.15 220 / 20%); /* soft cyan halo */
+  --nav-active-radius: 999px; /* glow capsule */
+  --nav-indicator: transparent;
+  --nav-indicator-height: 0px;
 }

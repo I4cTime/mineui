@@ -1,38 +1,39 @@
 "use client";
 
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { interactiveTransition, transition } from "@/app/lib/motion";
+import type { Transition } from "motion/react";
+import { transition } from "@/app/lib/motion";
 import {
   Archive,
   Boxes,
+  Coffee,
   Container,
+  Ellipsis,
   Gauge,
-  Menu,
   ScrollText,
   Server,
   Settings,
   Shield,
-  Users,
-  Coffee,
   Sparkles,
+  Users,
   Volume2,
   VolumeX,
-  X,
 } from "lucide-react";
 import {
   Button,
   Description,
+  Dropdown,
   Label,
   ListBox,
   Popover,
   Select,
-  Separator,
-  Surface,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
 } from "@heroui/react";
 import type { Key } from "@heroui/react";
 import Logo from "./Logo";
@@ -113,6 +114,9 @@ const renderThemeValue = ({
   return <span className="block w-full truncate text-xs">{selected.label}</span>;
 };
 
+// Priority order is load-bearing (docs/theme-contract.md §9.2): the first
+// four are the T3 standalone set and the T3 "More" overflow always holds
+// exactly items[4:]. Do not re-rank.
 const navItems = [
   { href: "/", label: "Dashboard", icon: Server },
   { href: "/status", label: "Status", icon: Gauge },
@@ -124,11 +128,90 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+const PRIORITY_COUNT = 4;
+
+/**
+ * Active-item background/shadow/radius treatment — the shared skeleton
+ * that renders all four themes' character purely off the --nav-active-*
+ * vars (docs/theme-contract.md §9.1, §9.3). Phosphor's fill is transparent
+ * by design (its treatment is the underline strip below, not a fill), and
+ * per §9.6 it must NOT participate in the shared layoutId slide — it
+ * crossfades in at `--motion-fast` instead. The other three themes share
+ * a single `layoutId` so the capsule/slot glides between whichever item
+ * just became active.
+ */
+function NavActiveFill({ theme, layoutId }: { theme: string; layoutId: string }) {
+  const style: CSSProperties = {
+    background: "var(--nav-active-bg)",
+    boxShadow: "var(--nav-active-shadow)",
+    borderRadius: "var(--nav-active-radius)",
+  };
+
+  if (theme === "phosphor") {
+    return (
+      <motion.span
+        key="active-fill"
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={style}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={transition("fast")}
+      />
+    );
+  }
+
+  const navTransition: Transition =
+    theme === "softglass"
+      ? { type: "spring", stiffness: 220, damping: 26 }
+      : transition(theme === "deepslate" ? "fast" : "base");
+
+  return (
+    <motion.span
+      layoutId={layoutId}
+      aria-hidden
+      className="pointer-events-none absolute inset-0 -z-10"
+      style={style}
+      transition={navTransition}
+    />
+  );
+}
+
+/** The bottom-edge underline strip — zero-height in every theme except
+ * phosphor (docs/theme-contract.md §9.1), so this renders as a no-op in
+ * the other three. Anchored by its parent's full header height, not the
+ * button's own height, so it sits flush with the bar's bottom edge. */
+function NavIndicator({ activeKey }: { activeKey: string }) {
+  return (
+    <AnimatePresence>
+      <motion.span
+        key={activeKey}
+        aria-hidden
+        className="pointer-events-none absolute inset-x-1 bottom-0"
+        style={{
+          height: "var(--nav-indicator-height)",
+          background: "var(--nav-indicator)",
+        }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={transition("fast")}
+      />
+    </AnimatePresence>
+  );
+}
+
+/** Label span shown in full at T1 (header-full, >=1200px) and hidden
+ * (icon-only) at every narrower tier. */
+function NavLabel({ children }: { children: ReactNode }) {
+  return <span className="relative z-10 hidden header-full:inline">{children}</span>;
+}
+
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [theme, setTheme] = useState<string | null>(DEFAULT_THEME);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showKofi, setShowKofi] = useState(false);
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
@@ -159,7 +242,6 @@ export default function Navbar() {
 
   const handleNavigate = (href: string) => {
     play("click_confirm");
-    setMobileMenuOpen(false);
     router.push(href);
   };
 
@@ -169,7 +251,6 @@ export default function Navbar() {
     setTheme(String(newTheme));
   };
 
-  // Shared by the desktop control and its mobile-menu duplicate below.
   // Simple is the base/"off" state, Advanced is the "on" (more-powered) one —
   // same on/off sense the sound toggle already uses toggle_on/toggle_off for.
   const handleModeChange = (keys: Set<Key>) => {
@@ -193,116 +274,229 @@ export default function Navbar() {
     return pathname.startsWith(href);
   };
 
-  return (
-    <Surface
-      className="sticky top-0 z-40 border-b border-border backdrop-blur"
-      style={{ background: "color-mix(in oklab, var(--background) 85%, transparent)" }}
-    >
-      <div className="relative mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
-        {/* Static glow background — was an infinite 6s pulse loop running on
-            every page (it's in the navbar); the contract forbids ambient
-            loops (docs/theme-contract.md §6), so this is now a fixed decal. */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-30"
-          style={{
-            background:
-              "radial-gradient(ellipse at 20% 50%, color-mix(in oklab, var(--accent) 25%, transparent), transparent 55%)",
-          }}
-        />
+  const priorityItems = navItems.slice(0, PRIORITY_COUNT);
+  const overflowItems = navItems.slice(PRIORITY_COUNT);
+  // T4 (640-699px) folds ALL eight items into "More"; T3 (700-899px) folds
+  // only the non-priority four. The priority four's menu-only rendering is
+  // therefore only meaningful at T4 — gated with `header-min:hidden` below.
+  const activeInOverflowAlways = overflowItems.some((item) => isActive(item.href));
+  const activeInPriority = priorityItems.some((item) => isActive(item.href));
+  const moreHasActive = activeInOverflowAlways || activeInPriority;
 
-        {/* Logo + Brand */}
+  return (
+    <header
+      className="sticky z-40"
+      style={{
+        top: "var(--header-inset)",
+        marginInline: "var(--header-inset)",
+        marginBottom: "var(--header-inset)",
+        height: "var(--header-height)",
+        background: "var(--header-bg)",
+        backdropFilter: "blur(var(--header-blur))",
+        WebkitBackdropFilter: "blur(var(--header-blur))",
+        border: "var(--header-border-width) solid var(--header-border)",
+        borderRadius: "var(--header-radius)",
+        boxShadow: "var(--header-shadow)",
+      }}
+    >
+      {/* Edge strips (docs/theme-contract.md §9.1): solid or gradient per
+          theme, transparent = invisible = free. Replaces the old static
+          radial-gradient glow decal, which was quantum-flavored and leaked
+          into all four themes — quantum's glow now lives entirely in
+          --header-shadow / --header-edge-bottom. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px"
+        style={{ background: "var(--header-edge-top)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+        style={{ background: "var(--header-edge-bottom)" }}
+      />
+
+      <div className="relative z-10 flex h-full items-center gap-4 px-4">
+        {/* Brand. Wordmark hides below header-mid (900px); logo alone
+            carries the brand at T3/T4 per §9.2. */}
         <Link
           href="/"
-          className="relative z-10 flex items-center gap-3"
+          className="flex shrink-0 items-center gap-3"
           onClick={() => play("click_confirm")}
           onMouseEnter={() => play("hover")}
         >
           <Logo size={28} />
-          <span className="font-pixel text-sm tracking-wide text-accent">
+          <span className="hidden font-display text-sm tracking-wide text-accent header-mid:inline">
             MineUI
           </span>
         </Link>
 
-        {/* Desktop Nav. gap-0.5 (not gap-1): the last few px needed to fit
-            the new mode toggle in the right-controls group at 1280px —
-            see that control's comment for the full set of changes and
-            measurements this was verified against. */}
-        <div className="relative z-10 hidden items-center gap-0.5 md:flex">
-          {navItems.map((item) => {
+        {/* Nav zone — the only zone that adapts (§9.1). min-w-0 lets it
+            shrink instead of forcing the header wider than the window. */}
+        <nav
+          aria-label="Primary"
+          className="relative flex h-full min-w-0 flex-1 items-center justify-center gap-0.5"
+        >
+          {priorityItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
-              <Button
+              <div
                 key={item.href}
-                size="sm"
-                variant={active ? "secondary" : "ghost"}
-                className="relative"
-                onPress={() => handleNavigate(item.href)}
-                onMouseEnter={() => play("hover")}
-                aria-current={active ? "page" : undefined}
+                className="relative hidden h-full items-center header-min:flex!"
               >
-                {active && (
-                  <motion.div
-                    layoutId="nav-active"
-                    className="absolute inset-0 rounded-lg"
+                <Tooltip delay={400}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="relative"
                     style={{
-                      background:
-                        "color-mix(in oklab, var(--accent) 18%, transparent)",
+                      font: "var(--nav-label-weight) var(--nav-label-size) var(--nav-label-font)",
+                      letterSpacing: "var(--nav-label-tracking)",
+                      textTransform: "var(--nav-label-case)" as CSSProperties["textTransform"],
+                      color: active ? "var(--nav-active-fg)" : "var(--muted)",
                     }}
-                    transition={interactiveTransition()}
-                  />
-                )}
-                <Icon size={16} className="relative z-10" />
-                <span className="relative z-10">{item.label}</span>
-              </Button>
+                    onPress={() => handleNavigate(item.href)}
+                    onMouseEnter={() => play("hover")}
+                    aria-current={active ? "page" : undefined}
+                    // The label span is CSS-hidden below header-full (T2–T4),
+                    // and a display:none child contributes nothing to the
+                    // accessible name — this is the icon-only tiers' real
+                    // name, not decoration.
+                    aria-label={item.label}
+                  >
+                    {active && <NavActiveFill theme={currentTheme} layoutId="nav-active-priority" />}
+                    <Icon size={16} className="relative z-10" />
+                    <NavLabel>{item.label}</NavLabel>
+                  </Button>
+                  <Tooltip.Content placement="bottom">{item.label}</Tooltip.Content>
+                </Tooltip>
+                {active && <NavIndicator activeKey={item.href} />}
+              </div>
             );
           })}
-        </div>
 
-        {/* Right controls. gap-1 (not the gap-2 the rest of this file's
-            control rows use): with the mode toggle added, gap-2 here left
-            the theme picker's trigger ~17px past the 1280px viewport this
-            must fit (measured: getBoundingClientRect().right vs
-            window.innerWidth) even after deferring the Ko-fi button below
-            (see that control's comment) — this closes the rest of it. */}
-        <div className="relative z-10 flex items-center gap-1">
-          {/* Sound toggle */}
-          <Button
-            isIconOnly
-            variant="ghost"
-            onPress={toggleSound}
-            aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
-            onMouseEnter={() => play("hover")}
-          >
-            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </Button>
+          {overflowItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.href);
+            return (
+              <div
+                key={item.href}
+                className="relative hidden h-full items-center header-mid:flex!"
+              >
+                <Tooltip delay={400}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="relative"
+                    style={{
+                      font: "var(--nav-label-weight) var(--nav-label-size) var(--nav-label-font)",
+                      letterSpacing: "var(--nav-label-tracking)",
+                      textTransform: "var(--nav-label-case)" as CSSProperties["textTransform"],
+                      color: active ? "var(--nav-active-fg)" : "var(--muted)",
+                    }}
+                    onPress={() => handleNavigate(item.href)}
+                    onMouseEnter={() => play("hover")}
+                    aria-current={active ? "page" : undefined}
+                    aria-label={item.label}
+                  >
+                    {active && <NavActiveFill theme={currentTheme} layoutId="nav-active-overflow" />}
+                    <Icon size={16} className="relative z-10" />
+                    <NavLabel>{item.label}</NavLabel>
+                  </Button>
+                  <Tooltip.Content placement="bottom">{item.label}</Tooltip.Content>
+                </Tooltip>
+                {active && <NavIndicator activeKey={item.href} />}
+              </div>
+            );
+          })}
+
+          {/* "More" overflow — a desktop toolbar-overflow Dropdown, not a
+              drawer (§9.2). Visible only below header-mid (900px, T3+T4).
+              Its menu always contains all eight items; the priority four
+              are CSS-hidden inside it except at T4 (<700px), where they
+              have no standalone button to live in instead. */}
+          <div className="relative flex h-full items-center header-mid:hidden!">
+            <Dropdown trigger="press">
+              <Tooltip delay={400}>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="ghost"
+                  className="relative"
+                  aria-label="More navigation items"
+                  aria-current={moreHasActive ? "page" : undefined}
+                  onMouseEnter={() => play("hover")}
+                >
+                  {activeInOverflowAlways && (
+                    <NavActiveFill theme={currentTheme} layoutId="nav-active-more" />
+                  )}
+                  {activeInPriority && (
+                    <span className="absolute inset-0 hidden max-header-min:block">
+                      <NavActiveFill theme={currentTheme} layoutId="nav-active-more" />
+                    </span>
+                  )}
+                  <Ellipsis size={16} className="relative z-10" />
+                </Button>
+                <Tooltip.Content placement="bottom">More</Tooltip.Content>
+              </Tooltip>
+              <Dropdown.Popover placement="bottom start">
+                <Dropdown.Menu onAction={(key) => handleNavigate(String(key))}>
+                  {navItems.map((item, index) => {
+                    const Icon = item.icon;
+                    const active = isActive(item.href);
+                    const isPriority = index < PRIORITY_COUNT;
+                    return (
+                      <Dropdown.Item
+                        key={item.href}
+                        id={item.href}
+                        textValue={item.label}
+                        className={isPriority ? "header-min:hidden!" : undefined}
+                        {...(active ? { "aria-current": "page" as const } : {})}
+                      >
+                        <Icon size={16} />
+                        <Label>{item.label}</Label>
+                      </Dropdown.Item>
+                    );
+                  })}
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+            {moreHasActive && (
+              <span
+                className={
+                  activeInOverflowAlways ? undefined : "hidden max-header-min:block"
+                }
+              >
+                <NavIndicator activeKey="more" />
+              </span>
+            )}
+          </div>
+        </nav>
+
+        {/* Controls zone — fixed, shrink-0 (§9.1). */}
+        <div className="flex shrink-0 items-center gap-1">
+          <Tooltip delay={400}>
+            <Button
+              isIconOnly
+              variant="ghost"
+              onPress={toggleSound}
+              aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
+              onMouseEnter={() => play("hover")}
+            >
+              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            </Button>
+            <Tooltip.Content placement="bottom">
+              {soundEnabled ? "Mute sounds" : "Enable sounds"}
+            </Tooltip.Content>
+          </Tooltip>
 
           {/* Simple/Advanced mode switch. Persists app-wide via ModeProvider
-              (app/components/ModeProvider.tsx) — every page reads the same
-              context, so this and the Settings page "Mode" section always
-              agree without a remount.
-
-              Two measured fit constraints shaped this, not assumption (the
-              picker-width lesson this comment references):
-              1. Icon-only, always: with text labels shown at `sm`+ (the
-                 design's first draft) the row's scrollWidth measured 1414px
-                 against a 1152px content box at 1280px viewport — a ~260px
-                 overflow, because the row already carries 8 full-label nav
-                 items. Icon-only removes ~120px and the row fits at 1280px
-                 (with the Ko-fi-defers-to-1340px change below).
-              2. `hidden md:flex` (not shown below `md`): this navbar had
-                 *zero* width slack at 390px even in the pre-existing code
-                 with nothing added (measured: scrollWidth === innerWidth) —
-                 the exact same tightness the Select's own w-32-below-`sm`
-                 comment already documents. `md` is also where the desktop
-                 nav items and (originally) Ko-fi already disappear, i.e.
-                 where this navbar already "collapses" — so hiding here too
-                 isn't a new threshold, it's the existing one. Below `md`,
-                 the mode toggle lives only in the mobile-menu duplicate
-                 (full "Simple"/"Advanced" labels, plenty of row width there)
-                 instead of this control; `aria-label` here keeps the
-                 accessible name (e.g. "Switch to Simple mode") intact at
-                 `md`+ regardless of the icon-only display. */}
+              (app/components/ModeProvider.tsx). Individual ToggleButtons are
+              NOT wrapped in Tooltip here: ToggleButtonGroup inspects its
+              direct children (unique `id`s, first/last radius pairing) and
+              an intervening Tooltip element breaks that — see the
+              objection in the final report. aria-labels are kept so the
+              accessible name survives regardless. */}
           <ToggleButtonGroup
             aria-label="App mode"
             size="sm"
@@ -311,7 +505,6 @@ export default function Navbar() {
             isDisabled={switching}
             selectedKeys={[mode]}
             onSelectionChange={handleModeChange}
-            className="hidden md:flex"
           >
             <ToggleButton id="simple" isIconOnly aria-label="Switch to Simple mode">
               <Sparkles size={14} />
@@ -323,20 +516,18 @@ export default function Navbar() {
           </ToggleButtonGroup>
 
           {/* Theme selector. Fixed widths (not min-width) so switching
-              between theme names never shifts navbar layout. sm:w-48
-              (192px) comfortably fits the longest name, "Deepslate &
-              Emerald" (~134px at the text-xs renderThemeValue forces
+              between theme names never shifts navbar layout. header-mid:w-48
+              (>=900px, T1/T2) comfortably fits the longest name, "Deepslate
+              & Emerald" (~134px at the text-xs renderThemeValue forces
               below), plus the trigger's px-3 start padding and pe-7
-              indicator reserve (HeroUI Select CSS). Below sm there isn't
-              enough row width for that without pushing the mobile-menu
-              toggle off-screen (icon-only sound + hamburger buttons +
-              gaps already claim most of a narrow viewport), so it's w-32
-              there and leans on the truncate safety net instead — see
-              renderThemeValue and its min-w-0 below for why truncation
-              needs both to actually engage rather than silently
-              overflowing the trigger's border. */}
+              indicator reserve (HeroUI Select CSS). Below header-mid (T3/T4)
+              there isn't enough row width for that, so it's w-32 there and
+              leans on the truncate safety net instead — see renderThemeValue
+              and its min-w-0 below for why truncation needs both to
+              actually engage rather than silently overflowing the
+              trigger's border. */}
           <Select
-            className="w-32 shrink-0 sm:w-48"
+            className="w-32 shrink-0 header-mid:w-48"
             placeholder="Theme"
             value={theme}
             onChange={handleThemeChange}
@@ -363,26 +554,24 @@ export default function Navbar() {
             </Select.Popover>
           </Select>
 
-          {/* Ko-fi popover. Deferred from `md:block` to a wider custom
-              breakpoint: this row had zero width slack at 1280px even
-              before the mode toggle existed (measured: scrollWidth ===
-              innerWidth with nothing added), so the toggle's own footprint
-              had nowhere to come from without removing something. This is
-              the one non-essential control in the row (a support link, not
-              app functionality) and the mode toggle is unconditional
-              functionality, so it steps aside in the 768–1339px band and
-              reappears once there's genuinely room. */}
+          {/* Ko-fi popover. Gated to header-full (>=1200px, T1) per §9.2 —
+              replaces the old ad-hoc min-[1340px] hack, whose number came
+              from the pre-revamp max-w-6xl + full-label math that no
+              longer exists. */}
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
-            <Popover.Trigger className="hidden min-[1340px]:block">
-              <Button
-                isIconOnly
-                variant="ghost"
-                onPress={() => play("click_confirm")}
-                aria-label="Support on Ko-fi"
-                onMouseEnter={() => play("hover")}
-              >
-                <Coffee size={16} />
-              </Button>
+            <Popover.Trigger className="hidden header-full:block">
+              <Tooltip delay={400}>
+                <Button
+                  isIconOnly
+                  variant="ghost"
+                  onPress={() => play("click_confirm")}
+                  aria-label="Support on Ko-fi"
+                  onMouseEnter={() => play("hover")}
+                >
+                  <Coffee size={16} />
+                </Button>
+                <Tooltip.Content placement="bottom">Support on Ko-fi</Tooltip.Content>
+              </Tooltip>
             </Popover.Trigger>
             <Popover.Content className="p-0" placement="bottom end">
               <Popover.Dialog className="w-85 overflow-hidden rounded-xl">
@@ -399,102 +588,8 @@ export default function Navbar() {
               </Popover.Dialog>
             </Popover.Content>
           </Popover>
-
-          {/* Mobile menu toggle */}
-          <Button
-            isIconOnly
-            variant="ghost"
-            className="md:hidden!"
-            onPress={() => {
-              play("click_confirm");
-              setMobileMenuOpen(!mobileMenuOpen);
-            }}
-          >
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </Button>
         </div>
       </div>
-
-      {/* Mobile menu */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={transition("base")}
-            className="overflow-hidden border-t border-border md:hidden"
-          >
-            <div className="flex flex-col gap-2 p-4">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
-                return (
-                  <Button
-                    key={item.href}
-                    variant={active ? "secondary" : "ghost"}
-                    className="justify-start"
-                    onPress={() => handleNavigate(item.href)}
-                  >
-                    <Icon size={18} />
-                    {item.label}
-                  </Button>
-                );
-              })}
-              <Separator className="my-2" />
-              <div className="flex flex-col gap-2">
-                <Label>Mode</Label>
-                <ToggleButtonGroup
-                  aria-label="App mode"
-                  selectionMode="single"
-                  disallowEmptySelection
-                  isDisabled={switching}
-                  fullWidth
-                  selectedKeys={[mode]}
-                  onSelectionChange={handleModeChange}
-                >
-                  <ToggleButton id="simple" aria-label="Switch to Simple mode">
-                    <Sparkles size={16} />
-                    Simple
-                  </ToggleButton>
-                  <ToggleButton id="advanced" aria-label="Switch to Advanced mode">
-                    <ToggleButtonGroup.Separator />
-                    <Container size={16} />
-                    Advanced
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </div>
-              <Select
-                className="w-full"
-                placeholder="Theme"
-                value={theme}
-                onChange={handleThemeChange}
-              >
-                <Label>Theme</Label>
-                <Select.Trigger>
-                  <Select.Value className="min-w-0">{renderThemeValue}</Select.Value>
-                  <Select.Indicator />
-                </Select.Trigger>
-                <Select.Popover>
-                  <ListBox>
-                    {themes.map((item) => (
-                      <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
-                        <div className="flex flex-col">
-                          <Label>{item.label}</Label>
-                          <Description className="text-xs">
-                            {item.description}
-                          </Description>
-                        </div>
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
-                    ))}
-                  </ListBox>
-                </Select.Popover>
-              </Select>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </Surface>
+    </header>
   );
 }

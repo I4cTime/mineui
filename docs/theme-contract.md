@@ -238,6 +238,8 @@ No infinite pulse loops in any theme.
 ## 8. Downstream instructions
 
 **heroui-specialist**
+- Header/navbar revamp: implement against §9 (binding header contract; the
+  `--header-*` / `--nav-*` vars are already in every `app/themes/*.css`).
 - Update the Navbar/settings picker to the §1 registry (ids, display names,
   one-liners). Old ids in localStorage must be migrated or simply left to fall
   back (they already resolve to deepslate).
@@ -275,3 +277,179 @@ No infinite pulse loops in any theme.
   were removed; all vars referenced by current pages (`--muted --accent
   --background --border --surface --foreground --field-background
   --field-border`) remain defined in every theme.
+
+---
+
+## 9. Header / navbar contract (binding — header revamp wave)
+
+Amends this contract for the `app/components/Navbar.tsx` revamp. Owner
+constraints: **desktop app — no hamburger, no drawer, no mobile menu, ever**
+(the existing mobile drawer + hamburger toggle are DELETED); the window is
+resizable, so the header degrades gracefully at narrow widths using
+desktop patterns only. Each theme expresses a genuinely different header
+*character* — structure/surface/behavior, not a tint swap — but through **one
+shared component skeleton + the §9.4 vars**, never four component forks.
+
+### 9.1 Shared skeleton
+
+One `<header>` shell (plain element, not HeroUI `Surface` — `Surface` imposes
+`--surface`, and `--header-bg` deliberately differs per theme), containing
+three zones in a flex row, full window width (drop the current `max-w-6xl`
+centering — this is an app chrome bar, not a web page), `padding-inline: 1rem`:
+
+| Zone | Contents | Flex behavior |
+|---|---|---|
+| brand | `Logo` (28px) + wordmark (`font-display`, `text-accent`) linking `/` | fixed, `shrink-0` |
+| nav | 8 nav items + (at narrow tiers) the "More" overflow `Menu` | center, `min-w-0`, the only zone that adapts |
+| controls | sound mute · mode `ToggleButtonGroup` (icon-only, as today) · theme `Select` · Ko-fi `Popover` | fixed, `shrink-0` |
+
+Shell CSS (all values from vars — no theme conditionals in TSX):
+
+```css
+position: sticky;
+top: var(--header-inset);
+margin-inline: var(--header-inset);
+margin-bottom: var(--header-inset);
+height: var(--header-height);
+background: var(--header-bg);
+backdrop-filter: blur(var(--header-blur));
+border: var(--header-border-width) solid var(--header-border);
+border-radius: var(--header-radius);
+box-shadow: var(--header-shadow);
+z-index: 40;
+```
+
+Plus two absolutely-positioned 1px full-width strips (top/bottom, inside the
+radius): `background: var(--header-edge-top)` / `var(--header-edge-bottom)`.
+They accept a solid color **or a gradient** (quantum uses a gradient — this is
+why they are background strips, not borders). Transparent = invisible = free.
+
+Nav item label: `font: var(--nav-label-weight) var(--nav-label-size)
+var(--nav-label-font); letter-spacing: var(--nav-label-tracking);
+text-transform: var(--nav-label-case)`. Inactive item text = `--muted`
+(hover → `--foreground`). Active item: `background: var(--nav-active-bg);
+color: var(--nav-active-fg); box-shadow: var(--nav-active-shadow);
+border-radius: var(--nav-active-radius)` + an underline strip
+(`height: var(--nav-indicator-height); background: var(--nav-indicator)`)
+anchored to the bar's bottom edge — zero-height in every theme except
+phosphor, so the one skeleton renders all four treatments.
+
+`--navbar-height` in `globals.css` is now
+`calc(var(--header-height) + 2 * var(--header-inset))` — `.page-main` keeps
+working untouched in all four themes (softglass's detach gap counts above
+and below the bar).
+
+The old static radial-gradient "glow decal" behind the bar is **deleted**: it
+was a quantum-flavored effect leaking into all four themes; quantum's glow now
+lives in `--header-shadow`/`--header-edge-bottom` where it belongs.
+
+### 9.2 Responsive tiers (window width, desktop-first)
+
+Structural breakpoints are Tailwind screens defined in `globals.css`
+(`@theme`, static — media queries can't read per-theme vars):
+`header-full` = 1200px, `header-mid` = 900px, `header-min` = 700px.
+CSS-only visibility (responsive variants), **no ResizeObserver / JS
+measurement**. Minimum supported window width: 640px.
+
+| Tier | Range | nav | controls |
+|---|---|---|---|
+| T1 | ≥ 1200px | 8 items, icon + label | sound · mode · theme Select (`w-48`) · Ko-fi |
+| T2 | 900–1199px | 8 items, **icon-only** (Tooltip required, §9.6) | same minus Ko-fi |
+| T3 | 700–899px | first 4 items (Dashboard, Status, Mods, Players) icon-only + **"More" overflow `Menu`** (Ellipsis trigger) holding RCON, Config, Backups, Settings as icon+label items | wordmark hidden (logo only) · sound · mode · theme Select `w-32` (truncating value, existing pattern) |
+| T4 | 640–699px | "More" `Menu` holds **all 8** items | logo only · sound · mode · theme Select `w-32` |
+
+Rules:
+- The "More" overflow is a HeroUI `Menu` opened from an icon `Button` — a
+  desktop toolbar-overflow pattern, **not** a drawer. It renders inline in the
+  nav zone, popover placed `bottom start`.
+- When the current route lives inside the overflow, the More **trigger** takes
+  the full active treatment (`--nav-active-*`) and `aria-current` moves to the
+  menu item inside.
+- Ko-fi's ad-hoc `min-[1340px]` gate is replaced by T1 (`header-full:`); the
+  1340px number came from the old `max-w-6xl` + full-label math that no longer
+  exists.
+- Priority order is the existing `navItems` array order; do not re-rank.
+
+### 9.3 Per-theme header expression
+
+| | deepslate — opaque slot-bar | phosphor — dense statusline | quantum — floating glow rail | softglass — detached glass bar |
+|---|---|---|---|---|
+| height | 56px | **48px** (densest) | **60px** (tallest) | 56px + 12px detach gap |
+| surface | opaque `--surface`, no blur | opaque `= --background` (bar dissolves into the console) | `color-mix(surface 80%, transparent)` + 14px blur | `color-mix(surface 86%, transparent)` + 20px blur, 16px radius, 1px `rgba(255,255,255,.08)` border all around |
+| edges | top bevel (inset shadow) + hard `#070a0b` bottom cut | `#22262b` hairlines top **and** bottom | cyan→violet gradient hairline bottom | none (real border carries the edge) |
+| shadow | bevel only | none (theme rule) | cyan underglow `0 10px 32px -12px oklch(0.79 0.15 220/22%)` | soft lift, 2-layer |
+| nav labels | sans 13px/500/0.01em | **mono 12px/500/0.08em UPPERCASE** | Space Grotesk 13px/500/0.02em | Figtree 13px/500, sentence case |
+| active treatment | **pressed slot**: `#101519` well, inset shadow, emerald text, 4px slab | **2px amber underline** flush with bottom hairline, amber uppercase label, no fill | **glow capsule**: `#0a2833` pill (999px), cyan text, soft cyan halo | **raised capsule**: `--segment` pill (999px), foreground text, gentle shadow |
+
+Softglass note: its header `backdrop-filter` blurs the app's **own scrolled
+content** passing under the sticky bar — it does not depend on and does not
+pre-empt the deferred §7 Tauri window-vibrancy work (which is about the
+desktop showing through).
+
+### 9.4 Header var contract
+
+Every theme file defines the full set (already landed in `app/themes/*.css`;
+values above). Components consume, never invent:
+
+`--header-height --header-inset --header-bg --header-blur`
+`--header-border --header-border-width --header-radius --header-shadow`
+`--header-edge-top --header-edge-bottom`
+`--nav-label-font --nav-label-size --nav-label-weight --nav-label-tracking --nav-label-case`
+`--nav-active-bg --nav-active-fg --nav-active-shadow --nav-active-radius`
+`--nav-indicator --nav-indicator-height`
+
+These follow rule §2.1 (no literals in components) and are **not** bridged
+into `@theme inline` — they style exactly one component; consume via
+`var(--…)` in the header's own styles.
+
+### 9.5 HeroUI mapping (decision: custom shell + primitives)
+
+**Do not use the Pro Navbar/AppLayout blocks.** They are website-nav
+skeletons: they bake in their own responsive collapse (hamburger/drawer —
+exactly what the owner banned), their own surface styling, and a
+marketing-page structure. The four-character surface treatment (edge strips,
+detached glass, glow rail) needs a bespoke shell, and every control already
+exists as a primitive. Build: plain `<header>` shell (§9.1) + HeroUI
+`Button` (nav items + icon buttons), `ToggleButtonGroup` (mode), `Select`
+(theme), `Menu` (More overflow), `Tooltip` (icon-only tiers), `Popover`
+(Ko-fi), `Separator` (optional, between nav and controls zones in phosphor
+only if implemented via `--separator` — do not hardcode).
+
+### 9.6 Motion & a11y
+
+Motion (within §6 semantics — no new literals):
+- Active-treatment hand-off between items: shared-layout (`layoutId`) move at
+  `--motion-fast` + `--motion-ease` for deepslate, `--motion-base` +
+  `--motion-ease` for quantum and softglass (softglass may use the sanctioned
+  spring preset instead). **Phosphor: no sliding** — its rule is "opacity/clip
+  only"; the underline crossfades in at `--motion-fast`, no layout animation.
+  Key the Motion preset off `data-theme` (sanctioned by §6).
+- More-menu enter: HeroUI Menu default, aligned to `--motion-fast`/`--motion-ease`.
+- No ambient loops in the header (§6 stands; the glow decal is deleted, not
+  reanimated).
+
+A11y:
+- Icon-only nav items (T2–T4) and all icon-only controls get HeroUI `Tooltip`
+  (~400ms delay) **and** keep a text `aria-label`; `aria-current="page"` stays
+  on the active item wherever it renders (bar or More menu).
+- Focus ring: `--focus` (= accent) at 2px offset 2 on all header
+  interactives, including the active item (ring must remain visible over
+  `--nav-active-bg`). Verified ≥ 3:1 vs every theme's `--header-bg`: emerald
+  9.7:1, amber 10.9:1, cyan 10.7:1, apricot 8.7:1.
+- Keyboard: items are buttons/links in DOM order (brand → nav → More →
+  controls); the More `Menu` is React-Aria complete out of the box. No focus
+  traps — the header is a plain landmark (`<header>` + `<nav>` around the
+  item group).
+
+Contrast (computed, WCAG 2.1):
+
+| Pairing | deepslate | phosphor | quantum | softglass |
+|---|---|---|---|---|
+| inactive label `--muted` on `--header-bg`* | 7.0:1 | 6.4:1 | 5.3:1 | 6.7:1 |
+| `--foreground` on `--header-bg`* | 14.7:1 | 15.1:1 | 17.8:1 | 14.4:1 |
+| active `--nav-active-fg` on `--nav-active-bg` | 10.3:1 | 10.9:1 (on bar) | 8.5:1 | 11.9:1 |
+| wordmark `--accent` on `--header-bg`* | 9.7:1 | 10.9:1 | 10.7:1 | 8.7:1 |
+
+\* translucent header bgs measured against their solid `--surface` base — the
+worst case is content identical to the surface color; blur + darker page bg
+only ever raises these. All pass 4.5:1 text / 3:1 UI.

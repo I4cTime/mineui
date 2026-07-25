@@ -72,4 +72,31 @@
   --motion-base: 140ms;
   --motion-slow: 180ms;
   --motion-ease: cubic-bezier(0, 0, 0.2, 1);
+
+  /* -- Header: dense statusline (contract §9) ---------------
+     tmux/k9s statusbar: bar IS the background, separated only by
+     hairlines top+bottom. Densest bar of the four. Uppercase mono
+     micro-labels; active item = 2px amber underline flush with
+     the bottom hairline (no fill, no slide — crossfade only). */
+  --header-height: 48px;
+  --header-inset: 0px;
+  --header-bg: #0b0c0e; /* = --background; the bar dissolves into the console */
+  --header-blur: 0px;
+  --header-border: transparent;
+  --header-border-width: 0px;
+  --header-radius: 0px;
+  --header-shadow: 0 0 0 0 transparent; /* zero shadows, per theme */
+  --header-edge-top: #22262b; /* hairline */
+  --header-edge-bottom: #22262b; /* hairline */
+  --nav-label-font: var(--font-mono);
+  --nav-label-size: 0.75rem; /* 12px micro-label */
+  --nav-label-weight: 500;
+  --nav-label-tracking: 0.08em;
+  --nav-label-case: uppercase;
+  --nav-active-bg: transparent; /* underline treatment, never a fill */
+  --nav-active-fg: var(--accent); /* 10.9:1 on --header-bg */
+  --nav-active-shadow: 0 0 0 0 transparent;
+  --nav-active-radius: 0px;
+  --nav-indicator: var(--accent); /* the 2px underline */
+  --nav-indicator-height: 2px;
 }

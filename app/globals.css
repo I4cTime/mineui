@@ -30,9 +30,24 @@
   font-display: swap;
 }
 
-/* Theme-independent layout vars */
+/* Layout vars. --navbar-height = total vertical space the header
+   occupies in flow: bar height + detach gap above AND below (the
+   gap is 0 in every theme except softglass). Per-theme values come
+   from --header-height / --header-inset (contract §9). */
 :root {
-  --navbar-height: 64px;
+  /* One inset only: the sticky top offset doesn't consume flow space —
+     only the header's own height + its bottom inset (margin) do. */
+  --navbar-height: calc(var(--header-height, 64px) + var(--header-inset, 0px));
+}
+
+/* Header responsive tiers (contract §9.2) — structural, shared by
+   all themes (media queries can't read per-theme vars). Generates
+   the `header-full:` / `header-mid:` / `header-min:` variants.
+   NOT inside `@theme inline`: breakpoints must be static values. */
+@theme {
+  --breakpoint-header-full: 75rem; /* 1200px — full labels + Ko-fi */
+  --breakpoint-header-mid: 56.25rem; /* 900px — icon-only nav */
+  --breakpoint-header-min: 43.75rem; /* 700px — priority overflow */
 }
 
 /* Tailwind utility bridge — inline so utilities resolve the
