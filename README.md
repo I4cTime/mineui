@@ -1,194 +1,171 @@
-# MineUI
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="MineUI" width="96">
+</p>
 
-The desktop app your containerized Minecraft server has been missing.
+<h1 align="center">MineUI</h1>
 
-MineUI is a container-first desktop app for managing Minecraft servers. It's
-built on Tauri v2 (Rust backend) and Next.js (static-export frontend) — no
-Electron, no local API server.
+<p align="center">
+  <b>The desktop app your Minecraft server has been missing.</b><br>
+  Run a managed vanilla server, or attach to an existing Docker/Podman container.<br>
+  One native app. No dashboard to self-host, no local API server.
+</p>
 
-MineUI has two modes:
+<p align="center">
+  <a href="https://github.com/I4cTime/mineui/actions/workflows/ci.yml?query=branch%3Av2-tauri"><img src="https://github.com/I4cTime/mineui/actions/workflows/ci.yml/badge.svg?branch=v2-tauri" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-informational" alt="Platform: Linux, Windows, macOS">
+</p>
+
+<p align="center">
+  <a href="#why-mineui">Why</a> &middot;
+  <a href="#install">Install</a> &middot;
+  <a href="#features">Features</a> &middot;
+  <a href="#development">Development</a> &middot;
+  <a href="#license">License</a>
+</p>
+
+---
+
+## Why MineUI?
+
+Running a Minecraft server means juggling `server.properties` in a text
+editor, an RCON client for admin commands, `docker logs -f` or a container
+dashboard for status, and manual `tar` commands for backups — or a
+self-hosted web panel that means running yet another service (and securing
+it) just to manage the one you actually care about.
+
+MineUI is a native desktop app, not a web panel: **Tauri v2** (Rust backend)
+driving a **Next.js** static-export frontend over Tauri IPC — no Electron, no
+bundled Chromium, no local HTTP server to expose or secure. It runs in one of
+two modes:
 
 - **Simple mode (default)** — MineUI creates and runs a vanilla server for
   you: pick a Minecraft version, set memory, accept the EULA, and MineUI
   downloads the official server jar (SHA-1 verified), configures RCON, and
   supervises the Java process. No containers required.
 - **Advanced mode** — attach to an existing Minecraft server container
-  managed by **Docker or Podman** (auto-detected, Podman preferred): start/
-  stop/restart, logs, players, RCON, mods/plugins, config editing, backups,
-  and container metrics. MineUI attaches to a container that already exists
-  (e.g. an `itzg/minecraft-server`-style image with the world/config under
-  `/data`) — it does not create or pull one for you.
+  managed by **Docker or Podman** (auto-detected, Podman preferred): control,
+  logs, players, RCON, mods/plugins, config editing, backups, and container
+  metrics. MineUI attaches to a container that already exists (e.g. an
+  `itzg/minecraft-server`-style image with the world/config under `/data`) —
+  it does not create or pull one for you.
+
+## Install
+
+There's no packaged `v2` release yet — the Tauri rewrite (this branch) is
+pre-release. `v1.0.0` on the [Releases page](https://github.com/I4cTime/mineui/releases)
+is the old Electron app; it predates this architecture and isn't what this
+README describes. Until a `v2.x` tag ships AppImage/`.deb`/`.msi`/`.dmg`
+bundles via [release.yml](.github/workflows/release.yml), build from source —
+see [Development](#development).
+
+Building from source **requires a HeroUI Pro license** — see
+[Note on HeroUI Pro](#note-on-heroui-pro) below before you start.
 
 ## Features
 
-- **Server Control** — start, stop, and restart (managed process or container)
-- **Live Status** — TPS, MSPT, player count, and server version
-- **Live Logs** — streamed log viewer (no polling)
-- **Player Management** — online players, history with last-seen and IP, and
-  one-click whitelist/op/ban/kick actions
-- **RCON Console** — allowlisted command panel
-- **Mods & Plugins** — browse, upload from disk, or download from URLs
-- **Configuration Editor** — edit `server.properties` and `config/` files
-- **World Backups** — create, list, restore, and delete `.tar.gz` snapshots
-- **System Metrics** — CPU, memory, disk (plus network/block IO for containers)
+### Server control and live status
 
-## Themes
+Start, stop, and restart (managed process or container), with live TPS,
+MSPT, player count, and server version, plus a streamed log viewer — no
+polling.
 
-Pick a theme in Settings; it's saved locally (`data-theme` + localStorage).
-See `docs/theme-contract.md` for the token contract behind them.
+### Player management
 
-| Theme | One-liner |
-|---|---|
-| **Deepslate & Emerald** *(default)* | Deepslate stone, emerald signal — the tool Mojang would ship. |
-| **Phosphor Amber** | Near-black ops console with an amber phosphor glow. |
-| **Quantum Fluidity** | Deep-space black, cyan signal, violet glow — the I4C look. |
-| **Soft Glass** | Calm, rounded, native-grade — one warm apricot accent. |
+Online players, join/leave history with last-seen and IP, and one-click
+whitelist/op/ban/kick actions.
 
-## Requirements
+### RCON console
 
-### Simple mode
+An allowlisted command panel — only vetted commands can be run, even with
+raw RCON access configured.
 
-- A Java runtime on your PATH (or a Java path override in Settings). MineUI
-  reads the required major version per Minecraft release from Mojang's
-  manifest and checks your Java against it before letting you start a server
-  — recent Minecraft versions require Java 21.
+### Mods & plugins
 
-### Advanced mode
+Browse what's installed, upload a jar from disk, or download one from a URL.
 
-- **Docker** or **Podman** installed (MineUI auto-detects; Podman is tried
-  first)
-- A Minecraft server container already created (e.g. with `podman run` /
-  `docker run` or compose) using an `/data`-rooted layout — world, config,
-  mods, and plugins under `/data/...`, as used by images like
-  `itzg/minecraft-server`. MineUI attaches to it; it does not create one.
+### Configuration editor
 
-## Getting Started
+Edit `server.properties` and files under `config/` directly from the app.
 
-1. **Launch MineUI.**
-2. **Simple mode**: the dashboard walks you through creating your server —
-   pick a version, set memory, accept the
-   [Minecraft EULA](https://aka.ms/MinecraftEULA), and hit Create.
-3. **Advanced mode**: open **Settings**, switch to Advanced, pick your
-   runtime (Auto tries Podman first, then Docker), and enter your container
-   name, query address, and RCON credentials.
+### World backups
 
-Settings are stored by the backend in the platform config directory
-(`settings.json`); there are no environment variables to configure.
+Create, list, restore, and delete `.tar.gz` snapshots.
 
-## Platform support
+### System metrics
 
-MineUI is built and tested on **Linux** today (AppImage + `.deb`). Windows
-(`nsis`) and macOS (`.dmg`) are configured as Tauri bundle targets but have
-not been built, signed, or tested yet — they're pending the first tagged
-release. Don't assume a Windows/macOS build works until one has actually
-shipped.
+CPU, memory, and disk, plus network/block IO when attached to a container.
 
-## Architecture
+### Four themes
 
-- `crates/mineui-core` — pure-Rust business logic (no Tauri dependency),
-  84 unit tests.
-- `src-tauri` — thin `#[tauri::command]` shell (31 IPC commands) that
-  delegates to `mineui-core` and forwards events; no business logic here.
-- `app/` — Next.js App Router frontend, static-exported (`output: 'export'`)
-  and bundled by Tauri. All backend calls go through typed wrappers in
-  `app/lib/ipc.ts` — no raw `invoke()` or `fetch("/api/...")` elsewhere.
+Deepslate & Emerald (default), Phosphor Amber, Quantum Fluidity, and Soft
+Glass — switchable in Settings, persisted locally. The token contract behind
+them is in [`docs/theme-contract.md`](docs/theme-contract.md).
 
-The IPC surface (commands, error codes, event payloads) is specified in
-[`docs/v2-contract.md`](docs/v2-contract.md); the theme token system is
-specified in [`docs/theme-contract.md`](docs/theme-contract.md). Both are
-binding contracts, not suggestions — see CONTRIBUTING.md.
+### Enriched metrics via a companion mod (Advanced mode, optional)
+
+Point Settings' **Server utils URL** at an instance of
+[mineui_server_utils](https://github.com/I4cTime/mineui_server_utils) — a
+Forge 1.20.1 mod or Paper/Bukkit plugin that runs inside the server JVM — for
+real tick-based TPS/MSPT, per-dimension chunk/entity counts, and the actual
+loaded mod/plugin list. Without it, MineUI falls back to a server-list ping
+plus container/process metrics; everything else still works.
+
+### Every backend call is typed and contract-bound
+
+`crates/mineui-core` is pure Rust (no Tauri dependency, 84 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (31 IPC commands) that
+delegates to it. The full command/error/event surface is specified in
+[`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
 
 Prerequisites: [pnpm](https://pnpm.io) and Rust via
 [rustup](https://rustup.rs) (stable toolchain) — see the
 [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for
-platform-specific details.
-
-On Linux you also need the WebKit/GTK build dependencies:
+platform-specific system packages. On Linux:
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev
 ```
 
-Then:
-
 ```bash
 pnpm install
-pnpm tauri dev     # runs Next.js dev server + Tauri window
+pnpm tauri dev     # Next.js dev server + Tauri window
 ```
 
-Other scripts:
+Other commands:
 
-- `pnpm dev` — frontend only, in a plain browser (no backend; IPC calls
-  fail soft with a "Backend unavailable" notice)
+- `pnpm dev` — frontend only, in a plain browser (no backend; IPC calls fail
+  soft with a "Backend unavailable" notice)
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
 - `cargo test -p mineui-core` — Rust unit tests (84 tests; must stay green)
 
-## Note on HeroUI Pro
+CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
+`cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every
+push to `main`/`v2-tauri` and PR into `main`.
+
+### Note on HeroUI Pro
 
 The UI uses `@heroui-pro/react` (KPI cards, EmptyState, Stepper, and other
-Pro components), which is a **commercially licensed** package from NextUI
-Inc. — see its bundled license at
-`node_modules/@heroui-pro/react/LICENSE` after install.
-
-**Building MineUI from source requires a HeroUI Pro license.** The npm
-package on the public registry is a stub: its postinstall script downloads
-the actual components only when it finds an authenticated session
+Pro components), a **commercially licensed** package from NextUI Inc. The
+npm package on the public registry is a stub — its postinstall script
+downloads the real components only with an authenticated session
 (`npx heroui-pro login`) or an `HEROUI_AUTH_TOKEN` environment variable.
 Without either, `pnpm install` appears to succeed but the package is empty
-and the build fails to resolve `@heroui-pro/react` imports. Get a license
-at [heroui.com/pro](https://heroui.com/pro), or open an issue if the Pro
-dependency is blocking a contribution you want to make.
-
-## Optional: MineUI Server Utilities Mod (Advanced mode)
-
-For enriched metrics (accurate TPS/MSPT, per-dimension chunk/entity counts,
-host system metrics, detailed mod list), a companion Forge mod is planned.
-
-| Minecraft Version | Forge Version | Status      |
-|-------------------|---------------|-------------|
-| 1.20.1            | 47.4.x        | Coming soon |
-
-Once installed on your server, set **Server utils URL** in Settings (e.g.
-`http://<server-ip>:8787`). Without it, MineUI falls back to the Minecraft
-server list ping and container/process metrics — everything else still works.
-
-## Troubleshooting
-
-### "Cannot connect to server" (Advanced)
-
-- Ensure your Minecraft container is running
-- Verify the container name in Settings matches (`podman ps` / `docker ps`)
-- If you use a non-default socket, set the socket path override
-
-### "No Java found" (Simple)
-
-- Install a JDK matching the version MineUI reports as required (e.g.
-  `sudo apt install openjdk-21-jre-headless` for modern Minecraft versions)
-- Or set a Java path override in Settings
-
-### "RCON unavailable"
-
-- Simple mode configures RCON automatically at instance creation — restart
-  the server if you changed ports
-- Advanced mode needs `enable-rcon=true` plus matching port/password in your
-  server's `server.properties` and MineUI Settings
-
-## Credits
-
-- Fonts are self-hosted (offline, zero runtime font requests): Inter,
-  JetBrains Mono, Space Grotesk, IBM Plex Sans/Mono, Figtree, and Commit
-  Mono via [Fontsource](https://fontsource.org) (each under its own
-  upstream OFL/MIT license).
-- [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan,
-  vendored at `app/fonts/Monocraft-basic-latin.woff2` under the SIL Open
-  Font License — see `app/fonts/Monocraft-LICENSE.txt`.
+and the build fails to resolve `@heroui-pro/react` imports. Get a license at
+[heroui.com/pro](https://heroui.com/pro), or open an issue if this is
+blocking a contribution.
 
 ## License
 
-AGPL-3.0-only — see [LICENSE](LICENSE).
+AGPL-3.0-only — see [LICENSE](LICENSE). Fonts are self-hosted under their own
+licenses (MIT/OFL) via [Fontsource](https://fontsource.org); Monocraft is
+vendored under the SIL OFL — see `app/fonts/Monocraft-LICENSE.txt`.
+`@heroui-pro/react` is separately, commercially licensed — see
+[Note on HeroUI Pro](#note-on-heroui-pro).
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K11SM7LV)
