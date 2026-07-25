@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/I4cTime/mineui/actions/workflows/ci.yml?query=branch%3Av2-tauri"><img src="https://github.com/I4cTime/mineui/actions/workflows/ci.yml/badge.svg?branch=v2-tauri" alt="CI"></a>
+  <a href="https://github.com/I4cTime/mineui/actions/workflows/ci.yml"><img src="https://github.com/I4cTime/mineui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-informational" alt="Platform: Linux, Windows, macOS">
 </p>
