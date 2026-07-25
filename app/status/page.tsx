@@ -13,9 +13,10 @@ import {
 } from "lucide-react";
 import { Card, Chip, ProgressCircle } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
+import { formatBytes } from "@/app/lib/format";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useMode } from "@/app/components/ModeProvider";
-import { listStagger, scaleIn } from "@/app/lib/motion";
+import { usePageMotion } from "@/app/lib/motion";
 import {
   getMetrics,
   getServerState,
@@ -25,18 +26,6 @@ import {
   type ServerState,
   type ServerStatus,
 } from "@/app/lib/ipc";
-
-const formatBytes = (value: number | null) => {
-  if (!value) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit += 1;
-  }
-  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-};
 
 const formatPercent = (value: number | null) =>
   value === null ? "—" : `${value.toFixed(1)}%`;
@@ -95,9 +84,7 @@ function MetricRing({
 }
 
 export default function StatusPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [serverState, setServerState] = useState<ServerState | null>(null);

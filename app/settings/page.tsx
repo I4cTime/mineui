@@ -25,9 +25,10 @@ import {
 } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
+import { formatDateTime } from "@/app/lib/format";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
-import { listStagger, scaleIn } from "@/app/lib/motion";
+import { usePageMotion } from "@/app/lib/motion";
 import {
   deleteInstance,
   detectRuntimes,
@@ -51,9 +52,7 @@ const numberFrom = (event: React.ChangeEvent<HTMLInputElement>) => {
 };
 
 export default function SettingsPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -307,7 +306,7 @@ export default function SettingsPage() {
                     </Chip>
                     {instance?.exists && instance.createdAt && (
                       <span className="text-xs text-muted">
-                        created {new Date(instance.createdAt).toLocaleString()}
+                        created {formatDateTime(instance.createdAt)}
                       </span>
                     )}
                   </div>

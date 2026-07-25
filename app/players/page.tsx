@@ -18,9 +18,10 @@ import {
 import { EmptyState } from "@heroui-pro/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
+import { formatDateTime } from "@/app/lib/format";
 import { SkeletonTable } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
-import { listStagger, scaleIn } from "@/app/lib/motion";
+import { usePageMotion } from "@/app/lib/motion";
 import {
   getPlayerHistory,
   getServerStatus,
@@ -30,14 +31,8 @@ import {
   type ServerStatus,
 } from "@/app/lib/ipc";
 
-// Timestamps arrive as epoch ms (contract §7) — format client-side.
-const formatLastSeen = (epochMs: number | null) =>
-  epochMs === null ? "—" : new Date(epochMs).toLocaleString();
-
 export default function PlayersPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [users, setUsers] = useState<PlayerHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -294,7 +289,7 @@ export default function PlayersPage() {
                             </div>
                           </Table.Cell>
                           <Table.Cell className="text-muted">
-                            {formatLastSeen(row.lastSeenEpochMs)}
+                            {formatDateTime(row.lastSeenEpochMs)}
                           </Table.Cell>
                           <Table.Cell className="text-muted">
                             {row.ipAddress ?? "—"}

@@ -16,7 +16,7 @@ import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { Skeleton } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
-import { listStagger, scaleIn } from "@/app/lib/motion";
+import { usePageMotion } from "@/app/lib/motion";
 import {
   listConfigFiles,
   readConfigFile,
@@ -29,9 +29,7 @@ import {
 // ("server.properties", "config/foo.toml") — display them as-is.
 
 export default function ConfigPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);

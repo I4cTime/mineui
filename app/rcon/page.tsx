@@ -6,7 +6,7 @@ import { Loader2, Send, ShieldAlert } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, TextField, Input, toast } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
 import { useUISound } from "@/app/hooks/useUISound";
-import { listStagger, scaleIn, transition } from "@/app/lib/motion";
+import { transition, usePageMotion } from "@/app/lib/motion";
 import { runRconCommand, IpcError } from "@/app/lib/ipc";
 
 const presets = [
@@ -19,9 +19,7 @@ const presets = [
 ];
 
 export default function RconPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [command, setCommand] = useState("");
   const [commandOutput, setCommandOutput] = useState<string | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);

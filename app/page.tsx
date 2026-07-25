@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { listStagger, scaleIn, transition } from "@/app/lib/motion";
+import { transition, usePageMotion } from "@/app/lib/motion";
 import {
   Activity,
   Archive,
@@ -147,7 +147,9 @@ export default function Home() {
     refreshPolled();
     const interval = setInterval(refreshPolled, 8000);
     return () => clearInterval(interval);
-  }, [showDashboard, refreshPolled]);
+    // `mode` restarts the poll on a live toggle so status/mods reflect the
+    // newly targeted server immediately instead of up to 8s later.
+  }, [showDashboard, refreshPolled, mode]);
 
   // Server state badge is event-driven: fetch on mount, subscribe for changes.
   useEffect(() => {
@@ -234,11 +236,7 @@ export default function Home() {
     refreshPolled();
   };
 
-  // Read fresh on every render so a theme switch (data-theme changes at
-  // runtime, see Navbar.tsx) is picked up on next navigation/mount —
-  // presets must never be frozen module-level constants (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
 
   if (loading) {
     return (

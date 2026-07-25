@@ -7,9 +7,10 @@ import { Button, Card, Chip, Table, toast } from "@heroui/react";
 import { EmptyState } from "@heroui-pro/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
+import { formatBytes, formatDateTime } from "@/app/lib/format";
 import { SkeletonTable } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
-import { listStagger, scaleIn } from "@/app/lib/motion";
+import { usePageMotion } from "@/app/lib/motion";
 import {
   createBackup,
   deleteBackup,
@@ -19,26 +20,12 @@ import {
   type BackupEntry,
 } from "@/app/lib/ipc";
 
-const formatBytes = (value: number) => {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit += 1;
-  }
-  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-};
-
 type PendingAction =
   | { kind: "restore"; filename: string }
   | { kind: "delete"; filename: string };
 
 export default function BackupsPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [backups, setBackups] = useState<BackupEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -185,7 +172,7 @@ export default function BackupsPage() {
                             {entry.filename}
                           </Table.Cell>
                           <Table.Cell className="text-muted">
-                            {new Date(entry.createdAtEpochMs).toLocaleString()}
+                            {formatDateTime(entry.createdAtEpochMs)}
                           </Table.Cell>
                           <Table.Cell className="text-muted">
                             {formatBytes(entry.sizeBytes)}

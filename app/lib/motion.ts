@@ -181,3 +181,13 @@ export function listStagger(stagger: DurationName = "fast", delayChildren = 0): 
     },
   };
 }
+
+/**
+ * Standard page-enter pair used by every page: a staggering container and a
+ * scale-in card variant. Recomputed on every render so a runtime theme
+ * switch is picked up (docs/theme-contract.md §6) — same rule as calling
+ * listStagger()/scaleIn() inline, now in one place.
+ */
+export function usePageMotion() {
+  return { containerMotion: listStagger(), cardMotion: scaleIn() };
+}

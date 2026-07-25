@@ -31,11 +31,12 @@ import {
   toast,
 } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
+import { formatBytes, formatDateTime } from "@/app/lib/format";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
 import { pickModFile } from "@/app/lib/dialog";
-import { listStagger, scaleIn, transition } from "@/app/lib/motion";
+import { transition, usePageMotion } from "@/app/lib/motion";
 import {
   deleteMod,
   downloadMod,
@@ -50,9 +51,7 @@ import {
 } from "@/app/lib/ipc";
 
 export default function ModsPage() {
-  // Re-read on every render so a theme switch is picked up (docs/theme-contract.md §6).
-  const containerMotion = listStagger();
-  const cardMotion = scaleIn();
+  const { containerMotion, cardMotion } = usePageMotion();
   const [mods, setMods] = useState<ModsList | null>(null);
   const [loading, setLoading] = useState(true);
   // Shared app-wide mode (app/components/ModeProvider.tsx) — reacts live to a
@@ -134,24 +133,6 @@ export default function ModsPage() {
       entry.updatedAtEpochMs > acc.updatedAtEpochMs ? entry : acc,
     ).updatedAtEpochMs;
   }, [mods]);
-
-  const formatBytes = (value: number) => {
-    if (!value) return "0 B";
-    const units = ["B", "KB", "MB", "GB"];
-    let size = value;
-    let unit = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit += 1;
-    }
-    return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-  };
-
-  // Contract §7: updatedAtEpochMs is epoch milliseconds (v1 sent unix seconds).
-  const formatDate = (epochMs: number) => {
-    if (!epochMs) return "—";
-    return new Date(epochMs).toLocaleString();
-  };
 
   const loaderBadge = (loader: ModEntry["loader"]) => {
     switch (loader) {
@@ -335,7 +316,7 @@ export default function ModsPage() {
               <Chip variant="soft">Plugins: {mods?.plugins.length ?? 0}</Chip>
               <Chip variant="soft">Total: {allEntries.length}</Chip>
               <Chip variant="soft">
-                Last updated: {lastUpdated ? formatDate(lastUpdated) : "—"}
+                Last updated: {lastUpdated ? formatDateTime(lastUpdated) : "—"}
               </Chip>
             </Card.Content>
             <Card.Footer className="flex flex-wrap items-center gap-3">
@@ -427,7 +408,7 @@ export default function ModsPage() {
                             <Card.Header className="gap-1">
                               <Card.Title className="text-base">{item.name}</Card.Title>
                               <Card.Description className="text-xs text-muted">
-                                Updated {formatDate(item.updatedAtEpochMs)}
+                                Updated {formatDateTime(item.updatedAtEpochMs)}
                               </Card.Description>
                             </Card.Header>
                             <Card.Content className="mt-3 flex flex-row flex-wrap gap-2 text-xs">
@@ -488,7 +469,7 @@ export default function ModsPage() {
                             <Card.Header className="gap-1">
                               <Card.Title className="text-base">{item.name}</Card.Title>
                               <Card.Description className="text-xs text-muted">
-                                Updated {formatDate(item.updatedAtEpochMs)}
+                                Updated {formatDateTime(item.updatedAtEpochMs)}
                               </Card.Description>
                             </Card.Header>
                             <Card.Content className="mt-3 flex flex-wrap gap-2 text-xs">

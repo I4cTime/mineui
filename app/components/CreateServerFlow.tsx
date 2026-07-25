@@ -26,6 +26,7 @@ import {
   Rocket,
 } from "lucide-react";
 import { fadeUp, transition } from "@/app/lib/motion";
+import { formatBytes } from "@/app/lib/format";
 import {
   createInstance,
   javaCheck,
@@ -41,17 +42,6 @@ import { useUISound } from "@/app/hooks/useUISound";
 const MEMORY_MIN = 512;
 const MEMORY_MAX = 16384;
 const MEMORY_STEP = 512;
-
-const formatBytes = (value: number) => {
-  const units = ["B", "KB", "MB", "GB"];
-  let size = value;
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit += 1;
-  }
-  return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
-};
 
 type CreateServerFlowProps = {
   defaultMemoryMb: number;
