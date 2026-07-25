@@ -38,6 +38,8 @@ All notable changes to MineUI are documented here. Format follows
   strings; the UI formats them for display.
 - All fonts are now bundled offline (no runtime font requests), across all
   four themes.
+- **Relicensed from MIT to AGPL-3.0-only** across `package.json`,
+  `src-tauri/Cargo.toml`, `crates/mineui-core/Cargo.toml`, and `LICENSE`.
 
 ### Fixed
 
