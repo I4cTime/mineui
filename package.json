@@ -87,5 +87,10 @@
     "eslint-config-next": "16.0.5",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "tar": ">=7.5.21"
+    }
   }
 }
