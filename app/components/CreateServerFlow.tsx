@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   toast,
@@ -67,7 +67,7 @@ export default function CreateServerFlow({
   const [javaChecking, setJavaChecking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
-  const createdRef = useRef(false);
+  const [created, setCreated] = useState(false);
   const { play } = useUISound();
 
   const loadVersions = useCallback((snapshots: boolean) => {
@@ -101,7 +101,6 @@ export default function CreateServerFlow({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     loadVersions(false);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- same: sync loading-flag set
     recheckJava();
   }, [loadVersions, recheckJava]);
 
@@ -121,7 +120,7 @@ export default function CreateServerFlow({
       });
       play("success");
       toast.success(`Server ${selectedVersion} created`);
-      createdRef.current = true;
+      setCreated(true);
       onCreated();
     } catch (error) {
       play("error");
@@ -456,7 +455,7 @@ export default function CreateServerFlow({
                 !selectedVersion ||
                 creating ||
                 javaMissing ||
-                createdRef.current
+                created
               }
               isPending={creating}
               onMouseEnter={() => play("hover")}
