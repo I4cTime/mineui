@@ -28,6 +28,11 @@ pub struct DownloadRequest {
     pub max_bytes: Option<u64>,
     /// Expected SHA-1 (lowercase hex); mismatch → CHECKSUM_MISMATCH.
     pub expected_sha1: Option<String>,
+    /// When false (§6.3 rule 5) the download uses `core.http_public`, whose
+    /// redirect policy re-validates every hop against private/loopback
+    /// ranges. True only when the user enabled
+    /// `settings.allowPrivateDownloadHosts`.
+    pub allow_private_hosts: bool,
 }
 
 pub struct DownloadResult {
@@ -36,14 +41,36 @@ pub struct DownloadResult {
     pub sha1_hex: String,
 }
 
+/// General-purpose client (`core.http`): mojang/server-utils traffic and
+/// downloads with `allowPrivateDownloadHosts` enabled. Redirect hops are
+/// checked for scheme only — server-utils legitimately lives on LAN hosts.
 pub fn build_client() -> reqwest::Client {
-    let policy = reqwest::redirect::Policy::custom(|attempt| {
+    client_with_redirect_policy(true)
+}
+
+/// Strict client (`core.http_public`) for user-supplied download URLs when
+/// `allowPrivateDownloadHosts` is off: every redirect hop is additionally
+/// re-validated to be a public host, so a public URL cannot bounce the
+/// download into loopback/private ranges (§6.3 rule 5 TOCTOU mitigation).
+pub fn build_public_client() -> reqwest::Client {
+    client_with_redirect_policy(false)
+}
+
+fn client_with_redirect_policy(allow_private_hosts: bool) -> reqwest::Client {
+    let policy = reqwest::redirect::Policy::custom(move |attempt| {
         if attempt.previous().len() > MAX_REDIRECTS {
             return attempt.error("too many redirects");
         }
         let scheme = attempt.url().scheme();
         if scheme != "http" && scheme != "https" {
             return attempt.error("redirect to non-http(s) URL");
+        }
+        if !allow_private_hosts {
+            // Hostname hops resolve DNS synchronously here; acceptable for
+            // ≤ 5 hops in a desktop app (the OS resolver caches).
+            if let Err(err) = crate::validate::ensure_public_download_host(attempt.url(), false) {
+                return attempt.error(format!("redirect blocked: {err}"));
+            }
         }
         attempt.follow()
     });
@@ -89,8 +116,12 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
         .map_err(|e| Error::Io(format!("failed to create temp dir: {e}")))?;
     let temp_path = tmp_dir.join(format!("download-{}", req.download_id));
 
-    let response = core
-        .http
+    let client = if req.allow_private_hosts {
+        &core.http
+    } else {
+        &core.http_public
+    };
+    let response = client
         .get(req.url.clone())
         .send()
         .await

@@ -1,5 +1,8 @@
-//! Security-relevant validators (contract §6). Pure functions, heavily tested.
+//! Security-relevant validators (contract §6). Pure functions, heavily
+//! tested — except [`ensure_public_download_host`], which resolves DNS for
+//! hostname URLs.
 
+use std::net::{IpAddr, ToSocketAddrs};
 use std::path::{Component, Path, PathBuf};
 
 use crate::error::{Error, Result};
@@ -184,6 +187,79 @@ pub fn download_url(url: &str) -> Result<reqwest::Url> {
         ));
     }
     Ok(parsed)
+}
+
+/// True when `ip` is loopback, RFC1918-private, link-local, unique-local,
+/// or unspecified — i.e. never a legitimate public download host (§6.3
+/// rule 5). IPv4: 127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, 0.0.0.0.
+/// IPv6: ::1, ::, fc00::/7, fe80::/10, plus IPv4-mapped forms of the above.
+pub fn is_private_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
+        }
+        IpAddr::V6(v6) => {
+            // ::ffff:a.b.c.d — apply the IPv4 rules to the mapped address.
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_private_ip(IpAddr::V4(mapped));
+            }
+            let seg0 = v6.segments()[0];
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || (seg0 & 0xfe00) == 0xfc00 // fc00::/7 unique-local
+                || (seg0 & 0xffc0) == 0xfe80 // fe80::/10 link-local
+        }
+    }
+}
+
+/// §6.3 rule 5 (SSRF hardening): reject download URLs whose host is (or
+/// resolves only to) a private/loopback address, unless the user opted in
+/// via `settings.allowPrivateDownloadHosts` (`allow_private`).
+///
+/// - Literal-IP hosts are checked directly, no DNS.
+/// - Hostname URLs are resolved here with blocking `ToSocketAddrs` (a few ms
+///   on a desktop app; the OS caches). Rejected only when EVERY resolved
+///   address is private.
+/// - TOCTOU caveat: reqwest re-resolves at request time, so a rebinding DNS
+///   name can pass validation and then point elsewhere. Mitigated (not
+///   eliminated) by the strict redirect policy in `download::build_public_client`,
+///   which re-validates every redirect hop with this same function.
+pub fn ensure_public_download_host(url: &reqwest::Url, allow_private: bool) -> Result<()> {
+    if allow_private {
+        return Ok(());
+    }
+    let host = url
+        .host_str()
+        .ok_or_else(|| Error::InvalidInput("URL has no host".into()))?;
+    // `host_str` keeps IPv6 brackets ("[::1]"); strip them before parsing.
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = bare.parse::<IpAddr>() {
+        if is_private_ip(ip) {
+            return Err(Error::InvalidInput(format!(
+                "download host {host} is a private/loopback address; \
+                 enable \"allow private download hosts\" in Settings to permit LAN downloads"
+            )));
+        }
+        return Ok(());
+    }
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs: Vec<IpAddr> = (bare, port)
+        .to_socket_addrs()
+        .map_err(|e| Error::DownloadFailed(format!("could not resolve download host {host}: {e}")))?
+        .map(|a| a.ip())
+        .collect();
+    if addrs.is_empty() {
+        return Err(Error::DownloadFailed(format!(
+            "download host {host} did not resolve to any address"
+        )));
+    }
+    if addrs.iter().all(|ip| is_private_ip(*ip)) {
+        return Err(Error::InvalidInput(format!(
+            "download host {host} resolves only to private/loopback addresses; \
+             enable \"allow private download hosts\" in Settings to permit LAN downloads"
+        )));
+    }
+    Ok(())
 }
 
 /// §6.3 rule 2: pick the download filename (explicit arg wins, else URL path
@@ -405,6 +481,100 @@ mod tests {
         assert!(download_url("file:///etc/passwd").is_err());
         assert!(download_url("https://user:pass@example.com/mod.jar").is_err());
         assert!(download_url("not a url").is_err());
+    }
+
+    #[test]
+    fn public_host_check_rejects_private_literals() {
+        // IPv4 private/loopback/link-local/unspecified literals — no DNS.
+        for bad in [
+            "http://127.0.0.1/mod.jar",
+            "http://127.8.9.1:8080/mod.jar",
+            "http://10.0.0.5/mod.jar",
+            "http://172.16.0.1/mod.jar",
+            "http://172.31.255.254/mod.jar",
+            "http://192.168.1.10/mod.jar",
+            "http://169.254.169.254/mod.jar",
+            "http://0.0.0.0/mod.jar",
+            // IPv6 loopback / unique-local / link-local / v4-mapped loopback
+            "http://[::1]/mod.jar",
+            "http://[fc00::1]/mod.jar",
+            "http://[fdab::1]/mod.jar",
+            "http://[fe80::1]/mod.jar",
+            "http://[::ffff:127.0.0.1]/mod.jar",
+            "http://[::ffff:192.168.0.1]/mod.jar",
+        ] {
+            let url = download_url(bad).unwrap();
+            let err = ensure_public_download_host(&url, false).unwrap_err();
+            assert_eq!(err.code(), "INVALID_INPUT", "should reject {bad}");
+        }
+    }
+
+    #[test]
+    fn public_host_check_accepts_public_literals() {
+        // Public literals pass without DNS.
+        for ok in [
+            "https://1.1.1.1/mod.jar",
+            "http://93.184.216.34:8080/mod.jar",
+            "https://[2606:4700:4700::1111]/mod.jar",
+        ] {
+            let url = download_url(ok).unwrap();
+            assert!(
+                ensure_public_download_host(&url, false).is_ok(),
+                "should accept {ok}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_host_check_resolves_hostnames() {
+        // "localhost" resolves to loopback (via /etc/hosts / the stub
+        // resolver — no external DNS needed) → rejected.
+        let url = download_url("http://localhost:8080/mod.jar").unwrap();
+        let err = ensure_public_download_host(&url, false).unwrap_err();
+        assert_eq!(err.code(), "INVALID_INPUT");
+    }
+
+    #[test]
+    fn public_host_check_flag_bypasses() {
+        for private in ["http://127.0.0.1/mod.jar", "http://localhost/mod.jar"] {
+            let url = download_url(private).unwrap();
+            assert!(ensure_public_download_host(&url, true).is_ok());
+        }
+    }
+
+    #[test]
+    fn private_ip_classification() {
+        use std::net::IpAddr;
+        let private = [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.0.1",
+            "169.254.0.1",
+            "0.0.0.0",
+            "::1",
+            "::",
+            "fc00::1",
+            "fe80::1",
+        ];
+        for ip in private {
+            assert!(
+                is_private_ip(ip.parse::<IpAddr>().unwrap()),
+                "{ip} should be private"
+            );
+        }
+        let public = [
+            "1.1.1.1",
+            "8.8.8.8",
+            "93.184.216.34",
+            "2606:4700:4700::1111",
+        ];
+        for ip in public {
+            assert!(
+                !is_private_ip(ip.parse::<IpAddr>().unwrap()),
+                "{ip} should be public"
+            );
+        }
     }
 
     #[test]

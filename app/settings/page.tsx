@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import {
   Sparkles,
   Container,
+  Download,
   RefreshCw,
   Save,
   Settings as SettingsIcon,
@@ -20,6 +21,7 @@ import {
   ListBox,
   Select,
   Skeleton,
+  Switch,
   TextField,
   toast,
 } from "@heroui/react";
@@ -637,6 +639,43 @@ export default function SettingsPage() {
             </Card>
           </motion.section>
         )}
+
+        {/* Shared: download security */}
+        <motion.section variants={cardMotion}>
+          <Card className="p-6">
+            <Card.Header className="flex-col items-start gap-1">
+              <div className="flex items-center gap-2">
+                <Download size={16} className="text-accent" />
+                <Card.Title>Downloads</Card.Title>
+              </div>
+              <Card.Description>
+                Mod downloads refuse loopback and private-network hosts by
+                default (SSRF protection). Enable this only if you download
+                mods from a LAN or localhost server.
+              </Card.Description>
+            </Card.Header>
+            <Card.Content className="mt-4">
+              <Switch
+                isSelected={draft.allowPrivateDownloadHosts}
+                onChange={(selected: boolean) => {
+                  play(selected ? "toggle_on" : "toggle_off");
+                  setDraft((prev) =>
+                    prev
+                      ? { ...prev, allowPrivateDownloadHosts: selected }
+                      : prev,
+                  );
+                }}
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  <Label>Allow private download hosts</Label>
+                </Switch.Content>
+              </Switch>
+            </Card.Content>
+          </Card>
+        </motion.section>
 
         {/* Shared: RCON allowlist + save */}
         <motion.section variants={cardMotion}>

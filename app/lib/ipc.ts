@@ -89,6 +89,7 @@ export type Settings = {
   schemaVersion: 2;
   activeMode: Mode;
   rconAllowlist: string[];
+  allowPrivateDownloadHosts: boolean;
   simple: SimpleModeSettings;
   advanced: AdvancedModeSettings;
 };

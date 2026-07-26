@@ -47,6 +47,9 @@ pub struct Paths {
 pub struct Core {
     pub paths: Paths,
     pub http: reqwest::Client,
+    /// Strict variant of `http` for user-supplied download URLs: its
+    /// redirect policy blocks hops onto private/loopback hosts (§6.3).
+    pub http_public: reqwest::Client,
     pub supervisor: supervisor::Supervisor,
     pub logs: logs::Manager,
     pub(crate) events: tokio::sync::broadcast::Sender<CoreEvent>,
@@ -82,6 +85,7 @@ impl Core {
                 data_dir,
             },
             http: download::build_client(),
+            http_public: download::build_public_client(),
             supervisor,
             logs,
             events,

@@ -108,6 +108,11 @@ pub struct Settings {
     pub schema_version: u32,
     pub active_mode: Mode,
     pub rcon_allowlist: Vec<String>,
+    /// §6.3 rule 5 escape hatch: when true, `download_mod` may fetch from
+    /// loopback/private/LAN hosts (homelab use). Default false = SSRF
+    /// hardening on. Serde `default` on the struct means pre-existing v2
+    /// files without the field load as false and are rewritten with it.
+    pub allow_private_download_hosts: bool,
     pub simple: SimpleModeSettings,
     pub advanced: AdvancedModeSettings,
 }
@@ -121,6 +126,7 @@ impl Default for Settings {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            allow_private_download_hosts: false,
             simple: SimpleModeSettings::default(),
             advanced: AdvancedModeSettings::default(),
         }
@@ -398,6 +404,7 @@ mod tests {
         s.advanced.container_name = "mc-1".into();
         s.advanced.rcon_password = "hunter2hunter2".into();
         s.rcon_allowlist = vec!["LIST".into(), " say ".into(), "".into()];
+        s.allow_private_download_hosts = true;
 
         let saved = save(&config_dir, s).await.unwrap();
         assert_eq!(saved.rcon_allowlist, vec!["list", "say"]);
@@ -407,6 +414,7 @@ mod tests {
         assert_eq!(loaded.advanced.container_name, "mc-1");
         assert_eq!(loaded.advanced.rcon_password, "hunter2hunter2");
         assert_eq!(loaded.rcon_allowlist, vec!["list", "say"]);
+        assert!(loaded.allow_private_download_hosts);
     }
 
     #[tokio::test]
@@ -416,6 +424,7 @@ mod tests {
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["schemaVersion"], 2);
         assert_eq!(v["activeMode"], "simple");
+        assert_eq!(v["allowPrivateDownloadHosts"], false);
         assert!(v["simple"]["javaPath"].is_null());
         assert!(v["advanced"]["serverUtilsUrl"].is_null());
         assert!(v["advanced"]["socketPath"].is_null());
@@ -436,6 +445,8 @@ mod tests {
         assert_eq!(loaded.schema_version, 2);
         assert_eq!(loaded.active_mode, Mode::Advanced);
         assert_eq!(loaded.advanced.container_name, "old-mc");
+        // Field added post-v2-launch: absent in old files → default false.
+        assert!(!loaded.allow_private_download_hosts);
         // rewritten to disk with schemaVersion 2
         let raw = std::fs::read_to_string(config_dir.join("settings.json")).unwrap();
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();

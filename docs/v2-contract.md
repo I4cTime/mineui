@@ -134,6 +134,9 @@ type Settings = {
   activeMode: Mode;                     // default "simple"
   /** Lowercased command names permitted through run_rcon_command. */
   rconAllowlist: string[];
+  /** §6.3 rule 5 escape hatch: permit download_mod URLs on loopback/private
+   *  hosts (homelab LAN downloads). Default false = SSRF hardening on. */
+  allowPrivateDownloadHosts: boolean;
   simple: SimpleModeSettings;
   advanced: AdvancedModeSettings;
 };
@@ -155,6 +158,7 @@ pub struct Settings {
     pub schema_version: u32,            // always 2 after load
     pub active_mode: Mode,              // #[serde(rename_all = "lowercase")] enum
     pub rcon_allowlist: Vec<String>,
+    pub allow_private_download_hosts: bool, // default false (§6.3 rule 5)
     pub simple: SimpleModeSettings,
     pub advanced: AdvancedModeSettings,
 }
@@ -447,7 +451,14 @@ Semantics:
 - `upload_mod`: `sourcePath` is a host filesystem path obtained by the frontend via the
   Tauri dialog plugin (there is no multipart upload in v2). Validate the *basename* of
   `sourcePath` per §6.2, then advanced → `runtime cp <src> <name>:<root>/<filename>`;
-  simple → `std::fs::copy`.
+  simple → `std::fs::copy`. Source hardening (the webview must not be able to
+  exfiltrate arbitrary readable host files by pointing `sourcePath` at them):
+  canonicalize `sourcePath` (symlinks resolved) and require the **resolved** path to
+  be a regular file whose name still ends in `.jar`/`.zip` (case-insensitive), with a
+  512 MiB size cap (`FILE_TOO_LARGE`; other violations `INVALID_INPUT`). Symlinks are
+  therefore accepted only when their target is itself a regular `.jar`/`.zip`. The
+  copy uses the canonical path; the stored filename still derives from the
+  user-picked basename per §6.2.
 - `download_mod`: URL validation per §6.3. **Download happens host-side in Rust
   (reqwest) to a temp file** — never `curl` inside the container (this designs out the
   v1 `sh -c` injection). Emits `mineui://download-progress` events with
@@ -789,10 +800,22 @@ Applied to the basename in `upload_mod`, `download_mod`, `delete_mod`:
    (`INVALID_INPUT` — no `mod.jar` default; v1's silent default is dropped).
    Then §6.2 applies.
 3. Download host-side (reqwest), follow ≤ 5 redirects, each redirect re-checked for
-   http/https, 60 s idle timeout, 256 MB cap streamed to temp file, then moved/copied
-   into place. Non-2xx final status → `DOWNLOAD_FAILED`.
+   http/https (and, when rule 5 applies, for public host), 60 s idle timeout, 256 MB
+   cap streamed to temp file, then moved/copied into place. Non-2xx final status →
+   `DOWNLOAD_FAILED`.
 4. Mojang manifest/jar downloads additionally verify the manifest-provided SHA-1
    (`CHECKSUM_MISMATCH`).
+5. SSRF hardening (`INVALID_INPUT`), skipped when
+   `settings.allowPrivateDownloadHosts` is true: the URL host must not be — or, for
+   hostnames, must not resolve exclusively to — a loopback/private/link-local/
+   unique-local/unspecified address (IPv4 127/8, 10/8, 172.16/12, 192.168/16,
+   169.254/16, 0.0.0.0; IPv6 ::1, ::, fc00::/7, fe80::/10, plus IPv4-mapped forms).
+   Hostname resolution happens at validation time (`ToSocketAddrs`); the
+   validation-vs-request TOCTOU window (DNS rebinding) is mitigated by a strict
+   redirect policy that re-validates every redirect hop's host with the same rule
+   (`download::build_public_client`). Unresolvable host → `DOWNLOAD_FAILED`. Mojang
+   server-jar downloads always use the strict client (their URLs come from the
+   HTTPS manifest and content is SHA-1 pinned).
 
 ### 6.4 RCON commands
 
@@ -878,6 +901,7 @@ export type Settings = {
   schemaVersion: 2;
   activeMode: Mode;
   rconAllowlist: string[];
+  allowPrivateDownloadHosts: boolean;
   simple: SimpleModeSettings;
   advanced: AdvancedModeSettings;
 };

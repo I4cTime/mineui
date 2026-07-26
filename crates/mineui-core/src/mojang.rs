@@ -197,6 +197,10 @@ pub async fn download_server_jar(
         download_id: uuid::Uuid::new_v4().to_string(),
         max_bytes: None,
         expected_sha1: Some(download.sha1.clone()),
+        // Server-jar URLs come from Mojang's HTTPS manifest and the content
+        // is SHA-1 pinned; still use the strict client — piston-data has no
+        // business redirecting to private hosts.
+        allow_private_hosts: false,
     };
     let result = crate::download::to_temp_file(core, &req).await?;
     if let Some(parent) = dest.parent() {
