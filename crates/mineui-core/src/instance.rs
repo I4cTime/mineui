@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use rand::Rng;
+use rand::RngExt;
 
 use crate::error::{Error, Result};
 use crate::model::{CreateInstanceArgs, InstanceMeta, InstanceStatus};
@@ -11,9 +11,9 @@ pub const META_FILE: &str = "mineui-instance.json";
 
 /// Generate the RCON password: 24 chars, alphanumeric, CSPRNG (§2.1).
 pub fn generate_rcon_password() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     (0..24)
-        .map(|_| char::from(rng.sample(rand::distributions::Alphanumeric)))
+        .map(|_| char::from(rng.sample(rand::distr::Alphanumeric)))
         .collect()
 }
 
