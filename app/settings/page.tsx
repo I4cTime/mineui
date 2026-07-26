@@ -102,6 +102,7 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     loadAll();
   }, [loadAll]);
 

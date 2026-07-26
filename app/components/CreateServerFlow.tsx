@@ -99,7 +99,9 @@ export default function CreateServerFlow({
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     loadVersions(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- same: sync loading-flag set
     recheckJava();
   }, [loadVersions, recheckJava]);
 

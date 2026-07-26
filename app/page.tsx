@@ -129,6 +129,7 @@ export default function Home() {
   }, [mode, modeLoading]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     bootstrap();
   }, [bootstrap]);
 
@@ -144,6 +145,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!showDashboard) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     refreshPolled();
     const interval = setInterval(refreshPolled, 8000);
     return () => clearInterval(interval);

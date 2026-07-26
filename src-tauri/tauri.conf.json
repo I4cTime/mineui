@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://storage.ko-fi.com; font-src 'self' data:; frame-src https://ko-fi.com; connect-src 'self' ipc: http://ipc.localhost"
     }
   },
   "bundle": {
