@@ -25,6 +25,10 @@ updates:
       # Next.js majors need a manual migration pass.
       - dependency-name: "next"
         update-types: ["version-update:semver-major"]
+      # @types/node should track our Node runtime major (see ci.yml/
+      # release.yml node-version: "24"), not whatever's newest on npm.
+      - dependency-name: "@types/node"
+        versions: [">24"]
 
   # Rust workspace (root Cargo.toml: crates/mineui-core + src-tauri)
   - package-ecosystem: "cargo"
