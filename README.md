@@ -52,15 +52,28 @@ two modes:
 
 ## Install
 
-There's no packaged `v2` release yet — the Tauri rewrite (this branch) is
-pre-release. `v1.0.0` on the [Releases page](https://github.com/I4cTime/mineui/releases)
-is the old Electron app; it predates this architecture and isn't what this
-README describes. Until a `v2.x` tag ships AppImage/`.deb`/`.msi`/`.dmg`
-bundles via [release.yml](.github/workflows/release.yml), build from source —
-see [Development](#development).
+Grab the build for your platform from the
+[latest release](https://github.com/I4cTime/mineui/releases/latest):
 
-Building from source **requires a HeroUI Pro license** — see
-[Note on HeroUI Pro](#note-on-heroui-pro) below before you start.
+| Platform | Package |
+| --- | --- |
+| Linux x86_64 | `MineUI_2.0.0_amd64.AppImage` — `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.0.0_amd64.deb` — `sudo apt install ./MineUI_2.0.0_amd64.deb` |
+| Windows x64 | `MineUI_2.0.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.0.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.0.0_x64.dmg` |
+
+Simple mode needs Java installed (MineUI version-checks it against the
+Minecraft release you pick). Advanced mode needs Docker or Podman.
+
+> `v1.0.0` on the Releases page is the old Electron app — it predates this
+> architecture and isn't what this README describes.
+
+The released binaries are free. Building from source **requires a HeroUI
+Pro license** — see [Note on HeroUI Pro](#note-on-heroui-pro) below before
+you start.
+
+Website & docs: [mineui.i4c.studio](https://mineui.i4c.studio)
 
 ## Features
 
