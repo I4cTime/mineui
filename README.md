@@ -12,9 +12,13 @@
 
 <p align="center">
   <a href="https://github.com/I4cTime/mineui/actions/workflows/ci.yml"><img src="https://github.com/I4cTime/mineui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/I4cTime/mineui/releases/latest"><img src="https://img.shields.io/github/v/release/I4cTime/mineui?label=release&color=3ddc84" alt="Latest release"></a>
+  <a href="https://github.com/I4cTime/mineui/releases"><img src="https://img.shields.io/github/downloads/I4cTime/mineui/total?label=downloads&color=3ddc84" alt="Total downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-informational" alt="Platform: Linux, Windows, macOS">
+  <a href="https://mineui.i4c.studio"><img src="https://img.shields.io/badge/website-mineui.i4c.studio-3ddc84" alt="Website"></a>
   <a href="https://discord.gg/5uEApw5uEz"><img src="https://img.shields.io/badge/discord-join%20the%20studio-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://x.com/i4c_studio"><img src="https://img.shields.io/badge/follow-%40i4c__studio-000000?logo=x&logoColor=white" alt="X (Twitter)"></a>
 </p>
 
 <p align="center">
