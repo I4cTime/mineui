@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   Sparkles,
+  Check,
   Container,
   Download,
+  Palette,
   RefreshCw,
   Save,
   Settings as SettingsIcon,
@@ -16,6 +18,12 @@ import {
   Button,
   Card,
   Chip,
+  ColorArea,
+  ColorField,
+  ColorPicker,
+  ColorSlider,
+  ColorSwatch,
+  ColorSwatchPicker,
   Input,
   Label,
   ListBox,
@@ -29,6 +37,7 @@ import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { formatDateTime } from "@/app/lib/format";
 import { useUISound } from "@/app/hooks/useUISound";
+import { ACCENT_PRESETS, useAccentColor } from "@/app/hooks/useAccentColor";
 import { useMode } from "@/app/components/ModeProvider";
 import { usePageMotion } from "@/app/lib/motion";
 import {
@@ -53,6 +62,108 @@ const numberFrom = (event: React.ChangeEvent<HTMLInputElement>) => {
   return Number.isFinite(value) ? value : 0;
 };
 
+const MODE_OPTIONS = [
+  {
+    id: "simple",
+    title: "Simple",
+    description:
+      "MineUI runs a managed vanilla server for you — pick a version on the dashboard and press start.",
+    icon: Sparkles,
+  },
+  {
+    id: "advanced",
+    title: "Advanced",
+    description:
+      "Attach to an existing Minecraft container managed by Podman or Docker.",
+    icon: Container,
+  },
+] as const;
+
+type ModeId = (typeof MODE_OPTIONS)[number]["id"];
+
+/**
+ * One selectable card of the mode radio group. Custom control (not a HeroUI
+ * ToggleButtonGroup) because the design is a rich card — icon tile, title,
+ * description, check badge — not a segmented button. Radio semantics +
+ * roving tabindex live on the group in SettingsPage.
+ */
+function ModeOptionCard({
+  option,
+  selected,
+  disabled,
+  onSelect,
+  onHover,
+  buttonRef,
+}: {
+  option: (typeof MODE_OPTIONS)[number];
+  selected: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+  onHover: () => void;
+  buttonRef: (node: HTMLButtonElement | null) => void;
+}) {
+  const Icon = option.icon;
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      tabIndex={selected ? 0 : -1}
+      disabled={disabled}
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      className="relative flex items-start gap-3 rounded-lg border p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      style={{
+        borderColor: selected ? "var(--accent)" : "var(--border)",
+        background: selected
+          ? "color-mix(in oklab, var(--accent) 8%, transparent)"
+          : "var(--surface-secondary)",
+        outlineColor: "var(--focus)",
+        transition:
+          "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg"
+        style={{
+          background: selected
+            ? "color-mix(in oklab, var(--accent) 16%, transparent)"
+            : "var(--segment)",
+          color: selected ? "var(--accent)" : "var(--muted)",
+          transition:
+            "background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease)",
+        }}
+      >
+        <Icon size={18} />
+      </span>
+      <span className="flex min-w-0 flex-col gap-1 pr-7">
+        <span className="font-display text-sm text-foreground">
+          {option.title}
+        </span>
+        <span className="text-xs leading-relaxed text-muted">
+          {option.description}
+        </span>
+      </span>
+      <span
+        aria-hidden
+        className="absolute top-3 right-3 flex size-4.5 items-center justify-center rounded-full"
+        style={{
+          background: selected ? "var(--accent)" : "transparent",
+          border: selected ? "none" : "1px solid var(--border)",
+          transition:
+            "background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease)",
+        }}
+      >
+        {selected && (
+          <Check size={12} strokeWidth={3} style={{ color: "var(--accent-foreground)" }} />
+        )}
+      </span>
+    </button>
+  );
+}
+
 export default function SettingsPage() {
   const { containerMotion, cardMotion } = usePageMotion();
   const [loading, setLoading] = useState(true);
@@ -66,7 +177,26 @@ export default function SettingsPage() {
   const [runtimes, setRuntimes] = useState<RuntimeProbe | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const modeRefs = useRef<Record<ModeId, HTMLButtonElement | null>>({
+    simple: null,
+    advanced: null,
+  });
   const { play } = useUISound();
+  const { accent, setAccent } = useAccentColor();
+  // What the custom ColorPicker shows: the override when set, else the
+  // current theme's own accent read from the DOM. Safe to read during
+  // render — this card only mounts after the IPC load effect (client-only),
+  // and a reset re-runs this memo after the inline override is already
+  // removed, so it picks up the theme value again.
+  const pickerColor = useMemo(() => {
+    if (accent !== null) return accent;
+    if (typeof document === "undefined") return "#3ddc84";
+    return (
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--accent")
+        .trim() || "#3ddc84"
+    );
+  }, [accent]);
   // Shared app-wide mode (app/components/ModeProvider.tsx). Mode switching
   // lives here now, not in the draft/Save flow below — clicking Simple/
   // Advanced persists instantly through the same path the navbar toggle
@@ -248,35 +378,47 @@ export default function SettingsPage() {
       >
         <PageHeader title="Settings" icon={SettingsIcon} />
 
-        {/* Mode switch */}
+        {/* Mode switch — a radio group of rich option cards. Roving
+            tabindex: only the selected card is tabbable; arrow keys move
+            selection (two options, so every arrow just flips to the other). */}
         <motion.section variants={cardMotion}>
           <Card className="p-6">
             <Card.Header className="flex-col items-start gap-1">
               <Card.Title>Mode</Card.Title>
               <Card.Description>
-                Simple runs a managed vanilla server for you. Advanced attaches
-                to an existing Podman or Docker container.
+                How MineUI runs your server. Switching applies immediately.
               </Card.Description>
             </Card.Header>
-            <Card.Content className="mt-4 flex flex-wrap gap-3">
-              <Button
-                variant={isSimple ? "primary" : "secondary"}
-                isDisabled={modeSwitching}
-                onPress={() => handleModeChange("simple")}
-                onMouseEnter={() => play("hover")}
-              >
-                <Sparkles size={16} />
-                Simple
-              </Button>
-              <Button
-                variant={!isSimple ? "primary" : "secondary"}
-                isDisabled={modeSwitching}
-                onPress={() => handleModeChange("advanced")}
-                onMouseEnter={() => play("hover")}
-              >
-                <Container size={16} />
-                Advanced
-              </Button>
+            <Card.Content
+              role="radiogroup"
+              aria-label="App mode"
+              className="mt-4 grid gap-3 sm:grid-cols-2"
+              onKeyDown={(event: React.KeyboardEvent) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                event.preventDefault();
+                const next: ModeId = isSimple ? "advanced" : "simple";
+                handleModeChange(next);
+                modeRefs.current[next]?.focus();
+              }}
+            >
+              {MODE_OPTIONS.map((option) => (
+                <ModeOptionCard
+                  key={option.id}
+                  option={option}
+                  selected={mode === option.id}
+                  disabled={modeSwitching}
+                  onSelect={() => handleModeChange(option.id)}
+                  onHover={() => play("hover")}
+                  buttonRef={(node) => {
+                    modeRefs.current[option.id] = node;
+                  }}
+                />
+              ))}
             </Card.Content>
           </Card>
         </motion.section>
@@ -639,6 +781,101 @@ export default function SettingsPage() {
             </Card>
           </motion.section>
         )}
+
+        {/* Shared: appearance — user accent override. The swatch fills are
+            user-pickable data values (see ACCENT_PRESETS), not UI styling;
+            the surrounding chrome stays on theme tokens. */}
+        <motion.section variants={cardMotion}>
+          <Card className="p-6">
+            <Card.Header className="flex-col items-start gap-1">
+              <div className="flex items-center gap-2">
+                <Palette size={16} className="text-accent" />
+                <Card.Title>Accent color</Card.Title>
+              </div>
+              <Card.Description>
+                Override the theme&apos;s accent everywhere in the app. Themes
+                themselves are picked from the navbar.
+              </Card.Description>
+            </Card.Header>
+            <Card.Content className="mt-4 flex flex-col items-start gap-4">
+              {/* Preset swatches. The transparent sentinel keeps the picker
+                  controlled while matching no preset when no override is
+                  set (RAC selects by color equality). */}
+              <ColorSwatchPicker
+                aria-label="Preset accent colors"
+                value={accent ?? "rgba(0, 0, 0, 0)"}
+                onChange={(color) => {
+                  play("toggle_on");
+                  setAccent(color.toString("hex"));
+                }}
+              >
+                {ACCENT_PRESETS.map((preset) => (
+                  <ColorSwatchPicker.Item
+                    key={preset.id}
+                    color={preset.value}
+                    aria-label={preset.label}
+                  >
+                    <ColorSwatchPicker.Swatch />
+                    <ColorSwatchPicker.Indicator />
+                  </ColorSwatchPicker.Item>
+                ))}
+              </ColorSwatchPicker>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <ColorPicker
+                  value={pickerColor}
+                  onChange={(color) => {
+                    // "slider" is throttled (50ms) in useUISound — safe for
+                    // the continuous onChange stream while dragging.
+                    play("slider");
+                    setAccent(color.toString("hex"));
+                  }}
+                >
+                  <ColorPicker.Trigger onMouseEnter={() => play("hover")}>
+                    <ColorSwatch size="sm" />
+                    Custom color
+                  </ColorPicker.Trigger>
+                  <ColorPicker.Popover placement="bottom start">
+                    <div className="flex w-60 flex-col gap-3">
+                      <ColorArea
+                        colorSpace="hsb"
+                        xChannel="saturation"
+                        yChannel="brightness"
+                        className="h-40 w-full"
+                      >
+                        <ColorArea.Thumb />
+                      </ColorArea>
+                      <ColorSlider channel="hue" colorSpace="hsb">
+                        <ColorSlider.Track>
+                          <ColorSlider.Thumb />
+                        </ColorSlider.Track>
+                      </ColorSlider>
+                      <ColorField aria-label="Hex color">
+                        <ColorField.Group fullWidth>
+                          <ColorField.Input />
+                        </ColorField.Group>
+                      </ColorField>
+                    </div>
+                  </ColorPicker.Popover>
+                </ColorPicker>
+
+                {accent !== null && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => {
+                      play("click_back");
+                      setAccent(null);
+                    }}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    Reset to theme accent
+                  </Button>
+                )}
+              </div>
+            </Card.Content>
+          </Card>
+        </motion.section>
 
         {/* Shared: download security */}
         <motion.section variants={cardMotion}>

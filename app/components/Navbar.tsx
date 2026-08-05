@@ -38,6 +38,7 @@ import {
 import type { Key } from "@heroui/react";
 import Logo from "./Logo";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
+import { applyAccentOverride } from "@/app/hooks/useAccentColor";
 import { useMode } from "@/app/components/ModeProvider";
 import type { Mode } from "@/app/lib/ipc";
 
@@ -238,6 +239,10 @@ export default function Navbar() {
   useEffect(() => {
     document.documentElement.dataset.theme = currentTheme;
     window.localStorage.setItem("mineui-theme", currentTheme);
+    // Re-apply the user accent override (covers first mount too): its
+    // --accent-foreground pick is derived from the theme's bg/fg tokens,
+    // which just changed with data-theme.
+    applyAccentOverride();
   }, [currentTheme]);
 
   const handleNavigate = (href: string) => {
