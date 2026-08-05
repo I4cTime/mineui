@@ -3,6 +3,28 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.0] - 2026-08-04
+
+### Added
+
+- **Accent color override**: Settings → Appearance now lets you override the
+  theme's accent everywhere in the app — 8 preset swatches plus a full
+  custom color picker, persisted locally. Text on accent fills picks
+  whichever of the theme's own background/foreground tokens contrasts
+  better, so every theme stays readable with any accent.
+
+### Changed
+
+- The Simple/Advanced mode switch in Settings is now an accessible radio
+  group of rich option cards (keyboard arrows flip modes).
+- UI sounds re-encoded — same cues, much smaller files.
+
+### Fixed
+
+- **AppImage: UI sounds now actually play.** The AppImage bundles the
+  GStreamer media framework, so WebKitGTK audio works regardless of which
+  host plugins are installed.
+
 ## [2.0.0] - 2026-07-25
 
 ### Added

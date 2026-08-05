@@ -1,6 +1,6 @@
 [package]
 name = "mineui-core"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 description = "MineUI core business logic (no Tauri dependency)"
 license = "AGPL-3.0-only"

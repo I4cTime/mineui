@@ -1836,7 +1836,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "mineui-core"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1858,7 +1858,7 @@ dependencies = [
 
 [[package]]
 name = "mineui-tauri"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "mineui-core",
  "serde",
