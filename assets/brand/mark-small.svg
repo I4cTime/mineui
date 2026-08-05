@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- MineUI mark, small-size cut (favicons / <=48px): orbit, nodes and
+       glow layers dropped; strokes thickened so the voxel + core stay
+       legible at 16-32px. Canonical geometry: components/ui/BrandMark.tsx. -->
+  <defs>
+    <linearGradient id="mgs" gradientUnits="userSpaceOnUse" x1="72" y1="256" x2="440" y2="256">
+      <stop offset="0" stop-color="#14b866"/>
+      <stop offset="0.5" stop-color="#3ddc84"/>
+      <stop offset="1" stop-color="#6fe8a6"/>
+    </linearGradient>
+    <mask id="mholes" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <circle cx="256" cy="256" r="58" fill="#000"/>
+    </mask>
+  </defs>
+  <g stroke="url(#mgs)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 76 L411.9 166 L411.9 346 L256 436 L100.1 346 L100.1 166 Z" stroke-width="16"/>
+    <g mask="url(#mholes)" stroke-width="11">
+      <path d="M256 256 L411.9 166"/>
+      <path d="M256 256 L100.1 166"/>
+      <path d="M256 256 L256 436"/>
+    </g>
+    <circle cx="256" cy="256" r="62" stroke-width="11"/>
+  </g>
+  <circle cx="256" cy="256" r="34" fill="url(#mgs)"/>
+</svg>

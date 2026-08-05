@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="MineUI" width="96">
+  <img src="assets/brand/mark.svg" alt="MineUI" width="120">
 </p>
 
 <h1 align="center">MineUI</h1>

@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- MineUI mark, monochrome cut (single brand emerald, no gradient or
+       glow) for contexts that need one flat color. Canonical geometry:
+       components/ui/BrandMark.tsx. -->
+  <defs>
+    <mask id="mholem" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <circle cx="256" cy="256" r="50" fill="#000"/>
+    </mask>
+  </defs>
+  <g stroke="#3ddc84" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 76 L411.9 166 L411.9 346 L256 436 L100.1 346 L100.1 166 Z" stroke-width="9"/>
+    <g mask="url(#mholem)" stroke-width="6">
+      <path d="M256 256 L411.9 166"/>
+      <path d="M256 256 L100.1 166"/>
+      <path d="M256 256 L256 436"/>
+    </g>
+    <g mask="url(#mholem)">
+      <ellipse cx="256" cy="256" rx="150" ry="48" transform="rotate(-18 256 256)" stroke-width="6"/>
+    </g>
+    <circle cx="256" cy="256" r="54" stroke-width="6"/>
+  </g>
+  <circle cx="256" cy="256" r="29" fill="#3ddc84"/>
+  <rect x="362.8" y="237.8" width="24" height="24" fill="#3ddc84"/>
+  <rect x="125.2" y="250.2" width="24" height="24" fill="#3ddc84"/>
+</svg>

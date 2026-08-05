@@ -1,0 +1,42 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- MineUI mark ("Ore Cube" voxel). Canonical source:
+       components/ui/BrandMark.tsx — keep geometry and hexes in sync.
+       Brand hexes: #14b866 / #3ddc84 / #6fe8a6 (see app/globals.css). -->
+  <defs>
+    <linearGradient id="mg" gradientUnits="userSpaceOnUse" x1="72" y1="256" x2="440" y2="256">
+      <stop offset="0" stop-color="#14b866"/>
+      <stop offset="0.5" stop-color="#3ddc84"/>
+      <stop offset="1" stop-color="#6fe8a6"/>
+    </linearGradient>
+    <mask id="mhole" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <circle cx="256" cy="256" r="50" fill="#000"/>
+    </mask>
+    <filter id="mglow-wide" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <filter id="mglow-tight" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5"/>
+    </filter>
+    <g id="mart">
+      <g stroke="url(#mg)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M256 76 L411.9 166 L411.9 346 L256 436 L100.1 346 L100.1 166 Z" stroke-width="9"/>
+        <g mask="url(#mhole)" stroke-width="6">
+          <path d="M256 256 L411.9 166"/>
+          <path d="M256 256 L100.1 166"/>
+          <path d="M256 256 L256 436"/>
+        </g>
+        <g mask="url(#mhole)">
+          <ellipse cx="256" cy="256" rx="150" ry="48" transform="rotate(-18 256 256)" stroke-width="6"/>
+        </g>
+        <circle cx="256" cy="256" r="54" stroke-width="6"/>
+      </g>
+      <circle cx="256" cy="256" r="29" fill="url(#mg)"/>
+      <rect x="362.8" y="237.8" width="24" height="24" fill="url(#mg)"/>
+      <rect x="125.2" y="250.2" width="24" height="24" fill="url(#mg)"/>
+    </g>
+  </defs>
+  <use href="#mart" filter="url(#mglow-wide)" opacity="0.75"/>
+  <use href="#mart" filter="url(#mglow-tight)" opacity="0.9"/>
+  <use href="#mart"/>
+</svg>
