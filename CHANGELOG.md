@@ -15,6 +15,9 @@ All notable changes to MineUI are documented here. Format follows
 
 ### Changed
 
+- **New brand**: the app icon and in-app logo are now the "Ore Cube" mark —
+  a neon isometric voxel with a glowing core — replacing the old boxed
+  pixel-cross icon, matching the refreshed mineui.i4c.studio site.
 - The Simple/Advanced mode switch in Settings is now an accessible radio
   group of rich option cards (keyboard arrows flip modes).
 - UI sounds re-encoded — same cues, much smaller files.

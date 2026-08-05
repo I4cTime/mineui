@@ -8,6 +8,13 @@ interface LogoProps {
   className?: string;
 }
 
+/**
+ * The "Ore Cube" brand mark (2026-08 rollout — see assets/brand/): a neon
+ * isometric voxel with the glowing core on the front-corner junction and
+ * one orbit through the cube. Geometry is the canonical 512-grid mark
+ * scaled to a 32 viewBox; colors come from the active theme's tokens, so
+ * the mark follows theme switches and the user accent override for free.
+ */
 export default function Logo({ size = 32, className = "" }: LogoProps) {
   return (
     <motion.svg
@@ -20,49 +27,52 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
     >
-      {/* Outer block */}
-      <rect
-        x="2"
-        y="2"
-        width="28"
-        height="28"
-        rx="4"
-        fill="var(--surface)"
-        stroke="var(--accent)"
-        strokeWidth="2"
-      />
+      {/* Voxel: hexagon silhouette + the three internal cube edges. */}
+      <g stroke="var(--accent)" strokeLinecap="round" strokeLinejoin="round">
+        <path
+          d="M16 4.75 L25.74 10.38 L25.74 21.62 L16 27.25 L6.26 21.62 L6.26 10.38 Z"
+          strokeWidth="1.7"
+        />
+        <g strokeWidth="1.1" opacity="0.85">
+          <path d="M16 16 L25.74 10.38" />
+          <path d="M16 16 L6.26 10.38" />
+          <path d="M16 16 L16 27.25" />
+        </g>
+        {/* Orbit through the cube (−18°, matches the full mark). */}
+        <ellipse
+          cx="16"
+          cy="16"
+          rx="9.4"
+          ry="3"
+          transform="rotate(-18 16 16)"
+          strokeWidth="1.1"
+          opacity="0.9"
+        />
+        {/* Core halo */}
+        <circle cx="16" cy="16" r="3.4" strokeWidth="1.1" fill="var(--surface)" />
+      </g>
 
-      {/* Inner grid pattern (minecraft block texture hint) */}
-      <rect x="6" y="6" width="8" height="8" fill="var(--accent)" opacity="0.8" />
-      <rect x="18" y="6" width="8" height="8" fill="var(--accent)" opacity="0.6" />
-      <rect x="6" y="18" width="8" height="8" fill="var(--accent)" opacity="0.6" />
-      <rect x="18" y="18" width="8" height="8" fill="var(--accent)" opacity="0.8" />
-
-      {/* Center accent — was an infinite 2s pulse loop (renders in Navbar on
-          every page); now a single-shot bloom-in on mount only. */}
-      <motion.rect
-        x="12"
-        y="12"
-        width="8"
-        height="8"
-        fill="color-mix(in oklab, var(--accent) 80%, white)"
+      {/* Core — was an infinite pulse in the old logo; single-shot bloom-in
+          on mount only (this renders in Navbar on every page). */}
+      <motion.circle
+        cx="16"
+        cy="16"
+        r="1.9"
+        fill="color-mix(in oklab, var(--accent) 85%, white)"
         initial={{ opacity: 0.5 }}
         animate={{ opacity: 1 }}
         transition={transition("slow")}
       />
 
-      {/* Glow effect — was an infinite 3s pulse loop; same fix. */}
-      <motion.rect
-        x="2"
-        y="2"
-        width="28"
-        height="28"
-        rx="4"
+      {/* Glow layer — same single-shot fade as the old logo's. */}
+      <motion.path
+        d="M16 4.75 L25.74 10.38 L25.74 21.62 L16 27.25 L6.26 21.62 L6.26 10.38 Z"
         fill="none"
         stroke="var(--accent)"
-        strokeWidth="1"
+        strokeWidth="2.6"
+        strokeLinejoin="round"
         initial={{ opacity: 0 }}
-        animate={{ opacity: 0.3 }}
+        animate={{ opacity: 0.25 }}
         transition={transition("slow")}
       />
     </motion.svg>
