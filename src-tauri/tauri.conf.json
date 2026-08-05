@@ -30,6 +30,11 @@
     "active": true,
     "targets": ["appimage", "deb", "nsis", "dmg"],
     "category": "Utility",
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
     "shortDescription": "Minecraft server manager",
     "longDescription": "MineUI manages Minecraft servers: a managed vanilla server (simple mode) or an existing Podman/Docker container (advanced mode).",
     "icon": [

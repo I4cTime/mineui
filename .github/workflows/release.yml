@@ -97,9 +97,15 @@ jobs:
 
       - name: Install Tauri Linux system deps
         if: matrix.platform == 'ubuntu-latest'
+        # patchelf + the gstreamer plugin set are required by
+        # bundle.linux.appimage.bundleMediaFramework (tauri.conf.json):
+        # linuxdeploy-plugin-gstreamer patchelf-copies the runner's installed
+        # GStreamer plugins into the AppImage so WebKitGTK audio works there.
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev librsvg2-dev \
+            patchelf gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-alsa gstreamer1.0-pulseaudio gstreamer1.0-gl
 
       # Same HEROUI_AUTH_TOKEN gate as ci.yml — see the comment there.
       # `pnpm build` (the frontend static export) runs on this runner too,
