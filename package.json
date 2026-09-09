@@ -59,7 +59,7 @@
     "embla-carousel-react": "^8.6.0",
     "howler": "^2.2.4",
     "lucide-react": "^1.27.0",
-    "maplibre-gl": "^6.0.0",
+    "maplibre-gl": "^6.4.1",
     "marked": "^18.0.7",
     "motion": "^12.42.2",
     "next": "16.2.12",
