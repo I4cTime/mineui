@@ -80,7 +80,7 @@
     "@tailwindcss/postcss": "^4",
     "@tauri-apps/cli": "^2.11.4",
     "@types/howler": "^2.2.13",
-    "@types/node": "^20",
+    "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
