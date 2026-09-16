@@ -1,6 +1,6 @@
 [package]
 name = "mineui-tauri"
-version = "2.1.0"
+version = "2.1.1"
 edition = "2021"
 description = "MineUI — Minecraft server manager (Tauri shell)"
 license = "AGPL-3.0-only"

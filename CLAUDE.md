@@ -11,7 +11,7 @@ contribution process; this file is conventions and constraints only.
 - `pnpm lint` — ESLint
 - `pnpm tauri dev` — full app (Next.js dev server + Tauri window)
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (84 tests, must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (103 tests, must stay green)
 - `cargo fmt` / `cargo clippy` — run before committing any Rust change
 
 pnpm only. Do not use npm/yarn/bun.

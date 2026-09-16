@@ -3,6 +3,24 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.1] - 2026-09-15
+
+### Security
+
+- Dependency refresh clearing every open advisory: Next.js 16.3.5 (two
+  critical RCE advisories in the image-optimization API — not reachable in
+  the static-export desktop build, but no longer shipped), Tiptap 3.31.3
+  (Markdown ReDoS, `mergeAttributes` prototype key), MapLibre GL 6.10
+  (sanitizer XSS bypass), and pinned floors for the transitive sharp,
+  nanoid, DOMPurify, and Mermaid advisories.
+
+### Changed
+
+- Rust crates: thiserror 2.0.20, async-trait 0.1.92, uuid 1.26.1,
+  flate2 1.1.10, tauri-plugin-dialog 2.7.3. HeroUI 3.2.5, lucide-react 1.46,
+  react-aria-components 1.21 and other minor/patch frontend bumps.
+- CI: pnpm/action-setup 6.0.10, rust-cache 2.9.2, CodeQL 4.37.9.
+
 ## [2.1.0] - 2026-08-04
 
 ### Added
