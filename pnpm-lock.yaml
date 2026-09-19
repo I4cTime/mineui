@@ -40,8 +40,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       '@heroui-pro/react':
-        specifier: 1.0.0-beta.7
-        version: 1.0.0-beta.7
+        specifier: 1.0.0-beta.9
+        version: 1.0.0-beta.9
       '@heroui/react':
         specifier: ^3.2.5
         version: 3.2.5(@react-aria/i18n@3.13.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/ssr@3.10.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-aria/utils@3.34.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@react-spectrum/provider@3.11.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-aria-components@1.21.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-aria@3.52.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(tailwindcss@4.3.3)
@@ -375,8 +375,8 @@ packages:
   '@formatjs/intl-localematcher@0.6.2':
     resolution: {integrity: sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==}
 
-  '@heroui-pro/react@1.0.0-beta.7':
-    resolution: {integrity: sha512-8OPimF2ZwbX89wxpYlYRDFTCCVKQn1eRPtvymwLcjCTt2PWfYmYvqT/Yvn+VAgfr7QYCxmmxlAmLy29hwfyYcA==}
+  '@heroui-pro/react@1.0.0-beta.9':
+    resolution: {integrity: sha512-KcYkDRbTXJYInAOzzaKbcVXEWt12b7tjkQijgX+ImsrO2KXXjGPgjKj9dy6h9f/WolkMW4IQ2iRjsfr/vgE25Q==}
 
   '@heroui/react@3.2.5':
     resolution: {integrity: sha512-rIbgbyuNkwHqiDnlaM8ctN+jX5YpERtpz6rXy2Tg0+Fs7jx3OCXBkkeR07SrXcTf3CzjKWPVKb/J7MWtWPsn8w==}
@@ -3888,7 +3888,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@heroui-pro/react@1.0.0-beta.7':
+  '@heroui-pro/react@1.0.0-beta.9':
     dependencies:
       chalk: 5.6.2
       heroui-pro: 1.0.0-beta.13
