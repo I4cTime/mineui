@@ -354,7 +354,13 @@ Structural breakpoints are Tailwind screens defined in `globals.css`
 (`@theme`, static — media queries can't read per-theme vars):
 `header-full` = 1200px, `header-mid` = 900px, `header-min` = 700px.
 CSS-only visibility (responsive variants), **no ResizeObserver / JS
-measurement**. Minimum supported window width: 640px.
+measurement**. Minimum supported window width: 640px. One amendment (2.5.0):
+the Ko-fi `Popover` (T1 only) and the More overflow `Menu` (T3–T4 only) are
+**not rendered** outside their tiers, gated by `matchMedia` on the same
+`header-full` / `header-mid` screens (`app/hooks/useMediaQuery.ts`) — a
+display:none trigger inside react-aria's Pressable/PressResponder is
+treated as unfocusable and warns on every mount. That is a media query, not
+measurement; everything else stays CSS-only.
 
 | Tier | Range | nav | controls |
 |---|---|---|---|

@@ -66,9 +66,14 @@ function NavTooltip({ label, description }: { label: string; description: string
   );
 }
 
-// §9.2: labels show at T1 (header-full, 1200px). Nav tooltips only make
-// sense below that, where the items are icon-only.
+// §9.2 tiers as media queries (the same `header-full` / `header-mid`
+// screens as the CSS variants). Two things must NOT merely be CSS-hidden:
+// react-aria's Pressable/PressResponder treat a display:none trigger as
+// unfocusable and warn on every mount, so the Ko-fi popover (T1 only) and
+// the More overflow (below header-mid only) are rendered conditionally.
+// Nav tooltips are likewise disabled at T1, where the label is visible.
 const LABELS_VISIBLE_QUERY = "(min-width: 75rem)";
+const OVERFLOW_QUERY = "(max-width: 56.24rem)";
 
 const PRIORITY_COUNT = 4;
 
@@ -155,6 +160,7 @@ export default function Navbar() {
   const router = useRouter();
   const { theme: currentTheme } = useTheme();
   const labelsVisible = useMediaQuery(LABELS_VISIBLE_QUERY);
+  const overflowTier = useMediaQuery(OVERFLOW_QUERY);
   const [showKofi, setShowKofi] = useState(false);
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
@@ -341,9 +347,16 @@ export default function Navbar() {
               Its menu always contains all eight items; the priority four
               are CSS-hidden inside it except at T4 (<700px), where they
               have no standalone button to live in instead. */}
+          {overflowTier && (
           <div className="relative flex h-full items-center header-mid:hidden!">
-            <Dropdown trigger="press">
-              <Tooltip delay={400}>
+            {/* Tooltip outside, the Button as the MenuTrigger's direct
+                child: react-aria's PressResponder is
+                consumed by the very next pressable, and a Tooltip in between
+                left it unconsumed ("PressResponder was rendered without a
+                pressable child"). The Button still picks up the tooltip's
+                focusable props through context. */}
+            <Tooltip delay={400}>
+              <Dropdown trigger="press">
                 <Button
                   isIconOnly
                   size="sm"
@@ -363,10 +376,6 @@ export default function Navbar() {
                   )}
                   <Ellipsis size={16} className="relative z-10" />
                 </Button>
-                <Tooltip.Content placement="bottom">
-                  <NavTooltip label="More" description="RCON, Config, Backups, Settings" />
-                </Tooltip.Content>
-              </Tooltip>
               <Dropdown.Popover placement="bottom start">
                 <Dropdown.Menu onAction={(key) => handleNavigate(String(key))}>
                   {navItems.map((item, index) => {
@@ -388,7 +397,11 @@ export default function Navbar() {
                   })}
                 </Dropdown.Menu>
               </Dropdown.Popover>
-            </Dropdown>
+              </Dropdown>
+              <Tooltip.Content placement="bottom">
+                <NavTooltip label="More" description="RCON, Config, Backups, Settings" />
+              </Tooltip.Content>
+            </Tooltip>
             {moreHasActive && (
               <span
                 className={
@@ -399,6 +412,7 @@ export default function Navbar() {
               </span>
             )}
           </div>
+          )}
         </nav>
 
         {/* Controls zone — fixed, shrink-0 (§9.1). */}
@@ -443,6 +457,7 @@ export default function Navbar() {
             </ToggleButton>
           </ToggleButtonGroup>
 
+          {labelsVisible && (
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
             {/* Popover.Trigger is HeroUI's pressable (a react-aria Pressable
                 around a role="button" div). It needs tabIndex to be
@@ -477,6 +492,7 @@ export default function Navbar() {
               </Popover.Dialog>
             </Popover.Content>
           </Popover>
+          )}
         </div>
       </div>
     </header>
