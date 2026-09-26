@@ -5,7 +5,8 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "0 9 * * mon#1,mon#2"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -34,7 +35,8 @@ updates:
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "0 9 * * mon#1,mon#2"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
@@ -50,7 +52,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "cron"
+      cronjob: "0 9 * * mon#1,mon#2"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
