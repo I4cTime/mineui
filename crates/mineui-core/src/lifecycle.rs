@@ -1,6 +1,7 @@
 //! Server state + lifecycle across both modes (contract §3.2).
 
 use crate::error::{Error, Result};
+use crate::model::AuditSource;
 use crate::model::{
     ContainerDetail, CoreEvent, ProcessDetail, ServerPhase, ServerState, ServerStateEvent,
 };
@@ -69,7 +70,7 @@ pub async fn state(core: &crate::Core) -> Result<ServerState> {
 }
 
 /// `start_server` (§3.2).
-pub async fn start(core: &crate::Core) -> Result<()> {
+async fn start_inner(core: &crate::Core) -> Result<()> {
     let settings = core.settings().await;
     match settings.active_mode {
         Mode::Advanced => {
@@ -135,7 +136,7 @@ pub async fn start(core: &crate::Core) -> Result<()> {
 }
 
 /// `stop_server` (§3.2).
-pub async fn stop(core: &crate::Core) -> Result<()> {
+async fn stop_inner(core: &crate::Core) -> Result<()> {
     let settings = core.settings().await;
     match settings.active_mode {
         Mode::Advanced => {
@@ -156,7 +157,7 @@ pub async fn stop(core: &crate::Core) -> Result<()> {
 }
 
 /// `restart_server` (§3.2): simple mode = stop (await exit) then start.
-pub async fn restart(core: &crate::Core) -> Result<()> {
+async fn restart_inner(core: &crate::Core) -> Result<()> {
     let settings = core.settings().await;
     match settings.active_mode {
         Mode::Advanced => {
@@ -218,6 +219,50 @@ pub async fn poll_advanced_state(core: &crate::Core) {
             }));
         }
     }
+}
+
+/* ---------- audited entry points (§3.11) ---------- */
+
+/// `start_server` (§3.2), audited as `server.start`.
+pub async fn start(core: &crate::Core) -> Result<()> {
+    let r = start_inner(core).await;
+    crate::audit::record(
+        core,
+        AuditSource::User,
+        "server.start",
+        None,
+        None,
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `stop_server` (§3.2), audited as `server.stop`.
+pub async fn stop(core: &crate::Core) -> Result<()> {
+    let r = stop_inner(core).await;
+    crate::audit::record(
+        core,
+        AuditSource::User,
+        "server.stop",
+        None,
+        None,
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `restart_server` (§3.2), audited as `server.restart` from the user.
+pub async fn restart(core: &crate::Core) -> Result<()> {
+    restart_from(core, AuditSource::User).await
+}
+
+/// Restart on behalf of `source` (the scheduler uses `Scheduler`).
+pub async fn restart_from(core: &crate::Core, source: AuditSource) -> Result<()> {
+    let r = restart_inner(core).await;
+    crate::audit::record(core, source, "server.restart", None, None, r.as_ref().err()).await;
+    r
 }
 
 #[cfg(test)]

@@ -63,6 +63,8 @@ pub trait Runtime: Send + Sync {
     async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput>;
     /// `cp <host_src> <name>:<container_dest>`.
     async fn cp_to(&self, name: &str, host_src: &Path, container_dest: &str) -> Result<()>;
+    /// `cp <name>:<container_src> <host_dest>` (works on stopped containers too).
+    async fn cp_from(&self, name: &str, container_src: &str, host_dest: &Path) -> Result<()>;
     /// `stats --no-stream --format json <name>`.
     async fn stats(&self, name: &str) -> Result<RawStats>;
     /// `inspect -f {{.State.StartedAt}} <name>` → normalized RFC 3339.
@@ -321,6 +323,12 @@ impl Runtime for CliBackend {
         self.run_ok(&["cp", &src, &dest]).await.map(|_| ())
     }
 
+    async fn cp_from(&self, name: &str, container_src: &str, host_dest: &Path) -> Result<()> {
+        let src = format!("{name}:{container_src}");
+        let dest = host_dest.to_string_lossy().to_string();
+        self.run_ok(&["cp", &src, &dest]).await.map(|_| ())
+    }
+
     async fn stats(&self, name: &str) -> Result<RawStats> {
         let out = self
             .run(&["stats", "--no-stream", "--format", "json", name])
@@ -380,6 +388,9 @@ macro_rules! delegate_runtime {
             }
             async fn cp_to(&self, name: &str, host_src: &Path, dest: &str) -> Result<()> {
                 self.0.cp_to(name, host_src, dest).await
+            }
+            async fn cp_from(&self, name: &str, src: &str, host_dest: &Path) -> Result<()> {
+                self.0.cp_from(name, src, host_dest).await
             }
             async fn stats(&self, name: &str) -> Result<RawStats> {
                 self.0.stats(name).await

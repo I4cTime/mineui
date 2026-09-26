@@ -145,10 +145,53 @@ pub async fn run(core: &crate::Core, command: &str) -> Result<String> {
 }
 
 /// §3.4 `run_rcon_command`: validate against the allowlist, then execute.
-pub async fn run_allowlisted(core: &crate::Core, command: &str) -> Result<String> {
+async fn run_allowlisted_inner(core: &crate::Core, command: &str) -> Result<String> {
     let allowlist = core.settings().await.rcon_allowlist;
     let cleaned = crate::validate::rcon_command(command, &allowlist)?;
     run(core, &cleaned).await
+}
+
+/// Player-management verbs whose audit action becomes `player.<verb>` with
+/// the player name as target (§3.11).
+const PLAYER_VERBS: [&str; 6] = ["kick", "ban", "pardon", "op", "deop", "whitelist"];
+
+/// (action, target) for an allowlisted command line.
+pub fn audit_action(command: &str) -> (String, Option<String>) {
+    let cleaned = command.trim().trim_start_matches('/');
+    let mut tokens = cleaned.split_whitespace();
+    let verb = tokens.next().unwrap_or("").to_lowercase();
+    if PLAYER_VERBS.contains(&verb.as_str()) {
+        // `whitelist add <name>` / `kick <name> [reason]` / `ban <name> [reason]`
+        let target = if verb == "whitelist" {
+            tokens.nth(1)
+        } else {
+            tokens.next()
+        };
+        return (format!("player.{verb}"), target.map(str::to_string));
+    }
+    (
+        "rcon.command".to_string(),
+        (!verb.is_empty()).then_some(verb),
+    )
+}
+
+/// §3.4 `run_rcon_command`, audited (§3.11): `player.<verb>` for
+/// player-management commands, `rcon.command` otherwise. The full command is
+/// recorded as detail.
+pub async fn run_allowlisted(core: &crate::Core, command: &str) -> Result<String> {
+    let r = run_allowlisted_inner(core, command).await;
+    let (action, target) = audit_action(command);
+    let detail = command.trim();
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        &action,
+        target.as_deref(),
+        (!detail.is_empty()).then_some(detail),
+        r.as_ref().err(),
+    )
+    .await;
+    r
 }
 
 #[cfg(test)]

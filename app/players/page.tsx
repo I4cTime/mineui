@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Filter, Search, Users } from "lucide-react";
+import { Check, Filter, Pencil, Search, Users, X } from "lucide-react";
 import {
   Button,
   Card,
@@ -24,10 +24,13 @@ import { useUISound } from "@/app/hooks/useUISound";
 import { usePageMotion } from "@/app/lib/motion";
 import {
   getPlayerHistory,
+  getPlayerNotes,
   getServerStatus,
   runRconCommand,
+  setPlayerNote,
   IpcError,
   type PlayerHistoryRow,
+  type PlayerNote,
   type ServerStatus,
 } from "@/app/lib/ipc";
 
@@ -45,17 +48,58 @@ export default function PlayersPage() {
     command: string;
     username: string;
   } | null>(null);
+  // Operator notes (contract §3.11), keyed by lowercase username.
+  const [notes, setNotes] = useState<Record<string, PlayerNote>>({});
+  const [editingNote, setEditingNote] = useState<{ username: string; text: string } | null>(null);
+  const [noteSaving, setNoteSaving] = useState(false);
   const { play } = useUISound();
 
   useEffect(() => {
-    Promise.allSettled([getServerStatus(), getPlayerHistory()]).then(
-      ([statusRes, usersRes]) => {
+    Promise.allSettled([getServerStatus(), getPlayerHistory(), getPlayerNotes()]).then(
+      ([statusRes, usersRes, notesRes]) => {
         if (statusRes.status === "fulfilled") setStatus(statusRes.value);
         if (usersRes.status === "fulfilled") setUsers(usersRes.value.users);
+        if (notesRes.status === "fulfilled") {
+          setNotes(
+            Object.fromEntries(
+              notesRes.value.notes.map((note) => [note.username.toLowerCase(), note]),
+            ),
+          );
+        }
         setLoading(false);
       },
     );
   }, []);
+
+  const noteFor = (username: string) => notes[username.toLowerCase()];
+
+  const startEditingNote = (username: string) => {
+    play("click_confirm");
+    setEditingNote({ username, text: noteFor(username)?.note ?? "" });
+  };
+
+  const saveNote = async () => {
+    if (!editingNote) return;
+    setNoteSaving(true);
+    try {
+      const saved = await setPlayerNote(editingNote.username, editingNote.text);
+      setNotes((prev) => {
+        const next = { ...prev };
+        const key = editingNote.username.toLowerCase();
+        if (saved) next[key] = saved;
+        else delete next[key];
+        return next;
+      });
+      play("success");
+      toast.success(saved ? "Note saved" : "Note cleared");
+      setEditingNote(null);
+    } catch (error) {
+      play("error");
+      toast.danger(error instanceof IpcError ? error.message : "Could not save note");
+    } finally {
+      setNoteSaving(false);
+    }
+  };
 
   const playerList = useMemo(() => {
     const sample = status?.players.sample ?? [];
@@ -261,6 +305,7 @@ export default function PlayersPage() {
                       <Table.Column isRowHeader>Username</Table.Column>
                       <Table.Column>Last Seen</Table.Column>
                       <Table.Column>IP Address</Table.Column>
+                      <Table.Column>Note</Table.Column>
                       <Table.Column>Actions</Table.Column>
                     </Table.Header>
                     <Table.Body
@@ -293,6 +338,62 @@ export default function PlayersPage() {
                           </Table.Cell>
                           <Table.Cell className="text-muted">
                             {row.ipAddress ?? "—"}
+                          </Table.Cell>
+                          <Table.Cell>
+                            {editingNote?.username === row.username ? (
+                              <div className="flex items-center gap-1">
+                                <TextField className="w-56">
+                                  <Label className="sr-only">Note for {row.username}</Label>
+                                  <Input
+                                    autoFocus
+                                    maxLength={2000}
+                                    placeholder="Add a note"
+                                    value={editingNote.text}
+                                    onChange={(event) =>
+                                      setEditingNote({ username: row.username, text: event.target.value })
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") saveNote();
+                                      if (event.key === "Escape") setEditingNote(null);
+                                    }}
+                                  />
+                                </TextField>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  isIconOnly
+                                  aria-label="Save note"
+                                  onPress={saveNote}
+                                  isDisabled={noteSaving}
+                                  isPending={noteSaving}
+                                >
+                                  <Check size={14} />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  isIconOnly
+                                  aria-label="Cancel"
+                                  onPress={() => setEditingNote(null)}
+                                  isDisabled={noteSaving}
+                                >
+                                  <X size={14} />
+                                </Button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="group flex max-w-64 items-center gap-2 text-left text-sm"
+                                onClick={() => startEditingNote(row.username)}
+                                onMouseEnter={() => play("hover")}
+                                aria-label={`Edit note for ${row.username}`}
+                              >
+                                <span className={noteFor(row.username) ? "truncate" : "text-muted"}>
+                                  {noteFor(row.username)?.note ?? "Add note"}
+                                </span>
+                                <Pencil size={12} className="shrink-0 text-muted opacity-60 group-hover:opacity-100" />
+                              </button>
+                            )}
                           </Table.Cell>
                           <Table.Cell>
                             <div className="flex flex-wrap gap-1">

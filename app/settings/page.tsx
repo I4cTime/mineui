@@ -4,10 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   Sparkles,
+  Archive,
   Check,
+  Clock,
   Container,
   Download,
   Palette,
+  Play,
+  Plus,
   RefreshCw,
   Save,
   Settings as SettingsIcon,
@@ -43,23 +47,76 @@ import { usePageMotion } from "@/app/lib/motion";
 import {
   deleteInstance,
   detectRuntimes,
+  getSchedulerStatus,
   getSettings,
   instanceStatus,
   javaCheck,
+  runScheduledJobNow,
   setSettings as saveSettingsIpc,
   IpcError,
   type AdvancedModeSettings,
+  type BackupSettings,
   type InstanceStatus,
   type JavaCheck,
   type RuntimeKind,
   type RuntimeProbe,
+  type Schedule,
+  type ScheduledJob,
+  type ScheduledJobKind,
+  type SchedulerStatus,
   type Settings,
   type SimpleModeSettings,
+  type Weekday,
 } from "@/app/lib/ipc";
 
 const numberFrom = (event: React.ChangeEvent<HTMLInputElement>) => {
   const value = event.target.valueAsNumber;
   return Number.isFinite(value) ? value : 0;
+};
+
+const JOB_KINDS: { id: ScheduledJobKind; label: string; hint: string }[] = [
+  { id: "backup", label: "Backup", hint: "Snapshot the world (retention + copy apply)." },
+  { id: "restart", label: "Restart", hint: "Restart the server; an optional warning is sent 60 s before." },
+  { id: "broadcast", label: "Broadcast", hint: "Send a chat message to everyone online." },
+];
+
+const WEEKDAYS: { id: Weekday; label: string }[] = [
+  { id: "monday", label: "Monday" },
+  { id: "tuesday", label: "Tuesday" },
+  { id: "wednesday", label: "Wednesday" },
+  { id: "thursday", label: "Thursday" },
+  { id: "friday", label: "Friday" },
+  { id: "saturday", label: "Saturday" },
+  { id: "sunday", label: "Sunday" },
+];
+
+const newJobId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const defaultSchedule = (kind: Schedule["kind"]): Schedule => {
+  switch (kind) {
+    case "interval":
+      return { kind: "interval", everyHours: 6 };
+    case "weekly":
+      return { kind: "weekly", weekday: "sunday", time: "04:00" };
+    default:
+      return { kind: "daily", time: "04:00" };
+  }
+};
+
+const describeSchedule = (schedule: Schedule): string => {
+  switch (schedule.kind) {
+    case "interval":
+      return schedule.everyHours === 1 ? "Every hour" : `Every ${schedule.everyHours} hours`;
+    case "daily":
+      return `Daily at ${schedule.time}`;
+    case "weekly": {
+      const day = WEEKDAYS.find((w) => w.id === schedule.weekday)?.label ?? schedule.weekday;
+      return `${day}s at ${schedule.time}`;
+    }
+  }
 };
 
 const MODE_OPTIONS = [
@@ -177,6 +234,8 @@ export default function SettingsPage() {
   const [runtimes, setRuntimes] = useState<RuntimeProbe | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [runningJob, setRunningJob] = useState<string | null>(null);
   const modeRefs = useRef<Record<ModeId, HTMLButtonElement | null>>({
     simple: null,
     advanced: null,
@@ -216,12 +275,19 @@ export default function SettingsPage() {
       .finally(() => setJavaChecking(false));
   }, []);
 
+  const refreshSchedulerStatus = useCallback(() => {
+    getSchedulerStatus()
+      .then(setSchedulerStatus)
+      .catch(() => setSchedulerStatus(null));
+  }, []);
+
   const loadAll = useCallback(async () => {
     try {
       const settings = await getSettings();
       setDraft(settings);
       setAllowlistText(settings.rconAllowlist.join(", "));
       setLoadError(null);
+      refreshSchedulerStatus();
       // Best-effort environment probes; failures just hide the hints.
       instanceStatus().then(setInstance).catch(() => setInstance(null));
       javaCheck().then(setJava).catch(() => setJava(null));
@@ -231,7 +297,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshSchedulerStatus]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
@@ -247,6 +313,61 @@ export default function SettingsPage() {
     setDraft((prev) =>
       prev ? { ...prev, advanced: { ...prev.advanced, ...patch } } : prev,
     );
+
+  const updateBackups = (patch: Partial<BackupSettings>) =>
+    setDraft((prev) =>
+      prev ? { ...prev, backups: { ...prev.backups, ...patch } } : prev,
+    );
+
+  const updateJobs = (mutate: (jobs: ScheduledJob[]) => ScheduledJob[]) =>
+    setDraft((prev) =>
+      prev
+        ? { ...prev, scheduler: { ...prev.scheduler, jobs: mutate(prev.scheduler.jobs) } }
+        : prev,
+    );
+
+  const updateJob = (id: string, patch: Partial<ScheduledJob>) =>
+    updateJobs((jobs) => jobs.map((job) => (job.id === id ? { ...job, ...patch } : job)));
+
+  const addJob = () => {
+    play("click_confirm");
+    updateJobs((jobs) => [
+      ...jobs,
+      {
+        id: newJobId(),
+        kind: "backup",
+        enabled: true,
+        schedule: defaultSchedule("daily"),
+        message: null,
+      },
+    ]);
+  };
+
+  const removeJob = (id: string) => {
+    play("click_confirm");
+    updateJobs((jobs) => jobs.filter((job) => job.id !== id));
+  };
+
+  const runJobNow = async (id: string) => {
+    setRunningJob(id);
+    play("click_confirm");
+    try {
+      const result = await runScheduledJobNow(id);
+      if (result.ok) {
+        play("success");
+        toast.success(result.message ? `Job ran: ${result.message}` : "Job ran");
+      } else {
+        play("error");
+        toast.danger(result.message ?? "Job did not run");
+      }
+    } catch (error) {
+      play("error");
+      toast.danger(error instanceof IpcError ? error.message : "Job failed");
+    } finally {
+      setRunningJob(null);
+      refreshSchedulerStatus();
+    }
+  };
 
   const handleModeChange = (nextMode: "simple" | "advanced") => {
     if (nextMode === mode) return;
@@ -273,6 +394,7 @@ export default function SettingsPage() {
       });
       setDraft(normalized);
       setAllowlistText(normalized.rconAllowlist.join(", "));
+      refreshSchedulerStatus();
       // Re-sync ModeProvider in case the backend normalized activeMode to
       // something other than what we sent.
       await refreshMode();
@@ -910,6 +1032,352 @@ export default function SettingsPage() {
                   <Label>Allow private download hosts</Label>
                 </Switch.Content>
               </Switch>
+            </Card.Content>
+          </Card>
+        </motion.section>
+
+        {/* Shared: scheduled tasks (contract §3.10) */}
+        <motion.section variants={cardMotion}>
+          <Card className="p-6">
+            <Card.Header className="flex-col items-start gap-1">
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-accent" />
+                <Card.Title>Scheduled tasks</Card.Title>
+              </div>
+              <Card.Description>
+                Automatic restarts, backups and chat broadcasts. Times are local.
+                Jobs run only while MineUI is open; a slot missed while it was
+                closed is skipped, not run late. Save to apply changes.
+              </Card.Description>
+            </Card.Header>
+            <Card.Content className="mt-4 grid gap-4">
+              <Switch
+                isSelected={draft.scheduler.enabled}
+                onChange={(selected: boolean) => {
+                  play(selected ? "toggle_on" : "toggle_off");
+                  setDraft((prev) =>
+                    prev
+                      ? { ...prev, scheduler: { ...prev.scheduler, enabled: selected } }
+                      : prev,
+                  );
+                }}
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  <Label>Enable scheduler</Label>
+                </Switch.Content>
+              </Switch>
+
+              {draft.scheduler.jobs.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
+                  No scheduled tasks yet. Add one below, then save.
+                </div>
+              )}
+
+              {draft.scheduler.jobs.map((job) => {
+                const status = schedulerStatus?.jobs.find((item) => item.id === job.id);
+                const kindMeta = JOB_KINDS.find((k) => k.id === job.kind);
+                const showMessage = job.kind !== "backup";
+                return (
+                  <div
+                    key={job.id}
+                    className="grid gap-3 rounded-lg border border-border p-4"
+                    style={{ background: "var(--surface-secondary)" }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Select
+                          className="w-40 text-sm"
+                          placeholder="Task"
+                          value={job.kind}
+                          onChange={(value) => {
+                            if (value === null) return;
+                            const kind = value as ScheduledJobKind;
+                            play("toggle_on");
+                            updateJob(job.id, {
+                              kind,
+                              message: kind === "backup" ? null : job.message,
+                            });
+                          }}
+                        >
+                          <Label className="sr-only">Task</Label>
+                          <Select.Trigger onMouseEnter={() => play("hover")}>
+                            <Select.Value />
+                            <Select.Indicator />
+                          </Select.Trigger>
+                          <Select.Popover>
+                            <ListBox>
+                              {JOB_KINDS.map((kind) => (
+                                <ListBox.Item key={kind.id} id={kind.id} textValue={kind.label}>
+                                  {kind.label}
+                                </ListBox.Item>
+                              ))}
+                            </ListBox>
+                          </Select.Popover>
+                        </Select>
+                        <Switch
+                          isSelected={job.enabled}
+                          onChange={(selected: boolean) => {
+                            play(selected ? "toggle_on" : "toggle_off");
+                            updateJob(job.id, { enabled: selected });
+                          }}
+                        >
+                          <Switch.Content>
+                            <Switch.Control>
+                              <Switch.Thumb />
+                            </Switch.Control>
+                            <Label>Enabled</Label>
+                          </Switch.Content>
+                        </Switch>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onPress={() => runJobNow(job.id)}
+                          isDisabled={runningJob !== null || !status}
+                          isPending={runningJob === job.id}
+                          onMouseEnter={() => play("hover")}
+                          aria-label="Run now"
+                        >
+                          <Play size={14} />
+                          Run now
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onPress={() => removeJob(job.id)}
+                          onMouseEnter={() => play("hover")}
+                          aria-label="Remove task"
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="flex flex-col gap-2">
+                        <Label>Frequency</Label>
+                        <Select
+                          className="w-full text-sm"
+                          placeholder="Frequency"
+                          value={job.schedule.kind}
+                          onChange={(value) => {
+                            if (value === null) return;
+                            updateJob(job.id, {
+                              schedule: defaultSchedule(value as Schedule["kind"]),
+                            });
+                          }}
+                        >
+                          <Label className="sr-only">Frequency</Label>
+                          <Select.Trigger onMouseEnter={() => play("hover")}>
+                            <Select.Value />
+                            <Select.Indicator />
+                          </Select.Trigger>
+                          <Select.Popover>
+                            <ListBox>
+                              <ListBox.Item id="interval">Every N hours</ListBox.Item>
+                              <ListBox.Item id="daily">Daily</ListBox.Item>
+                              <ListBox.Item id="weekly">Weekly</ListBox.Item>
+                            </ListBox>
+                          </Select.Popover>
+                        </Select>
+                      </div>
+
+                      {job.schedule.kind === "interval" && (
+                        <TextField className="flex flex-col gap-2" type="number">
+                          <Label>Every (hours)</Label>
+                          <Input
+                            fullWidth
+                            type="number"
+                            min={1}
+                            max={168}
+                            value={String(job.schedule.everyHours)}
+                            onChange={(event) =>
+                              updateJob(job.id, {
+                                schedule: { kind: "interval", everyHours: numberFrom(event) },
+                              })
+                            }
+                            onFocus={() => play("hover")}
+                          />
+                        </TextField>
+                      )}
+
+                      {job.schedule.kind === "weekly" && (
+                        <div className="flex flex-col gap-2">
+                          <Label>Day</Label>
+                          <Select
+                            className="w-full text-sm"
+                            placeholder="Day"
+                            value={job.schedule.weekday}
+                            onChange={(value) => {
+                              if (value === null || job.schedule.kind !== "weekly") return;
+                              updateJob(job.id, {
+                                schedule: { ...job.schedule, weekday: value as Weekday },
+                              });
+                            }}
+                          >
+                            <Label className="sr-only">Day</Label>
+                            <Select.Trigger onMouseEnter={() => play("hover")}>
+                              <Select.Value />
+                              <Select.Indicator />
+                            </Select.Trigger>
+                            <Select.Popover>
+                              <ListBox>
+                                {WEEKDAYS.map((day) => (
+                                  <ListBox.Item key={day.id} id={day.id} textValue={day.label}>
+                                    {day.label}
+                                  </ListBox.Item>
+                                ))}
+                              </ListBox>
+                            </Select.Popover>
+                          </Select>
+                        </div>
+                      )}
+
+                      {job.schedule.kind !== "interval" && (
+                        <TextField className="flex flex-col gap-2">
+                          <Label>Time</Label>
+                          <Input
+                            fullWidth
+                            type="time"
+                            step={60}
+                            value={job.schedule.time}
+                            onChange={(event) => {
+                              const time = event.target.value;
+                              if (job.schedule.kind === "interval") return;
+                              updateJob(job.id, { schedule: { ...job.schedule, time } });
+                            }}
+                            onFocus={() => play("hover")}
+                          />
+                        </TextField>
+                      )}
+                    </div>
+
+                    {showMessage && (
+                      <TextField className="flex flex-col gap-2">
+                        <Label>
+                          {job.kind === "broadcast" ? "Message" : "Warning message (optional)"}
+                        </Label>
+                        <Input
+                          fullWidth
+                          maxLength={200}
+                          placeholder={
+                            job.kind === "broadcast"
+                              ? "Remember to vote for the server!"
+                              : "Server restarting in 60 seconds"
+                          }
+                          value={job.message ?? ""}
+                          onChange={(event) =>
+                            updateJob(job.id, {
+                              message: event.target.value.length > 0 ? event.target.value : null,
+                            })
+                          }
+                          onFocus={() => play("hover")}
+                        />
+                      </TextField>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <span>{kindMeta?.hint}</span>
+                      <span aria-hidden>·</span>
+                      <span>{describeSchedule(job.schedule)}</span>
+                      {status?.nextRunEpochMs != null && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span>Next: {formatDateTime(status.nextRunEpochMs)}</span>
+                        </>
+                      )}
+                      {status?.lastRun && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <Chip size="sm" variant="soft" color={status.lastRun.ok ? "success" : "danger"}>
+                            Last: {formatDateTime(status.lastRun.epochMs)}
+                            {status.lastRun.message ? ` — ${status.lastRun.message}` : ""}
+                          </Chip>
+                        </>
+                      )}
+                      {!status && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span>Unsaved</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </Card.Content>
+            <Card.Footer className="mt-4 justify-between">
+              <Button
+                variant="ghost"
+                onPress={addJob}
+                isDisabled={draft.scheduler.jobs.length >= 32}
+                onMouseEnter={() => play("hover")}
+              >
+                <Plus size={16} />
+                Add task
+              </Button>
+              <Button
+                onPress={saveSettings}
+                isDisabled={saving}
+                isPending={saving}
+                onMouseEnter={() => play("hover")}
+              >
+                <Save size={16} />
+                {saving ? "Saving..." : "Save settings"}
+              </Button>
+            </Card.Footer>
+          </Card>
+        </motion.section>
+
+        {/* Shared: backup policy (contract §3.8) */}
+        <motion.section variants={cardMotion}>
+          <Card className="p-6">
+            <Card.Header className="flex-col items-start gap-1">
+              <div className="flex items-center gap-2">
+                <Archive size={16} className="text-accent" />
+                <Card.Title>Backup policy</Card.Title>
+              </div>
+              <Card.Description>
+                Applies to every backup, manual or scheduled. Retention deletes
+                the oldest snapshots first; the copy lands in a directory of
+                your choice (NAS mount, USB drive, second disk).
+              </Card.Description>
+            </Card.Header>
+            <Card.Content className="mt-4 grid gap-4 md:grid-cols-2">
+              <TextField className="flex flex-col gap-2" type="number">
+                <Label>Keep the newest</Label>
+                <Input
+                  fullWidth
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={String(draft.backups.keepLast)}
+                  onChange={(event) => updateBackups({ keepLast: numberFrom(event) })}
+                  onFocus={() => play("hover")}
+                />
+                <span className="text-xs text-muted">Snapshots to keep. 0 keeps everything.</span>
+              </TextField>
+              <TextField className="flex flex-col gap-2">
+                <Label>Copy each new snapshot to</Label>
+                <Input
+                  fullWidth
+                  placeholder="Leave empty to disable"
+                  value={draft.backups.copyDir ?? ""}
+                  onChange={(event) =>
+                    updateBackups({
+                      copyDir: event.target.value.trim().length > 0 ? event.target.value : null,
+                    })
+                  }
+                  onFocus={() => play("hover")}
+                />
+                <span className="text-xs text-muted">
+                  Absolute directory on this machine. Created if missing.
+                </span>
+              </TextField>
             </Card.Content>
           </Card>
         </motion.section>

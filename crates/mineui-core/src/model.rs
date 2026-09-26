@@ -447,6 +447,73 @@ pub struct DownloadProgressEvent {
     pub error: Option<DownloadErrorShape>,
 }
 
+/* ---------- §3.10 scheduler ---------- */
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRunResult {
+    pub epoch_ms: i64,
+    pub ok: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledJobStatus {
+    pub id: String,
+    pub next_run_epoch_ms: Option<i64>,
+    pub last_run: Option<JobRunResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchedulerStatus {
+    pub enabled: bool,
+    pub jobs: Vec<ScheduledJobStatus>,
+}
+
+/* ---------- §3.11 player notes & audit log ---------- */
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerNote {
+    pub username: String,
+    pub note: String,
+    pub updated_at_epoch_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerNotes {
+    pub notes: Vec<PlayerNote>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AuditSource {
+    User,
+    Scheduler,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditEntry {
+    pub id: String,
+    pub epoch_ms: i64,
+    pub source: AuditSource,
+    pub action: String,
+    pub target: Option<String>,
+    pub detail: Option<String>,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLog {
+    pub entries: Vec<AuditEntry>,
+}
+
 /// Core-side event bus payload; the Tauri layer forwards each variant to its
 /// channel name (`mineui://logs`, `mineui://server-state`, `mineui://download-progress`).
 #[derive(Debug, Clone)]

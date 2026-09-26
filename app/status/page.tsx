@@ -10,18 +10,21 @@ import {
   HardDrive,
   Network,
   Timer,
+  ScrollText,
 } from "lucide-react";
-import { Card, Chip, ProgressCircle } from "@heroui/react";
+import { Card, Chip, ProgressCircle, Table } from "@heroui/react";
 import PageHeader from "@/app/components/PageHeader";
-import { formatBytes } from "@/app/lib/format";
+import { formatBytes, formatDateTime } from "@/app/lib/format";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useMode } from "@/app/components/ModeProvider";
 import { usePageMotion } from "@/app/lib/motion";
 import {
+  getAuditLog,
   getMetrics,
   getServerState,
   getServerStatus,
   onServerState,
+  type AuditEntry,
   type Metrics,
   type ServerState,
   type ServerStatus,
@@ -88,6 +91,7 @@ export default function StatusPage() {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [serverState, setServerState] = useState<ServerState | null>(null);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   // Shared app-wide mode (app/components/ModeProvider.tsx), not the
   // payload's own `serverState.mode` — this is what makes the "Container:"/
@@ -103,10 +107,12 @@ export default function StatusPage() {
         getServerStatus(),
         getMetrics(),
         getServerState(),
-      ]).then(([statusRes, metricsRes, stateRes]) => {
+        getAuditLog(100),
+      ]).then(([statusRes, metricsRes, stateRes, auditRes]) => {
         if (statusRes.status === "fulfilled") setStatus(statusRes.value);
         if (metricsRes.status === "fulfilled") setMetrics(metricsRes.value);
         if (stateRes.status === "fulfilled") setServerState(stateRes.value);
+        if (auditRes.status === "fulfilled") setAudit(auditRes.value.entries);
         setLoading(false);
       });
     };
@@ -428,6 +434,62 @@ export default function StatusPage() {
               </Card.Content>
             </Card>
           </motion.div>
+        </motion.section>
+
+        {/* Admin audit log (contract §3.11): every action taken from the app
+            or by the scheduler, newest first. Polls with the rest of the page. */}
+        <motion.section variants={cardMotion}>
+          <Card className="overflow-hidden">
+            <Card.Header className="flex items-center gap-3 border-b border-border p-5 text-sm text-accent">
+              <ScrollText size={18} />
+              <span className="font-pixel text-xs tracking-wide">Activity log</span>
+              <span className="ml-auto text-xs text-muted">last {audit.length} actions</span>
+            </Card.Header>
+            <Card.Content className="p-0">
+              <Table>
+                <Table.ScrollContainer className="max-h-120">
+                  <Table.Content aria-label="Activity log" className="min-w-180">
+                    <Table.Header>
+                      <Table.Column isRowHeader>When</Table.Column>
+                      <Table.Column>Action</Table.Column>
+                      <Table.Column>Target</Table.Column>
+                      <Table.Column>Detail</Table.Column>
+                      <Table.Column>By</Table.Column>
+                    </Table.Header>
+                    <Table.Body
+                      items={audit}
+                      renderEmptyState={() => (
+                        <div className="p-6 text-center text-sm text-muted">
+                          Nothing recorded yet. Server control, player actions,
+                          RCON commands, backups and config edits show up here.
+                        </div>
+                      )}
+                    >
+                      {(entry) => (
+                        <Table.Row id={entry.id}>
+                          <Table.Cell className="whitespace-nowrap text-muted font-pixel-num">
+                            {formatDateTime(entry.epochMs)}
+                          </Table.Cell>
+                          <Table.Cell>
+                            <Chip size="sm" variant="soft" color={entry.ok ? "default" : "danger"}>
+                              {entry.action}
+                            </Chip>
+                          </Table.Cell>
+                          <Table.Cell className="max-w-48 truncate">{entry.target ?? "—"}</Table.Cell>
+                          <Table.Cell className="max-w-72 text-muted">
+                            <span className="block truncate" title={entry.error ?? entry.detail ?? undefined}>
+                              {entry.error ?? entry.detail ?? "—"}
+                            </span>
+                          </Table.Cell>
+                          <Table.Cell className="text-muted">{entry.source}</Table.Cell>
+                        </Table.Row>
+                      )}
+                    </Table.Body>
+                  </Table.Content>
+                </Table.ScrollContainer>
+              </Table>
+            </Card.Content>
+          </Card>
         </motion.section>
       </motion.main>
     </div>

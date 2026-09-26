@@ -175,7 +175,7 @@ pub async fn assert_runtime_files(core: &crate::Core) -> Result<()> {
 }
 
 /// `create_instance` (§3.6). Sequence and error codes per contract.
-pub async fn create(core: &crate::Core, args: &CreateInstanceArgs) -> Result<InstanceStatus> {
+async fn create_inner(core: &crate::Core, args: &CreateInstanceArgs) -> Result<InstanceStatus> {
     ensure_simple_mode(core).await?;
     // 1. EULA gate.
     if !args.accept_eula {
@@ -278,7 +278,7 @@ pub async fn create(core: &crate::Core, args: &CreateInstanceArgs) -> Result<Ins
 }
 
 /// `delete_instance` (§3.6): safety latch on mineui-instance.json.
-pub async fn delete(core: &crate::Core, confirm: bool) -> Result<()> {
+async fn delete_inner(core: &crate::Core, confirm: bool) -> Result<()> {
     ensure_simple_mode(core).await?;
     if !confirm {
         return Err(Error::InvalidInput(
@@ -306,6 +306,38 @@ pub async fn delete(core: &crate::Core, confirm: bool) -> Result<()> {
     updated.simple.mc_version = String::new();
     core.update_settings(updated).await?;
     Ok(())
+}
+
+/* ---------- audited entry points (§3.11) ---------- */
+
+/// `create_instance` (§3.6), audited as `instance.create` (target = version).
+pub async fn create(core: &crate::Core, args: &CreateInstanceArgs) -> Result<InstanceStatus> {
+    let r = create_inner(core, args).await;
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        "instance.create",
+        Some(&args.mc_version),
+        None,
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `delete_instance` (§3.6), audited as `instance.delete`.
+pub async fn delete(core: &crate::Core, confirm: bool) -> Result<()> {
+    let r = delete_inner(core, confirm).await;
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        "instance.delete",
+        None,
+        None,
+        r.as_ref().err(),
+    )
+    .await;
+    r
 }
 
 #[cfg(test)]

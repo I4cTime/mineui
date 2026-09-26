@@ -102,6 +102,138 @@ impl Default for AdvancedModeSettings {
     }
 }
 
+/* ---------- 2.5.0: scheduler + backup policy (contract §2.1) ---------- */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl From<Weekday> for chrono::Weekday {
+    fn from(w: Weekday) -> Self {
+        match w {
+            Weekday::Monday => chrono::Weekday::Mon,
+            Weekday::Tuesday => chrono::Weekday::Tue,
+            Weekday::Wednesday => chrono::Weekday::Wed,
+            Weekday::Thursday => chrono::Weekday::Thu,
+            Weekday::Friday => chrono::Weekday::Fri,
+            Weekday::Saturday => chrono::Weekday::Sat,
+            Weekday::Sunday => chrono::Weekday::Sun,
+        }
+    }
+}
+
+/// When a job fires. Times are local wall-clock `"HH:MM"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Schedule {
+    #[serde(rename_all = "camelCase")]
+    Interval {
+        every_hours: u32,
+    },
+    Daily {
+        time: String,
+    },
+    Weekly {
+        weekday: Weekday,
+        time: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScheduledJobKind {
+    Restart,
+    Backup,
+    Broadcast,
+}
+
+impl ScheduledJobKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ScheduledJobKind::Restart => "restart",
+            ScheduledJobKind::Backup => "backup",
+            ScheduledJobKind::Broadcast => "broadcast",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledJob {
+    pub id: String,
+    pub kind: ScheduledJobKind,
+    pub enabled: bool,
+    pub schedule: Schedule,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SchedulerSettings {
+    pub enabled: bool,
+    pub jobs: Vec<ScheduledJob>,
+}
+
+impl Default for SchedulerSettings {
+    fn default() -> Self {
+        SchedulerSettings {
+            enabled: true,
+            jobs: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BackupSettings {
+    /// Newest snapshots kept after each backup; 0 = unlimited.
+    pub keep_last: u32,
+    /// Absolute host directory receiving a copy of every new snapshot.
+    pub copy_dir: Option<PathBuf>,
+}
+
+impl Default for BackupSettings {
+    fn default() -> Self {
+        BackupSettings {
+            keep_last: 10,
+            copy_dir: None,
+        }
+    }
+}
+
+pub const MAX_SCHEDULED_JOBS: usize = 32;
+pub const MAX_JOB_MESSAGE_CHARS: usize = 200;
+pub const MAX_KEEP_LAST: u32 = 1000;
+
+/// `"HH:MM"` (24 h) → (hour, minute).
+pub fn parse_hhmm(time: &str) -> Option<(u32, u32)> {
+    let (h, m) = time.split_once(':')?;
+    if h.len() != 2 || m.len() != 2 {
+        return None;
+    }
+    let h: u32 = h.parse().ok()?;
+    let m: u32 = m.parse().ok()?;
+    (h < 24 && m < 60).then_some((h, m))
+}
+
+fn is_valid_job_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+fn is_valid_message(msg: &str) -> bool {
+    !msg.is_empty()
+        && msg.chars().count() <= MAX_JOB_MESSAGE_CHARS
+        && !msg.chars().any(char::is_control)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -115,6 +247,11 @@ pub struct Settings {
     pub allow_private_download_hosts: bool,
     pub simple: SimpleModeSettings,
     pub advanced: AdvancedModeSettings,
+    /// 2.5.0 (contract §2.1, §3.10). Serde default: older files load with
+    /// an empty, enabled scheduler and are rewritten with the field.
+    pub scheduler: SchedulerSettings,
+    /// 2.5.0 (contract §2.1, §3.8): retention + off-box copy policy.
+    pub backups: BackupSettings,
 }
 
 impl Default for Settings {
@@ -129,6 +266,8 @@ impl Default for Settings {
             allow_private_download_hosts: false,
             simple: SimpleModeSettings::default(),
             advanced: AdvancedModeSettings::default(),
+            scheduler: SchedulerSettings::default(),
+            backups: BackupSettings::default(),
         }
     }
 }
@@ -198,6 +337,23 @@ pub async fn save(config_dir: &Path, mut settings: Settings) -> Result<Settings>
 }
 
 fn normalize(settings: &mut Settings) {
+    for job in &mut settings.scheduler.jobs {
+        job.id = job.id.trim().to_string();
+        job.message = job
+            .message
+            .as_ref()
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty());
+        if job.kind == ScheduledJobKind::Backup {
+            job.message = None;
+        }
+    }
+    settings.backups.copy_dir = settings
+        .backups
+        .copy_dir
+        .as_ref()
+        .filter(|p| !p.as_os_str().is_empty())
+        .cloned();
     settings.rcon_allowlist = settings
         .rcon_allowlist
         .iter()
@@ -250,6 +406,61 @@ pub fn validate_settings(s: &Settings) -> Result<()> {
     for entry in &s.rcon_allowlist {
         if entry.is_empty() || entry.chars().any(|c| c.is_whitespace()) {
             return inv("rconAllowlist entries must be non-empty and contain no whitespace");
+        }
+    }
+    validate_scheduler(&s.scheduler)?;
+    if s.backups.keep_last > MAX_KEEP_LAST {
+        return inv("backups.keepLast must be in 0-1000");
+    }
+    if let Some(dir) = &s.backups.copy_dir {
+        if !dir.is_absolute() {
+            return inv("backups.copyDir must be an absolute path");
+        }
+    }
+    Ok(())
+}
+
+/// Contract §2.3 scheduler rules (2.5.0).
+fn validate_scheduler(sched: &SchedulerSettings) -> Result<()> {
+    let inv = |msg: String| Err(Error::SettingsInvalid(msg));
+    if sched.jobs.len() > MAX_SCHEDULED_JOBS {
+        return inv(format!(
+            "scheduler.jobs may hold at most {MAX_SCHEDULED_JOBS} jobs"
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for job in &sched.jobs {
+        if !is_valid_job_id(&job.id) {
+            return inv(format!(
+                "scheduler job id '{}' must match ^[A-Za-z0-9-]{{1,64}}$",
+                job.id
+            ));
+        }
+        if !seen.insert(job.id.as_str()) {
+            return inv(format!("scheduler job id '{}' is not unique", job.id));
+        }
+        match &job.schedule {
+            Schedule::Interval { every_hours } => {
+                if !(1..=168).contains(every_hours) {
+                    return inv(format!("job '{}': everyHours must be in 1-168", job.id));
+                }
+            }
+            Schedule::Daily { time } | Schedule::Weekly { time, .. } => {
+                if parse_hhmm(time).is_none() {
+                    return inv(format!("job '{}': time must be HH:MM (24 h)", job.id));
+                }
+            }
+        }
+        if let Some(msg) = &job.message {
+            if !is_valid_message(msg) {
+                return inv(format!(
+                    "job '{}': message must be 1-{MAX_JOB_MESSAGE_CHARS} characters with no control characters",
+                    job.id
+                ));
+            }
+        }
+        if job.kind == ScheduledJobKind::Broadcast && job.message.is_none() {
+            return inv(format!("job '{}': broadcast jobs need a message", job.id));
         }
     }
     Ok(())
@@ -523,6 +734,170 @@ mod tests {
         assert!(validate_settings(&s).is_err());
 
         assert!(validate_settings(&base).is_ok());
+    }
+
+    fn job(
+        id: &str,
+        kind: ScheduledJobKind,
+        schedule: Schedule,
+        message: Option<&str>,
+    ) -> ScheduledJob {
+        ScheduledJob {
+            id: id.into(),
+            kind,
+            enabled: true,
+            schedule,
+            message: message.map(String::from),
+        }
+    }
+
+    #[tokio::test]
+    async fn scheduler_and_backup_fields_default_when_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join("config");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("settings.json"),
+            r#"{ "schemaVersion": 2, "activeMode": "simple" }"#,
+        )
+        .unwrap();
+        let loaded = load(&config_dir, tmp.path()).await.unwrap();
+        assert!(loaded.scheduler.enabled);
+        assert!(loaded.scheduler.jobs.is_empty());
+        assert_eq!(loaded.backups.keep_last, 10);
+        assert!(loaded.backups.copy_dir.is_none());
+        let v = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(v["scheduler"]["enabled"], true);
+        assert_eq!(v["backups"]["keepLast"], 10);
+        assert!(v["backups"]["copyDir"].is_null());
+    }
+
+    #[test]
+    fn schedule_wire_shape_is_tagged_by_kind() {
+        let daily = Schedule::Daily {
+            time: "04:30".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&daily).unwrap(),
+            serde_json::json!({ "kind": "daily", "time": "04:30" })
+        );
+        let weekly = Schedule::Weekly {
+            weekday: Weekday::Sunday,
+            time: "03:00".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(&weekly).unwrap(),
+            serde_json::json!({ "kind": "weekly", "weekday": "sunday", "time": "03:00" })
+        );
+        let interval: Schedule =
+            serde_json::from_value(serde_json::json!({ "kind": "interval", "everyHours": 6 }))
+                .unwrap();
+        assert_eq!(interval, Schedule::Interval { every_hours: 6 });
+    }
+
+    #[test]
+    fn scheduler_validation_rules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = valid_settings(tmp.path());
+        let daily = || Schedule::Daily {
+            time: "04:00".into(),
+        };
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![job("a", ScheduledJobKind::Backup, daily(), None)];
+        assert!(validate_settings(&s).is_ok());
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![job("bad id!", ScheduledJobKind::Backup, daily(), None)];
+        assert!(validate_settings(&s).is_err());
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![
+            job("dup", ScheduledJobKind::Backup, daily(), None),
+            job("dup", ScheduledJobKind::Restart, daily(), None),
+        ];
+        assert!(validate_settings(&s).is_err());
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![job(
+            "i",
+            ScheduledJobKind::Restart,
+            Schedule::Interval { every_hours: 0 },
+            None,
+        )];
+        assert!(validate_settings(&s).is_err());
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![job(
+            "t",
+            ScheduledJobKind::Restart,
+            Schedule::Daily {
+                time: "24:00".into(),
+            },
+            None,
+        )];
+        assert!(validate_settings(&s).is_err());
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![job("b", ScheduledJobKind::Broadcast, daily(), None)];
+        assert!(validate_settings(&s).is_err(), "broadcast needs a message");
+
+        let mut s = base.clone();
+        s.scheduler.jobs = vec![job(
+            "b",
+            ScheduledJobKind::Broadcast,
+            daily(),
+            Some("line1\nline2"),
+        )];
+        assert!(validate_settings(&s).is_err(), "control chars rejected");
+
+        let mut s = base.clone();
+        s.backups.keep_last = 5000;
+        assert!(validate_settings(&s).is_err());
+
+        let mut s = base.clone();
+        s.backups.copy_dir = Some(PathBuf::from("relative/copies"));
+        assert!(validate_settings(&s).is_err());
+    }
+
+    #[tokio::test]
+    async fn normalize_trims_messages_and_clears_backup_messages() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut s = valid_settings(tmp.path());
+        s.scheduler.jobs = vec![
+            job(
+                " j1 ",
+                ScheduledJobKind::Backup,
+                Schedule::Daily {
+                    time: "01:00".into(),
+                },
+                Some("ignored"),
+            ),
+            job(
+                "j2",
+                ScheduledJobKind::Restart,
+                Schedule::Daily {
+                    time: "01:00".into(),
+                },
+                Some("  "),
+            ),
+        ];
+        s.backups.copy_dir = Some(PathBuf::new());
+        let saved = save(&tmp.path().join("config"), s).await.unwrap();
+        assert_eq!(saved.scheduler.jobs[0].id, "j1");
+        assert!(saved.scheduler.jobs[0].message.is_none());
+        assert!(saved.scheduler.jobs[1].message.is_none());
+        assert!(saved.backups.copy_dir.is_none());
+    }
+
+    #[test]
+    fn hhmm_parsing() {
+        assert_eq!(parse_hhmm("00:00"), Some((0, 0)));
+        assert_eq!(parse_hhmm("23:59"), Some((23, 59)));
+        assert_eq!(parse_hhmm("7:30"), None);
+        assert_eq!(parse_hhmm("24:00"), None);
+        assert_eq!(parse_hhmm("12:60"), None);
+        assert_eq!(parse_hhmm("noon"), None);
     }
 
     #[test]

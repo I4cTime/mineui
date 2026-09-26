@@ -90,8 +90,9 @@ polling.
 
 ### Player management
 
-Online players, join/leave history with last-seen and IP, and one-click
-whitelist/op/ban/kick actions.
+Online players, join/leave history with last-seen and IP, one-click
+whitelist/op/ban/kick actions, and a private note per player for whatever you
+need to remember about them.
 
 ### RCON console
 
@@ -108,7 +109,21 @@ Edit `server.properties` and files under `config/` directly from the app.
 
 ### World backups
 
-Create, list, restore, and delete `.tar.gz` snapshots.
+Create, list, restore, and delete `.tar.gz` snapshots. A retention policy
+keeps only the newest N, and every new snapshot can be copied to a directory
+of your choice — a NAS mount, a USB drive, a second disk.
+
+### Scheduled tasks
+
+Automatic restarts (with an optional chat warning 60 s ahead), scheduled
+backups, and timed chat broadcasts — every N hours, daily, or weekly at a
+local time, configured in Settings and shown with their next run.
+
+### Activity log
+
+Every action taken from the app or by the scheduler — server control, player
+actions, RCON commands, backups, config edits — lands in an append-only log
+on the Status page, with the outcome and the error if it failed.
 
 ### System metrics
 
@@ -131,8 +146,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 84 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (31 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 121 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (36 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -160,7 +175,7 @@ Other commands:
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (84 tests; must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (121 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

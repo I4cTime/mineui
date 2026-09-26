@@ -7,9 +7,10 @@
 use std::sync::Arc;
 
 use mineui_core::model::{
-    BackupEntry, ConfigFileContent, ConfigFileList, CreateInstanceArgs, DownloadedMod,
-    InstanceStatus, JavaCheck, LogsTail, McVersion, Metrics, ModTarget, ModsList, PlayerHistory,
-    PlayersResult, RconOutput, RuntimeProbe, ServerState, ServerStatus, UploadedMod,
+    AuditLog, BackupEntry, ConfigFileContent, ConfigFileList, CreateInstanceArgs, DownloadedMod,
+    InstanceStatus, JavaCheck, JobRunResult, LogsTail, McVersion, Metrics, ModTarget, ModsList,
+    PlayerHistory, PlayerNote, PlayerNotes, PlayersResult, RconOutput, RuntimeProbe,
+    SchedulerStatus, ServerState, ServerStatus, UploadedMod,
 };
 use mineui_core::{Core, Error, Settings};
 
@@ -216,4 +217,37 @@ pub async fn delete_backup(core: CoreState<'_>, filename: String) -> CmdResult<(
 #[tauri::command]
 pub async fn get_metrics(core: CoreState<'_>) -> CmdResult<Metrics> {
     mineui_core::metrics::get(&core).await
+}
+
+/* ---------- §3.10 scheduler ---------- */
+
+#[tauri::command]
+pub async fn get_scheduler_status(core: CoreState<'_>) -> CmdResult<SchedulerStatus> {
+    mineui_core::scheduler::status(&core).await
+}
+
+#[tauri::command]
+pub async fn run_scheduled_job_now(core: CoreState<'_>, id: String) -> CmdResult<JobRunResult> {
+    mineui_core::scheduler::run_now(&core, &id).await
+}
+
+/* ---------- §3.11 player notes & audit log ---------- */
+
+#[tauri::command]
+pub async fn get_player_notes(core: CoreState<'_>) -> CmdResult<PlayerNotes> {
+    mineui_core::notes::list(&core).await
+}
+
+#[tauri::command]
+pub async fn set_player_note(
+    core: CoreState<'_>,
+    username: String,
+    note: String,
+) -> CmdResult<Option<PlayerNote>> {
+    mineui_core::notes::set(&core, &username, &note).await
+}
+
+#[tauri::command]
+pub async fn get_audit_log(core: CoreState<'_>, limit: Option<u32>) -> CmdResult<AuditLog> {
+    mineui_core::audit::recent(&core, limit).await
 }

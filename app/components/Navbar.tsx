@@ -564,27 +564,23 @@ export default function Navbar() {
               from the pre-revamp max-w-6xl + full-label math that no
               longer exists. */}
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
-            {/* No Popover.Trigger here on purpose: HeroUI's Trigger renders
-                a non-focusable <div role="button"> inside a Pressable, which
-                (a) logs "<Pressable> child must be focusable" on every mount
-                and (b) nests a second interactive element around the Button.
-                Popover's root is a react-aria DialogTrigger, so the Button
-                below is picked up as the trigger through context and stays
-                the only interactive element. */}
-            <span className="hidden header-full:block">
-              <Tooltip delay={400}>
-                <Button
-                  isIconOnly
-                  variant="ghost"
-                  onPress={() => play("click_confirm")}
-                  aria-label="Support on Ko-fi"
-                  onMouseEnter={() => play("hover")}
-                >
-                  <Coffee size={16} />
-                </Button>
-                <Tooltip.Content placement="bottom">Support on Ko-fi</Tooltip.Content>
-              </Tooltip>
-            </span>
+            {/* The Button is Popover's direct child on purpose. Popover's
+                root is a react-aria DialogTrigger whose PressResponder must
+                be consumed by the very next pressable: HeroUI's own
+                Popover.Trigger wraps a non-focusable <div role="button">
+                (logs "<Pressable> child must be focusable"), and a Tooltip
+                in between leaves the PressResponder unconsumed. The
+                aria-label carries the accessible name. */}
+            <Button
+              isIconOnly
+              variant="ghost"
+              className="hidden header-full:inline-flex"
+              onPress={() => play("click_confirm")}
+              onMouseEnter={() => play("hover")}
+              aria-label="Support on Ko-fi"
+            >
+              <Coffee size={16} />
+            </Button>
             <Popover.Content className="p-0" placement="bottom end">
               <Popover.Dialog className="w-85 overflow-hidden rounded-xl">
                 <iframe
