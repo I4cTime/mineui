@@ -107,7 +107,7 @@ pub async fn read(core: &crate::Core, path: &str) -> Result<ConfigFileContent> {
 
 /// `write_config_file` (§3.7): 1.5 MB cap; advanced = temp file + `cp`
 /// (no base64-through-shell); simple = std fs with symlink-escape re-check.
-pub async fn write(core: &crate::Core, path: &str, content: &str) -> Result<()> {
+async fn write_inner(core: &crate::Core, path: &str, content: &str) -> Result<()> {
     crate::validate::validate_config_rel_path(path)?;
     if content.len() > WRITE_MAX_BYTES {
         return Err(Error::FileTooLarge(format!(
@@ -179,6 +179,22 @@ pub async fn write(core: &crate::Core, path: &str, content: &str) -> Result<()> 
             Ok(())
         }
     }
+}
+
+/// `write_config_file` (§3.7), audited as `config.write` (§3.11).
+pub async fn write(core: &crate::Core, path: &str, content: &str) -> Result<()> {
+    let r = write_inner(core, path, content).await;
+    let detail = format!("{} bytes", content.len());
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        "config.write",
+        Some(path),
+        Some(&detail),
+        r.as_ref().err(),
+    )
+    .await;
+    r
 }
 
 #[cfg(test)]

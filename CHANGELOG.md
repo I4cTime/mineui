@@ -3,6 +3,50 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.5.0] - 2026-09-26
+
+### Added
+
+- **Scheduled tasks** (Settings → Scheduled tasks): automatic restarts with an
+  optional 60 s chat warning, scheduled backups, and timed chat broadcasts.
+  Schedules are every N hours, daily at a time, or weekly on a day; each job
+  shows its next and last run and has a Run-now button. Jobs run while MineUI
+  is open; a slot missed while it was closed is skipped, never run late.
+- **Backup retention and off-box copy** (Settings → Backup policy): keep only
+  the newest N snapshots (default 10, 0 = unlimited) and copy every new
+  snapshot to a directory you choose. Both apply to manual and scheduled
+  backups; a failed copy never fails the backup.
+- **Player notes** (Players): a private note per player, edited inline.
+- **Activity log** (Status): an append-only audit trail of every action taken
+  from the app or by the scheduler — server start/stop/restart, player
+  actions, RCON commands, backups, config edits, mod changes, settings saves —
+  with source, target, outcome and error.
+- Five new IPC commands (`get_scheduler_status`, `run_scheduled_job_now`,
+  `get_player_notes`, `set_player_note`, `get_audit_log`); contract §3.10,
+  §3.11.
+
+### Fixed
+
+- **Linux + NVIDIA + Wayland**: the app crashed before its first frame
+  (`Error 71 (Protocol error) dispatching to Wayland display`, WebKitGTK's
+  DMA-BUF renderer). MineUI now disables that renderer itself when the NVIDIA
+  kernel module is loaded, unless `WEBKIT_DISABLE_DMABUF_RENDERER` is already
+  set.
+- Two `<Pressable> child must be focusable` console warnings on every page,
+  from the Ko-fi popover trigger.
+
+### Changed
+
+- The theme picker moved out of the header into Settings → Appearance, next
+  to the accent override, as a card grid with a description per theme.
+- Header tooltips now say what each page is for ("Players — Who's on, history
+  and notes") and only appear at widths where the nav is icon-only; at full
+  width the visible label speaks for itself.
+- Tauri 2.12 (tao 0.37 restores GTK's own Wayland decorations; the old
+  overlay left title-bar buttons dead), `@tauri-apps/api` / `cli` 2.12.
+- Settings gained `scheduler` and `backups` sections with serde defaults —
+  existing `settings.json` files load unchanged (no schema bump).
+
 ## [2.1.2] - 2026-09-26
 
 ### Changed

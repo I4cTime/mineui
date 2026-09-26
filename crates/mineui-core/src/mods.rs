@@ -200,7 +200,7 @@ async fn validate_upload_source(source: &Path) -> Result<PathBuf> {
 }
 
 /// `upload_mod` (§3.5): `source_path` is a host path from the Tauri dialog.
-pub async fn upload(
+async fn upload_inner(
     core: &crate::Core,
     source_path: &str,
     target: ModTarget,
@@ -220,7 +220,7 @@ pub async fn upload(
 
 /// `download_mod` (§3.5, §6.3): host-side reqwest download with progress
 /// events, then placed like an upload.
-pub async fn download(
+async fn download_inner(
     core: &crate::Core,
     url: &str,
     filename: Option<&str>,
@@ -254,7 +254,7 @@ pub async fn download(
 }
 
 /// `delete_mod` (§3.5): filename must already be a bare clean name (§6.2).
-pub async fn delete(core: &crate::Core, filename: &str, target: ModTarget) -> Result<()> {
+async fn delete_inner(core: &crate::Core, filename: &str, target: ModTarget) -> Result<()> {
     let filename = crate::validate::mod_filename(filename, false)?;
     let settings = core.settings().await;
     match settings.active_mode {
@@ -286,6 +286,77 @@ pub async fn delete(core: &crate::Core, filename: &str, target: ModTarget) -> Re
             }
         }
     }
+}
+
+/* ---------- audited entry points (§3.11) ---------- */
+
+fn target_label(target: ModTarget) -> &'static str {
+    match target {
+        ModTarget::Mods => "mods",
+        ModTarget::Plugins => "plugins",
+    }
+}
+
+/// `upload_mod` (§3.5), audited as `mod.upload`.
+pub async fn upload(
+    core: &crate::Core,
+    source_path: &str,
+    target: ModTarget,
+) -> Result<UploadedMod> {
+    let r = upload_inner(core, source_path, target).await;
+    let name = r
+        .as_ref()
+        .map(|u| u.filename.clone())
+        .unwrap_or_else(|_| source_path.to_string());
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        "mod.upload",
+        Some(&name),
+        Some(target_label(target)),
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `download_mod` (§3.5), audited as `mod.download` (target = URL).
+pub async fn download(
+    core: &crate::Core,
+    url: &str,
+    filename: Option<&str>,
+    target: ModTarget,
+) -> Result<DownloadedMod> {
+    let r = download_inner(core, url, filename, target).await;
+    let detail = match &r {
+        Ok(d) => format!("{} → {}", target_label(target), d.filename),
+        Err(_) => target_label(target).to_string(),
+    };
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        "mod.download",
+        Some(url),
+        Some(&detail),
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `delete_mod` (§3.5), audited as `mod.delete`.
+pub async fn delete(core: &crate::Core, filename: &str, target: ModTarget) -> Result<()> {
+    let r = delete_inner(core, filename, target).await;
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        "mod.delete",
+        Some(filename),
+        Some(target_label(target)),
+        r.as_ref().err(),
+    )
+    .await;
+    r
 }
 
 #[cfg(test)]

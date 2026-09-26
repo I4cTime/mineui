@@ -53,6 +53,35 @@ pub fn strip_ansi(line: &str) -> String {
     RE.replace_all(line, "").replace('\r', "")
 }
 
+/// Atomic file write: temp sibling + rename, 0600 on unix. Shared by the
+/// settings, notes and scheduler-state stores (§2 pattern).
+pub(crate) async fn write_atomic_bytes(path: &std::path::Path, bytes: &[u8]) -> crate::Result<()> {
+    use crate::error::Error;
+    let dir = path
+        .parent()
+        .ok_or_else(|| Error::Internal(format!("{} has no parent dir", path.display())))?;
+    tokio::fs::create_dir_all(dir)
+        .await
+        .map_err(|e| Error::Io(format!("failed to create {}: {e}", dir.display())))?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".into());
+    let tmp = dir.join(format!(".{name}.tmp-{}", uuid::Uuid::new_v4().simple()));
+    tokio::fs::write(&tmp, bytes)
+        .await
+        .map_err(|e| Error::Io(format!("failed to write {}: {e}", tmp.display())))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = tokio::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).await;
+    }
+    tokio::fs::rename(&tmp, path)
+        .await
+        .map_err(|e| Error::Io(format!("failed to move {} into place: {e}", path.display())))?;
+    Ok(())
+}
+
 pub fn now_epoch_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }

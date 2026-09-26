@@ -6,6 +6,7 @@
 //! subprocesses use argv arrays; the only `sh -c` scripts are compile-time
 //! constants with zero interpolation.
 
+pub mod audit;
 pub mod backups;
 pub mod config_files;
 pub mod download;
@@ -18,10 +19,12 @@ pub mod metrics;
 pub mod model;
 pub mod mods;
 pub mod mojang;
+pub mod notes;
 pub mod players;
 pub mod query;
 pub mod rcon;
 pub mod runtime;
+pub mod scheduler;
 pub mod serverutils;
 pub mod settings;
 pub mod status;
@@ -55,6 +58,12 @@ pub struct Core {
     pub(crate) events: tokio::sync::broadcast::Sender<CoreEvent>,
     pub(crate) mojang_cache: tokio::sync::Mutex<Option<mojang::ManifestCache>>,
     pub(crate) last_advanced_phase: std::sync::Mutex<Option<model::ServerPhase>>,
+    /// Serializes appends to the audit log (§3.11).
+    pub(crate) audit_lock: tokio::sync::Mutex<()>,
+    /// Serializes read-modify-write of the player notes store (§3.11).
+    pub(crate) notes_lock: tokio::sync::Mutex<()>,
+    /// Scheduled-job engine state (§3.10).
+    pub(crate) scheduler: scheduler::Engine,
     settings: tokio::sync::RwLock<Settings>,
 }
 
@@ -91,6 +100,9 @@ impl Core {
             events,
             mojang_cache: tokio::sync::Mutex::new(None),
             last_advanced_phase: std::sync::Mutex::new(None),
+            audit_lock: tokio::sync::Mutex::new(()),
+            notes_lock: tokio::sync::Mutex::new(()),
+            scheduler: scheduler::Engine::new(),
             settings: tokio::sync::RwLock::new(loaded),
         })
     }
@@ -103,9 +115,20 @@ impl Core {
     /// `set_settings` (§3.1): validate, persist atomically, swap in memory,
     /// and return the normalized result.
     pub async fn update_settings(&self, new_settings: Settings) -> Result<Settings> {
-        let saved = settings::save(&self.paths.config_dir, new_settings).await?;
-        *self.settings.write().await = saved.clone();
-        Ok(saved)
+        let result = settings::save(&self.paths.config_dir, new_settings).await;
+        if let Ok(saved) = &result {
+            *self.settings.write().await = saved.clone();
+        }
+        audit::record(
+            self,
+            model::AuditSource::User,
+            "settings.update",
+            None,
+            None,
+            result.as_ref().err(),
+        )
+        .await;
+        result
     }
 
     /// Subscribe to core events (the Tauri layer forwards these to the

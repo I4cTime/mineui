@@ -9,7 +9,7 @@
 //! the `tar` + `flate2` crates.
 
 use crate::error::{Error, Result};
-use crate::model::BackupEntry;
+use crate::model::{AuditSource, BackupEntry};
 use crate::settings::Mode;
 
 const LIST_BACKUPS_SCRIPT: &str =
@@ -55,8 +55,8 @@ async fn require_stopped(core: &crate::Core) -> Result<()> {
     Ok(())
 }
 
-/// `create_backup` (§3.8). Allowed while running (crash-consistent snapshot).
-pub async fn create(core: &crate::Core) -> Result<BackupEntry> {
+/// Snapshot the world (§3.8). Allowed while running (crash-consistent).
+async fn create_inner(core: &crate::Core) -> Result<BackupEntry> {
     let settings = core.settings().await;
     let filename = new_backup_filename();
     match settings.active_mode {
@@ -202,7 +202,7 @@ pub async fn list(core: &crate::Core) -> Result<Vec<BackupEntry>> {
 /// `restore_backup` (§3.8): requires server stopped. Current world is renamed
 /// to `<worldDir>.pre-restore-<timestamp>` (kept), then the archive is
 /// extracted into the data root.
-pub async fn restore(core: &crate::Core, filename: &str) -> Result<()> {
+async fn restore_inner(core: &crate::Core, filename: &str) -> Result<()> {
     crate::validate::backup_filename(filename)?;
     require_stopped(core).await?;
     let settings = core.settings().await;
@@ -277,8 +277,8 @@ pub async fn restore(core: &crate::Core, filename: &str) -> Result<()> {
     }
 }
 
-/// `delete_backup` (§3.8).
-pub async fn delete(core: &crate::Core, filename: &str) -> Result<()> {
+/// Remove one archive (§3.8), no audit — see `delete` / `prune`.
+async fn delete_inner(core: &crate::Core, filename: &str) -> Result<()> {
     crate::validate::backup_filename(filename)?;
     let settings = core.settings().await;
     match settings.active_mode {
@@ -312,6 +312,165 @@ pub async fn delete(core: &crate::Core, filename: &str) -> Result<()> {
     }
 }
 
+/* ---------- audited entry points, retention and off-box copy (§3.8, §3.11) ---------- */
+
+/// `create_backup` (§3.8) from the user: snapshot, then retention + copy.
+pub async fn create(core: &crate::Core) -> Result<BackupEntry> {
+    create_from(core, AuditSource::User).await
+}
+
+/// Create on behalf of `source` (the scheduler passes `Scheduler`). Retention
+/// pruning and the off-box copy run after a successful snapshot and never
+/// change its outcome.
+pub async fn create_from(core: &crate::Core, source: AuditSource) -> Result<BackupEntry> {
+    let r = create_inner(core).await;
+    let target = r.as_ref().ok().map(|e| e.filename.clone());
+    let detail = r.as_ref().ok().map(|e| format!("{} bytes", e.size_bytes));
+    crate::audit::record(
+        core,
+        source,
+        "backup.create",
+        target.as_deref(),
+        detail.as_deref(),
+        r.as_ref().err(),
+    )
+    .await;
+    if let Ok(entry) = &r {
+        prune(core, source, &entry.filename).await;
+        copy_off_box(core, source, &entry.filename).await;
+    }
+    r
+}
+
+/// `restore_backup` (§3.8), audited as `backup.restore`.
+pub async fn restore(core: &crate::Core, filename: &str) -> Result<()> {
+    let r = restore_inner(core, filename).await;
+    crate::audit::record(
+        core,
+        AuditSource::User,
+        "backup.restore",
+        Some(filename),
+        None,
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `delete_backup` (§3.8), audited as `backup.delete`.
+pub async fn delete(core: &crate::Core, filename: &str) -> Result<()> {
+    let r = delete_inner(core, filename).await;
+    crate::audit::record(
+        core,
+        AuditSource::User,
+        "backup.delete",
+        Some(filename),
+        None,
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// Which archives fall outside `keep_last` (newest first input), never `just_written`.
+pub fn prune_candidates<'a>(
+    entries: &'a [BackupEntry],
+    keep_last: u32,
+    just_written: &str,
+) -> Vec<&'a BackupEntry> {
+    if keep_last == 0 {
+        return Vec::new();
+    }
+    entries
+        .iter()
+        .skip(keep_last as usize)
+        .filter(|e| e.filename != just_written)
+        .collect()
+}
+
+/// Retention (§3.8): delete the oldest archives beyond `settings.backups.keepLast`.
+async fn prune(core: &crate::Core, source: AuditSource, just_written: &str) {
+    let keep_last = core.settings().await.backups.keep_last;
+    if keep_last == 0 {
+        return;
+    }
+    let entries = match list(core).await {
+        Ok(entries) => entries,
+        Err(e) => {
+            crate::audit::record(
+                core,
+                source,
+                "backup.prune",
+                None,
+                Some("listing failed"),
+                Some(&e),
+            )
+            .await;
+            return;
+        }
+    };
+    for stale in prune_candidates(&entries, keep_last, just_written) {
+        let r = delete_inner(core, &stale.filename).await;
+        let detail = format!("keepLast={keep_last}");
+        crate::audit::record(
+            core,
+            source,
+            "backup.prune",
+            Some(&stale.filename),
+            Some(&detail),
+            r.as_ref().err(),
+        )
+        .await;
+    }
+}
+
+/// Off-box copy (§3.8): `<copyDir>/<filename>` via a `.tmp` sibling + rename.
+async fn copy_off_box(core: &crate::Core, source: AuditSource, filename: &str) {
+    let settings = core.settings().await;
+    let Some(copy_dir) = settings.backups.copy_dir.clone() else {
+        return;
+    };
+    let dest = copy_dir.join(filename);
+    let tmp = copy_dir.join(format!(".{filename}.tmp"));
+    let result: Result<()> = async {
+        tokio::fs::create_dir_all(&copy_dir)
+            .await
+            .map_err(|e| Error::Io(format!("failed to create {}: {e}", copy_dir.display())))?;
+        match settings.active_mode {
+            Mode::Simple => {
+                let src = settings.simple.instance_dir.join("backups").join(filename);
+                tokio::fs::copy(&src, &tmp)
+                    .await
+                    .map_err(|e| Error::Io(format!("copy failed: {e}")))?;
+            }
+            Mode::Advanced => {
+                let runtime = crate::runtime::resolve(&settings.advanced).await?;
+                let archive = format!("/data/backups/{filename}");
+                runtime
+                    .cp_from(&settings.advanced.container_name, &archive, &tmp)
+                    .await?;
+            }
+        }
+        tokio::fs::rename(&tmp, &dest)
+            .await
+            .map_err(|e| Error::Io(format!("failed to move copy into place: {e}")))
+    }
+    .await;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp).await;
+    }
+    let detail = dest.display().to_string();
+    crate::audit::record(
+        core,
+        source,
+        "backup.copy",
+        Some(filename),
+        Some(&detail),
+        result.as_ref().err(),
+    )
+    .await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +479,43 @@ mod tests {
     fn generated_filenames_match_the_strict_pattern() {
         let name = new_backup_filename();
         assert!(crate::validate::backup_filename(&name).is_ok(), "{name}");
+    }
+
+    fn entry(name: &str) -> BackupEntry {
+        BackupEntry {
+            filename: name.into(),
+            size_bytes: 1,
+            created_at_epoch_ms: 0,
+        }
+    }
+
+    #[test]
+    fn prune_keeps_newest_and_never_the_fresh_archive() {
+        let entries = vec![
+            entry("world-20260926-040000.tar.gz"),
+            entry("world-20260925-040000.tar.gz"),
+            entry("world-20260924-040000.tar.gz"),
+            entry("world-20260923-040000.tar.gz"),
+        ];
+        let stale: Vec<&str> = prune_candidates(&entries, 2, "world-20260926-040000.tar.gz")
+            .into_iter()
+            .map(|e| e.filename.as_str())
+            .collect();
+        assert_eq!(
+            stale,
+            vec![
+                "world-20260924-040000.tar.gz",
+                "world-20260923-040000.tar.gz"
+            ]
+        );
+        assert!(
+            prune_candidates(&entries, 0, "x").is_empty(),
+            "0 = unlimited"
+        );
+        assert!(prune_candidates(&entries, 10, "x").is_empty());
+        // A stale-looking listing that contains the fresh file keeps it.
+        let stale = prune_candidates(&entries, 1, "world-20260923-040000.tar.gz");
+        assert_eq!(stale.len(), 2);
     }
 
     #[test]

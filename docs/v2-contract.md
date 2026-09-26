@@ -129,6 +129,45 @@ type AdvancedModeSettings = {
   serverUtilsUrl: string | null;
 };
 
+type ScheduleKind = "interval" | "daily" | "weekly";
+type Weekday =
+  | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+/** When a scheduled job fires. Times are local wall-clock, "HH:MM" 24 h. */
+type Schedule =
+  | { kind: "interval"; everyHours: number }            // 1–168
+  | { kind: "daily"; time: string }                      // "HH:MM"
+  | { kind: "weekly"; weekday: Weekday; time: string };  // "HH:MM"
+
+type ScheduledJobKind = "restart" | "backup" | "broadcast";
+
+type ScheduledJob = {
+  /** uuid v4, minted by the frontend when the job is created. */
+  id: string;
+  kind: ScheduledJobKind;
+  enabled: boolean;
+  schedule: Schedule;
+  /** broadcast: chat text sent via RCON `say` (required, 1–200 chars).
+   *  restart: optional warning sent via `say` 60 s before the restart.
+   *  backup: ignored (null). */
+  message: string | null;
+};
+
+type SchedulerSettings = {
+  /** Master switch; false pauses every job without losing them. Default true. */
+  enabled: boolean;
+  jobs: ScheduledJob[];                 // max 32
+};
+
+type BackupSettings = {
+  /** Newest snapshots to keep after every backup (manual or scheduled);
+   *  0 = unlimited. Default 10. */
+  keepLast: number;
+  /** Absolute host directory that receives a copy of every new snapshot;
+   *  null = off. */
+  copyDir: string | null;
+};
+
 type Settings = {
   schemaVersion: 2;
   activeMode: Mode;                     // default "simple"
@@ -139,6 +178,10 @@ type Settings = {
   allowPrivateDownloadHosts: boolean;
   simple: SimpleModeSettings;
   advanced: AdvancedModeSettings;
+  /** Added in 2.5.0 (serde default; no schemaVersion bump). */
+  scheduler: SchedulerSettings;
+  /** Added in 2.5.0 (serde default; no schemaVersion bump). */
+  backups: BackupSettings;
 };
 ```
 
@@ -161,7 +204,27 @@ pub struct Settings {
     pub allow_private_download_hosts: bool, // default false (§6.3 rule 5)
     pub simple: SimpleModeSettings,
     pub advanced: AdvancedModeSettings,
+    pub scheduler: SchedulerSettings,       // 2.5.0, #[serde(default)]
+    pub backups: BackupSettings,            // 2.5.0, #[serde(default)]
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SchedulerSettings { pub enabled: bool, pub jobs: Vec<ScheduledJob> }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledJob {
+    pub id: String,
+    pub kind: ScheduledJobKind,         // #[serde(rename_all = "lowercase")]
+    pub enabled: bool,
+    pub schedule: Schedule,             // #[serde(tag = "kind", rename_all = "camelCase")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct BackupSettings { pub keep_last: u32, pub copy_dir: Option<PathBuf> }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -206,6 +269,13 @@ All `Option<T>` fields serialize as `null`, matching the TS `| null` types
 - `advanced.serverUtilsUrl`, if non-null: parses as URL, scheme http/https.
 - `simple.instanceDir` absolute path.
 - `rconAllowlist` entries lowercased, trimmed, non-empty, no whitespace.
+- `scheduler.jobs`: at most 32; `id` matches `^[A-Za-z0-9-]{1,64}$` and is unique;
+  `schedule.everyHours` in 1–168; `time` matches `^([01][0-9]|2[0-3]):[0-5][0-9]$`;
+  `message`, when non-null, is 1–200 chars with no control characters; a
+  `broadcast` job requires a non-null message; a `backup` job's message is
+  normalized to null.
+- `backups.keepLast` in 0–1000. `backups.copyDir`, if non-null, is an absolute path
+  (existence is checked at copy time, not at save time).
 
 ### 2.4 Migration from v1
 
@@ -607,6 +677,17 @@ type BackupEntry = {
   current world dir to `<worldDir>.pre-restore-<timestamp>` (kept, not deleted), then
   extract the archive into the data root. Missing archive → `INVALID_INPUT`.
 - `delete_backup`: removes the archive file.
+- **Retention (2.5.0)**: after every successful `create_backup` — manual or scheduled —
+  core lists the backup dir and deletes the oldest archives beyond
+  `settings.backups.keepLast` (0 = unlimited). The archive just written is never
+  pruned. Each pruned file is recorded in the audit log (`backup.prune`); prune
+  failures never fail the backup.
+- **Off-box copy (2.5.0)**: when `settings.backups.copyDir` is non-null, the new
+  archive is copied to `<copyDir>/<filename>` (simple → host copy through a
+  `.tmp` sibling + rename; advanced → `runtime.cp_from(<container>:/data/backups/<file>)`
+  into the same tmp + rename). The copy runs after the backup succeeds; a copy
+  failure is recorded in the audit log (`backup.copy`, `ok: false`) and does **not**
+  fail the backup or change its return value.
 
 ### 3.9 Metrics
 
@@ -657,6 +738,99 @@ type Metrics = {
   `TPS from last 1m, 5m, 15m: (\d+\.?\d*), (\d+\.?\d*), (\d+\.?\d*)` — note the v1
   parser's regex was double-escaped and never matched; v2 must use real character
   classes. Vanilla has no `tps` command → `tps: null` (not an error).
+
+### 3.10 Scheduler (2.5.0)
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `get_scheduler_status` | — | `SchedulerStatus` | both | `scheduler::status` | — (new) |
+| `run_scheduled_job_now` | `{ id: string }` | `JobRunResult` | both | `scheduler::run_now` | — (new) |
+
+```ts
+type JobRunResult = { epochMs: number; ok: boolean; message: string | null };
+
+type ScheduledJobStatus = {
+  id: string;
+  /** null when the job or the scheduler is disabled. */
+  nextRunEpochMs: number | null;
+  lastRun: JobRunResult | null;
+};
+
+type SchedulerStatus = { enabled: boolean; jobs: ScheduledJobStatus[] };
+```
+
+Semantics:
+
+- Job definitions live in `settings.scheduler` (§2). Run state lives in
+  `<app-data-dir>/scheduler-state.json` (`{ [jobId]: { lastRun: JobRunResult } }`),
+  written atomically; unknown ids are dropped on the next write.
+- The engine is `scheduler::tick(core)`, driven by a 30 s timer in `src-tauri`
+  (next to the §4.2 poller). A tick computes each enabled job's next due time from
+  its schedule and fires it when `now >= due`. Anchor for `interval` jobs is
+  `lastRun.epochMs`, or app start when there is none; `daily`/`weekly` are wall-clock
+  in the local timezone. A due time that passed while the app was closed does
+  **not** fire retroactively.
+- Jobs run one at a time (a mutex); a job still running when its next slot arrives
+  is skipped for that slot.
+- `restart`: requires phase `running` else the run is recorded as
+  `ok: false, message: "server not running"`. With a non-null `message`, core sends
+  `say <message>` via RCON, waits 60 s, then calls `lifecycle::restart`.
+- `backup`: calls `backups::create` (retention + copy included). Advanced mode
+  requires the container running (exec), else recorded as skipped like above.
+- `broadcast`: requires phase `running`; sends `say <message>` via `rcon::run`
+  (internal path, no allowlist — the message is validated at settings save).
+- Every run appends an audit entry (§3.11) with `source: "scheduler"`.
+- `run_scheduled_job_now` runs the job immediately regardless of its schedule or
+  `enabled` flag (the scheduler master switch is also ignored), records the result
+  as `lastRun`, and returns it. Unknown id → `INVALID_INPUT`.
+
+### 3.11 Player notes & audit log (2.5.0)
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `get_player_notes` | — | `{ notes: PlayerNote[] }` | both | `notes::list` | — (new) |
+| `set_player_note` | `{ username: string; note: string }` | `PlayerNote \| null` | both | `notes::set` | — (new) |
+| `get_audit_log` | `{ limit?: number }` | `{ entries: AuditEntry[] }` | both | `audit::recent` | — (new) |
+
+```ts
+type PlayerNote = { username: string; note: string; updatedAtEpochMs: number };
+
+type AuditSource = "user" | "scheduler";
+
+type AuditEntry = {
+  id: string;               // uuid v4
+  epochMs: number;
+  source: AuditSource;
+  /** Dotted action name, see the list below. */
+  action: string;
+  /** What was acted on: username, filename, config path, command… */
+  target: string | null;
+  /** Free text: the RCON command, the job id, a byte count… */
+  detail: string | null;
+  ok: boolean;
+  /** `ErrorCode: message` when ok is false. */
+  error: string | null;
+};
+```
+
+- Notes: `<app-data-dir>/player-notes.json`, `{ [usernameLower]: PlayerNote }`,
+  atomic write (§2 pattern, 0600). `username` matches `^[A-Za-z0-9_]{1,16}$`
+  (`INVALID_INPUT` otherwise) and is stored as typed but keyed lowercase; `note` is
+  trimmed, ≤ 2000 chars; an empty note deletes the entry and returns `null`.
+  Setting a note appends `note.set` / `note.clear` to the audit log.
+- Audit log: `<app-data-dir>/audit-log.jsonl`, append-only, one entry per line.
+  When the file exceeds 5 MB it is renamed to `audit-log.jsonl.1` (one generation
+  kept) and a fresh file is started. `get_audit_log` returns the newest `limit`
+  entries (default 200, max 1000) newest first, reading `.1` only if the primary has
+  fewer than `limit` lines. Audit writes never fail the action they describe.
+- Actions recorded (core writes them; `src-tauri` stays thin):
+  `server.start`, `server.stop`, `server.restart`, `rcon.command` (target = first
+  token, detail = full command), `player.<verb>` for `kick`/`ban`/`pardon`/`op`/
+  `deop`/`whitelist` issued through `run_rcon_command` (target = username),
+  `backup.create`, `backup.restore`, `backup.delete`, `backup.prune`, `backup.copy`,
+  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `settings.update`,
+  `instance.create`, `instance.delete`, `note.set`, `note.clear`,
+  `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`.
 
 ---
 
@@ -897,6 +1071,45 @@ export type AdvancedModeSettings = {
   serverUtilsUrl: string | null;
 };
 
+export type ScheduleKind = "interval" | "daily" | "weekly";
+export type Weekday =
+  | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+/** When a scheduled job fires. Times are local wall-clock, "HH:MM" 24 h. */
+export type Schedule =
+  | { kind: "interval"; everyHours: number }            // 1–168
+  | { kind: "daily"; time: string }                      // "HH:MM"
+  | { kind: "weekly"; weekday: Weekday; time: string };  // "HH:MM"
+
+export type ScheduledJobKind = "restart" | "backup" | "broadcast";
+
+export type ScheduledJob = {
+  /** uuid v4, minted by the frontend when the job is created. */
+  id: string;
+  kind: ScheduledJobKind;
+  enabled: boolean;
+  schedule: Schedule;
+  /** broadcast: chat text sent via RCON `say` (required, 1–200 chars).
+   *  restart: optional warning sent via `say` 60 s before the restart.
+   *  backup: ignored (null). */
+  message: string | null;
+};
+
+export type SchedulerSettings = {
+  /** Master switch; false pauses every job without losing them. Default true. */
+  enabled: boolean;
+  jobs: ScheduledJob[];                 // max 32
+};
+
+export type BackupSettings = {
+  /** Newest snapshots to keep after every backup (manual or scheduled);
+   *  0 = unlimited. Default 10. */
+  keepLast: number;
+  /** Absolute host directory that receives a copy of every new snapshot;
+   *  null = off. */
+  copyDir: string | null;
+};
+
 export type Settings = {
   schemaVersion: 2;
   activeMode: Mode;
@@ -904,6 +1117,8 @@ export type Settings = {
   allowPrivateDownloadHosts: boolean;
   simple: SimpleModeSettings;
   advanced: AdvancedModeSettings;
+  scheduler: SchedulerSettings;
+  backups: BackupSettings;
 };
 
 export type RuntimeProbe = {
@@ -1073,6 +1288,47 @@ export const restoreBackup = (filename: string) =>
 export const deleteBackup = (filename: string) =>
   call<void>("delete_backup", { filename });
 
+/* ---------- scheduler (§3.10) ---------- */
+
+export type JobRunResult = { epochMs: number; ok: boolean; message: string | null };
+
+export type ScheduledJobStatus = {
+  id: string;
+  nextRunEpochMs: number | null;
+  lastRun: JobRunResult | null;
+};
+
+export type SchedulerStatus = { enabled: boolean; jobs: ScheduledJobStatus[] };
+
+export const getSchedulerStatus = () =>
+  call<SchedulerStatus>("get_scheduler_status");
+export const runScheduledJobNow = (id: string) =>
+  call<JobRunResult>("run_scheduled_job_now", { id });
+
+/* ---------- player notes / audit log (§3.11) ---------- */
+
+export type PlayerNote = { username: string; note: string; updatedAtEpochMs: number };
+
+export type AuditSource = "user" | "scheduler";
+
+export type AuditEntry = {
+  id: string;
+  epochMs: number;
+  source: AuditSource;
+  action: string;
+  target: string | null;
+  detail: string | null;
+  ok: boolean;
+  error: string | null;
+};
+
+export const getPlayerNotes = () =>
+  call<{ notes: PlayerNote[] }>("get_player_notes");
+export const setPlayerNote = (username: string, note: string) =>
+  call<PlayerNote | null>("set_player_note", { username, note });
+export const getAuditLog = (limit?: number) =>
+  call<{ entries: AuditEntry[] }>("get_audit_log", { limit });
+
 /* ---------- metrics ---------- */
 
 export type IoPair = { inputBytes: number | null; outputBytes: number | null };
@@ -1171,8 +1427,12 @@ Frontend rules:
 | `serverutils` | HTTP client for mineui-server-utils `/status` `/metrics` `/mods` |
 | `players` | online list + history log parsing (§3.4, with the fixed regexes) |
 | `logs` | tail + refcounted stream fan-in from supervisor/runtime |
+| `scheduler` | job engine: due-time math, 30 s tick, run state file, `status`/`run_now` (§3.10) |
+| `audit` | append-only JSONL audit log + rotation, `recent` (§3.11) |
+| `notes` | per-player notes store (§3.11) |
 
 `src-tauri` contains: one command fn per §3 row (thin delegation), event forwarding
-(core callbacks → `app.emit`), the 2 s advanced-mode state poller, and path-resolver
+(core callbacks → `app.emit`), the 2 s advanced-mode state poller, the 30 s scheduler
+tick (§3.10), and path-resolver
 wiring (`app_config_dir`, `app_data_dir`) injected into core at startup. No business
 logic, no validation, no subprocess calls in `src-tauri`.

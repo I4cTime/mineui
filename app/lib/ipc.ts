@@ -85,6 +85,45 @@ export type AdvancedModeSettings = {
   serverUtilsUrl: string | null;
 };
 
+export type ScheduleKind = "interval" | "daily" | "weekly";
+export type Weekday =
+  | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+/** When a scheduled job fires. Times are local wall-clock, "HH:MM" 24 h. */
+export type Schedule =
+  | { kind: "interval"; everyHours: number }            // 1–168
+  | { kind: "daily"; time: string }                      // "HH:MM"
+  | { kind: "weekly"; weekday: Weekday; time: string };  // "HH:MM"
+
+export type ScheduledJobKind = "restart" | "backup" | "broadcast";
+
+export type ScheduledJob = {
+  /** uuid v4, minted by the frontend when the job is created. */
+  id: string;
+  kind: ScheduledJobKind;
+  enabled: boolean;
+  schedule: Schedule;
+  /** broadcast: chat text sent via RCON `say` (required, 1–200 chars).
+   *  restart: optional warning sent via `say` 60 s before the restart.
+   *  backup: ignored (null). */
+  message: string | null;
+};
+
+export type SchedulerSettings = {
+  /** Master switch; false pauses every job without losing them. Default true. */
+  enabled: boolean;
+  jobs: ScheduledJob[];                 // max 32
+};
+
+export type BackupSettings = {
+  /** Newest snapshots to keep after every backup (manual or scheduled);
+   *  0 = unlimited. Default 10. */
+  keepLast: number;
+  /** Absolute host directory that receives a copy of every new snapshot;
+   *  null = off. */
+  copyDir: string | null;
+};
+
 export type Settings = {
   schemaVersion: 2;
   activeMode: Mode;
@@ -92,6 +131,8 @@ export type Settings = {
   allowPrivateDownloadHosts: boolean;
   simple: SimpleModeSettings;
   advanced: AdvancedModeSettings;
+  scheduler: SchedulerSettings;
+  backups: BackupSettings;
 };
 
 export type RuntimeProbe = {
@@ -260,6 +301,47 @@ export const restoreBackup = (filename: string) =>
   call<void>("restore_backup", { filename });
 export const deleteBackup = (filename: string) =>
   call<void>("delete_backup", { filename });
+
+/* ---------- scheduler (§3.10) ---------- */
+
+export type JobRunResult = { epochMs: number; ok: boolean; message: string | null };
+
+export type ScheduledJobStatus = {
+  id: string;
+  nextRunEpochMs: number | null;
+  lastRun: JobRunResult | null;
+};
+
+export type SchedulerStatus = { enabled: boolean; jobs: ScheduledJobStatus[] };
+
+export const getSchedulerStatus = () =>
+  call<SchedulerStatus>("get_scheduler_status");
+export const runScheduledJobNow = (id: string) =>
+  call<JobRunResult>("run_scheduled_job_now", { id });
+
+/* ---------- player notes / audit log (§3.11) ---------- */
+
+export type PlayerNote = { username: string; note: string; updatedAtEpochMs: number };
+
+export type AuditSource = "user" | "scheduler";
+
+export type AuditEntry = {
+  id: string;
+  epochMs: number;
+  source: AuditSource;
+  action: string;
+  target: string | null;
+  detail: string | null;
+  ok: boolean;
+  error: string | null;
+};
+
+export const getPlayerNotes = () =>
+  call<{ notes: PlayerNote[] }>("get_player_notes");
+export const setPlayerNote = (username: string, note: string) =>
+  call<PlayerNote | null>("set_player_note", { username, note });
+export const getAuditLog = (limit?: number) =>
+  call<{ entries: AuditEntry[] }>("get_audit_log", { limit });
 
 /* ---------- metrics ---------- */
 

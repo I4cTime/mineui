@@ -80,6 +80,16 @@ pub fn run() {
                 }
             });
 
+            // 30 s scheduler tick (§3.10). The timer lives here; due-time
+            // math, job execution and run state live in core.
+            let tick_core = core.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    mineui_core::scheduler::tick(&tick_core).await;
+                }
+            });
+
             app.manage(core);
             Ok(())
         })
@@ -124,6 +134,13 @@ pub fn run() {
             commands::delete_backup,
             // §3.9 metrics
             commands::get_metrics,
+            // §3.10 scheduler
+            commands::get_scheduler_status,
+            commands::run_scheduled_job_now,
+            // §3.11 player notes & audit log
+            commands::get_player_notes,
+            commands::set_player_note,
+            commands::get_audit_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MineUI");
