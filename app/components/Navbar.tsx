@@ -564,7 +564,14 @@ export default function Navbar() {
               from the pre-revamp max-w-6xl + full-label math that no
               longer exists. */}
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
-            <Popover.Trigger className="hidden header-full:block">
+            {/* No Popover.Trigger here on purpose: HeroUI's Trigger renders
+                a non-focusable <div role="button"> inside a Pressable, which
+                (a) logs "<Pressable> child must be focusable" on every mount
+                and (b) nests a second interactive element around the Button.
+                Popover's root is a react-aria DialogTrigger, so the Button
+                below is picked up as the trigger through context and stays
+                the only interactive element. */}
+            <span className="hidden header-full:block">
               <Tooltip delay={400}>
                 <Button
                   isIconOnly
@@ -577,7 +584,7 @@ export default function Navbar() {
                 </Button>
                 <Tooltip.Content placement="bottom">Support on Ko-fi</Tooltip.Content>
               </Tooltip>
-            </Popover.Trigger>
+            </span>
             <Popover.Content className="p-0" placement="bottom end">
               <Popover.Dialog className="w-85 overflow-hidden rounded-xl">
                 <iframe
