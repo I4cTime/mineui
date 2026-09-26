@@ -40,8 +40,8 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
       '@heroui-pro/react':
-        specifier: 1.0.0-beta.7
-        version: 1.0.0-beta.7
+        specifier: 1.0.0-beta.10
+        version: 1.0.0-beta.10
       '@heroui/react':
         specifier: ^3.2.6
         version: 3.2.6(@internationalized/date@3.12.4)(@react-aria/ssr@3.10.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@react-aria/utils@3.34.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@react-spectrum/provider@3.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-aria-components@1.21.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-aria@3.52.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwind-merge@3.7.0)(tailwindcss@4.3.3)
@@ -360,8 +360,8 @@ packages:
   '@fontsource/ibm-plex-mono@5.3.0':
     resolution: {integrity: sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==}
 
-  '@heroui-pro/react@1.0.0-beta.7':
-    resolution: {integrity: sha512-8OPimF2ZwbX89wxpYlYRDFTCCVKQn1eRPtvymwLcjCTt2PWfYmYvqT/Yvn+VAgfr7QYCxmmxlAmLy29hwfyYcA==}
+  '@heroui-pro/react@1.0.0-beta.10':
+    resolution: {integrity: sha512-3Vxf4m72WyjG1RIMtSlAn8ZNs//JtEZBUXUbki5Xo23InOdgukY/nEYGqPWLKoSIUrXx1ZH6ykNJXyhIUut1xg==}
 
   '@heroui/react@3.2.6':
     resolution: {integrity: sha512-KBhUUUdX4571SSjwpuBPEFZTYAw/tmGezTIsTnjIOlXDZkjWACfhFe6ibtReO+xTkUcfxCV1r3cF00/3OPlhhw==}
@@ -2254,8 +2254,8 @@ packages:
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
 
-  heroui-pro@1.0.0-beta.13:
-    resolution: {integrity: sha512-b7aUCw1nDUQh3fXlR6OE2rigysyFzoLen+muRG5wVc72X+Fn5f+kJWHZW9Xnzewp/pJgu8RBeqI5iZjUqnZAaQ==}
+  heroui-pro@1.0.0-beta.14:
+    resolution: {integrity: sha512-Q56lE9bVb92HTsqZRUVTaCF6NRMaC4l/BdR7dZp/t3B0vhNYtAKxNinKn5P+g8/vt5YZagjKriU05c+PCmWcGQ==}
     hasBin: true
 
   howler@2.2.4:
@@ -3832,10 +3832,10 @@ snapshots:
 
   '@fontsource/ibm-plex-mono@5.3.0': {}
 
-  '@heroui-pro/react@1.0.0-beta.7':
+  '@heroui-pro/react@1.0.0-beta.10':
     dependencies:
       chalk: 5.6.2
-      heroui-pro: 1.0.0-beta.13
+      heroui-pro: 1.0.0-beta.14
 
   '@heroui/react@3.2.6(@internationalized/date@3.12.4)(@react-aria/ssr@3.10.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@react-aria/utils@3.34.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@react-spectrum/provider@3.11.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-aria-components@1.21.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-aria@3.52.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwind-merge@3.7.0)(tailwindcss@4.3.3)':
     dependencies:
@@ -5818,7 +5818,7 @@ snapshots:
     dependencies:
       hermes-estree: 0.25.1
 
-  heroui-pro@1.0.0-beta.13:
+  heroui-pro@1.0.0-beta.14:
     dependencies:
       '@clack/prompts': 1.1.0
       chalk: 5.6.2
