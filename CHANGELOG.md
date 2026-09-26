@@ -3,6 +3,20 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.2] - 2026-09-26
+
+### Changed
+
+- Frontend: motion 13.4.2 (from 12.x), React 19.3.0, Next.js 16.3.6,
+  HeroUI 3.2.6, HeroUI Pro 1.0.0-beta.10 (KPI now comes from its
+  `@heroui-pro/react/kpi` subpath), lucide-react 1.47, MapLibre GL 6.11.1,
+  marked 18.0.14, react-resizable-panels 4.13.2. Dev: TypeScript 6.0.3,
+  Tauri CLI 2.11.5.
+- Rust crates: tauri 2.11.6, rand 0.10.3.
+- CI: pnpm/action-setup 6.1.0, CodeQL 4.38.1, dtolnay/rust-toolchain
+  refreshed. Dependabot now runs on the first and second Monday of each
+  month instead of weekly.
+
 ## [2.1.1] - 2026-09-15
 
 ### Security
