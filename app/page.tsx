@@ -17,7 +17,8 @@ import {
   Users,
 } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/react";
-import { EmptyState, KPI, NumberValue } from "@heroui-pro/react";
+import { EmptyState, NumberValue } from "@heroui-pro/react";
+import { KPI } from "@heroui-pro/react/kpi";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
