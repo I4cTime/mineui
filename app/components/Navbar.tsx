@@ -25,12 +25,9 @@ import {
 } from "lucide-react";
 import {
   Button,
-  Description,
   Dropdown,
   Label,
-  ListBox,
   Popover,
-  Select,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -38,96 +35,40 @@ import {
 import type { Key } from "@heroui/react";
 import Logo from "./Logo";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
-import { applyAccentOverride } from "@/app/hooks/useAccentColor";
+import { applyTheme, useTheme } from "@/app/hooks/useTheme";
+import { useMediaQuery } from "@/app/hooks/useMediaQuery";
 import { useMode } from "@/app/components/ModeProvider";
 import type { Mode } from "@/app/lib/ipc";
-
-// Registry per docs/theme-contract.md §1. Legacy ids (emerald/ember/aether/
-// void) have no CSS block anymore and resolve to :root = deepslate; any
-// value read back from localStorage that isn't one of these four falls
-// back to deepslate below.
-const themes = [
-  {
-    id: "deepslate",
-    label: "Deepslate & Emerald",
-    description:
-      "Deepslate stone, emerald signal — the tool Mojang would ship.",
-  },
-  {
-    id: "phosphor",
-    label: "Phosphor Amber",
-    description: "Near-black ops console with an amber phosphor glow.",
-  },
-  {
-    id: "quantum",
-    label: "Quantum Fluidity",
-    description: "Deep-space black, cyan signal, violet glow — the I4C look.",
-  },
-  {
-    id: "softglass",
-    label: "Soft Glass",
-    description: "Calm, rounded, native-grade — one warm apricot accent.",
-  },
-] as const;
-
-const THEME_IDS = themes.map((item) => item.id);
-const DEFAULT_THEME = "deepslate";
-
-// Select.Value's default render shows the selected ListBox.Item's full
-// children (Label + Description both — see HeroUI docs "Custom Value"
-// example, which needs this same override to avoid leaking item
-// descriptions into the trigger). Render just the theme name so the closed
-// trigger stays compact; the Label + Description pair below remains
-// dropdown-only.
-//
-// The rendered span sets its own `text-xs`: HeroUI's `.select__trigger`
-// hardcodes `text-sm`, and `.select__value` itself hardcodes
-// `text-base sm:text-sm` (16px below the `sm` breakpoint, 14px at/above
-// it) — both are direct declarations on those elements, so a `text-xs`
-// className on the outer <Select> (inherited, not direct) never wins
-// against them. Setting it directly on this span is what actually takes
-// effect, and it's also what keeps the trigger's fixed width (below)
-// correct on every viewport instead of only above `sm`.
-//
-// `block w-full` is load-bearing, not decoration: Tailwind's `truncate`
-// (overflow-hidden + text-overflow-ellipsis + whitespace-nowrap) only
-// clips an element that has a *constrained* width smaller than its
-// content. A bare inline <span> ignores `width` entirely, so `truncate`
-// alone silently did nothing — the text just overflowed the trigger's
-// border with no ellipsis (verified: shrinking the trigger below the
-// text's natural width left the label spilling past the rounded box).
-// `block w-full` lets the span take its ancestor's (constrained, see
-// Select.Value's `min-w-0` at both call sites) width instead of its own
-// content width, which is what lets the ellipsis actually engage as the
-// safety net the width choices below rely on.
-const renderThemeValue = ({
-  defaultChildren,
-  isPlaceholder,
-  state,
-}: {
-  defaultChildren: React.ReactNode;
-  isPlaceholder: boolean;
-  state: { selectedItems: { key: React.Key }[] };
-}) => {
-  if (isPlaceholder || state.selectedItems.length === 0) return defaultChildren;
-  const selected = themes.find((item) => item.id === state.selectedItems[0]?.key);
-  if (!selected) return defaultChildren;
-  return <span className="block w-full truncate text-xs">{selected.label}</span>;
-};
 
 // Priority order is load-bearing (docs/theme-contract.md §9.2): the first
 // four are the T3 standalone set and the T3 "More" overflow always holds
 // exactly items[4:]. Do not re-rank.
+// `description` is the tooltip body at icon-only tiers (§9.6): what the page
+// is for, not a repeat of the label.
 const navItems = [
-  { href: "/", label: "Dashboard", icon: Server },
-  { href: "/status", label: "Status", icon: Gauge },
-  { href: "/mods", label: "Mods", icon: Boxes },
-  { href: "/players", label: "Players", icon: Users },
-  { href: "/rcon", label: "RCON", icon: Shield },
-  { href: "/config", label: "Config", icon: ScrollText },
-  { href: "/backups", label: "Backups", icon: Archive },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Dashboard", icon: Server, description: "Start, stop and watch the live log" },
+  { href: "/status", label: "Status", icon: Gauge, description: "TPS, resources and the activity log" },
+  { href: "/mods", label: "Mods", icon: Boxes, description: "Installed mods and plugins" },
+  { href: "/players", label: "Players", icon: Users, description: "Who's on, history and notes" },
+  { href: "/rcon", label: "RCON", icon: Shield, description: "Run allowlisted server commands" },
+  { href: "/config", label: "Config", icon: ScrollText, description: "Edit server.properties and configs" },
+  { href: "/backups", label: "Backups", icon: Archive, description: "World snapshots and restore" },
+  { href: "/settings", label: "Settings", icon: Settings, description: "Mode, scheduler, appearance" },
 ];
+
+/** Tooltip body for a nav item: label + what the page is for. */
+function NavTooltip({ label, description }: { label: string; description: string }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="font-semibold">{label}</span>
+      <span className="text-muted">{description}</span>
+    </span>
+  );
+}
+
+// §9.2: labels show at T1 (header-full, 1200px). Nav tooltips only make
+// sense below that, where the items are icon-only.
+const LABELS_VISIBLE_QUERY = "(min-width: 75rem)";
 
 const PRIORITY_COUNT = 4;
 
@@ -212,48 +153,24 @@ function NavLabel({ children }: { children: ReactNode }) {
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [theme, setTheme] = useState<string | null>(DEFAULT_THEME);
+  const { theme: currentTheme } = useTheme();
+  const labelsVisible = useMediaQuery(LABELS_VISIBLE_QUERY);
   const [showKofi, setShowKofi] = useState(false);
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
   const { play } = useUISound();
   const { mode, switching, setMode } = useMode();
-  const currentTheme = typeof theme === "string" ? theme : DEFAULT_THEME;
 
+  // The navbar mounts on every page, so this is where the stored theme is
+  // stamped on <html> after hydration (the server render stays deepslate to
+  // avoid a mismatch). The picker itself lives in Settings → Appearance.
   useEffect(() => {
-    const stored = window.localStorage.getItem("mineui-theme");
-    // Legacy ids (emerald/ember/aether/void) and anything unrecognized fall
-    // back to deepslate per docs/theme-contract.md §1 — they already
-    // resolve to :root in CSS, this just keeps the picker's own state
-    // consistent with that.
-    const initial = (THEME_IDS as readonly string[]).includes(stored ?? "")
-      ? stored!
-      : DEFAULT_THEME;
-    // Theme must be read from localStorage after hydration; the initial
-    // server-rendered value stays deepslate to avoid a hydration mismatch.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTheme(initial);
-    document.documentElement.dataset.theme = initial;
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = currentTheme;
-    window.localStorage.setItem("mineui-theme", currentTheme);
-    // Re-apply the user accent override (covers first mount too): its
-    // --accent-foreground pick is derived from the theme's bg/fg tokens,
-    // which just changed with data-theme.
-    applyAccentOverride();
+    applyTheme(currentTheme);
   }, [currentTheme]);
 
   const handleNavigate = (href: string) => {
     play("click_confirm");
     router.push(href);
-  };
-
-  const handleThemeChange = (newTheme: string | number | null) => {
-    if (newTheme === null) return;
-    play("toggle_on");
-    setTheme(String(newTheme));
   };
 
   // Simple is the base/"off" state, Advanced is the "on" (more-powered) one —
@@ -349,7 +266,7 @@ export default function Navbar() {
                 key={item.href}
                 className="relative hidden h-full items-center header-min:flex!"
               >
-                <Tooltip delay={400}>
+                <Tooltip delay={400} isDisabled={labelsVisible}>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -373,7 +290,9 @@ export default function Navbar() {
                     <Icon size={16} className="relative z-10" />
                     <NavLabel>{item.label}</NavLabel>
                   </Button>
-                  <Tooltip.Content placement="bottom">{item.label}</Tooltip.Content>
+                  <Tooltip.Content placement="bottom">
+                    <NavTooltip label={item.label} description={item.description} />
+                  </Tooltip.Content>
                 </Tooltip>
                 {active && <NavIndicator activeKey={item.href} />}
               </div>
@@ -388,7 +307,7 @@ export default function Navbar() {
                 key={item.href}
                 className="relative hidden h-full items-center header-mid:flex!"
               >
-                <Tooltip delay={400}>
+                <Tooltip delay={400} isDisabled={labelsVisible}>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -408,7 +327,9 @@ export default function Navbar() {
                     <Icon size={16} className="relative z-10" />
                     <NavLabel>{item.label}</NavLabel>
                   </Button>
-                  <Tooltip.Content placement="bottom">{item.label}</Tooltip.Content>
+                  <Tooltip.Content placement="bottom">
+                    <NavTooltip label={item.label} description={item.description} />
+                  </Tooltip.Content>
                 </Tooltip>
                 {active && <NavIndicator activeKey={item.href} />}
               </div>
@@ -442,7 +363,9 @@ export default function Navbar() {
                   )}
                   <Ellipsis size={16} className="relative z-10" />
                 </Button>
-                <Tooltip.Content placement="bottom">More</Tooltip.Content>
+                <Tooltip.Content placement="bottom">
+                  <NavTooltip label="More" description="RCON, Config, Backups, Settings" />
+                </Tooltip.Content>
               </Tooltip>
               <Dropdown.Popover placement="bottom start">
                 <Dropdown.Menu onAction={(key) => handleNavigate(String(key))}>
@@ -520,67 +443,24 @@ export default function Navbar() {
             </ToggleButton>
           </ToggleButtonGroup>
 
-          {/* Theme selector. Fixed widths (not min-width) so switching
-              between theme names never shifts navbar layout. header-mid:w-48
-              (>=900px, T1/T2) comfortably fits the longest name, "Deepslate
-              & Emerald" (~134px at the text-xs renderThemeValue forces
-              below), plus the trigger's px-3 start padding and pe-7
-              indicator reserve (HeroUI Select CSS). Below header-mid (T3/T4)
-              there isn't enough row width for that, so it's w-32 there and
-              leans on the truncate safety net instead — see renderThemeValue
-              and its min-w-0 below for why truncation needs both to
-              actually engage rather than silently overflowing the
-              trigger's border. */}
-          <Select
-            className="w-32 shrink-0 header-mid:w-48"
-            placeholder="Theme"
-            value={theme}
-            onChange={handleThemeChange}
-          >
-            <Label className="sr-only">Theme</Label>
-            <Select.Trigger onMouseEnter={() => play("hover")}>
-              <Select.Value className="min-w-0">{renderThemeValue}</Select.Value>
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox className="w-72">
-                {themes.map((item) => (
-                  <ListBox.Item key={item.id} id={item.id} textValue={item.label}>
-                    <div className="flex flex-col">
-                      <Label>{item.label}</Label>
-                      <Description className="text-xs">
-                        {item.description}
-                      </Description>
-                    </div>
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-
-          {/* Ko-fi popover. Gated to header-full (>=1200px, T1) per §9.2 —
-              replaces the old ad-hoc min-[1340px] hack, whose number came
-              from the pre-revamp max-w-6xl + full-label math that no
-              longer exists. */}
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
-            {/* The Button is Popover's direct child on purpose. Popover's
-                root is a react-aria DialogTrigger whose PressResponder must
-                be consumed by the very next pressable: HeroUI's own
-                Popover.Trigger wraps a non-focusable <div role="button">
-                (logs "<Pressable> child must be focusable"), and a Tooltip
-                in between leaves the PressResponder unconsumed. The
-                aria-label carries the accessible name. */}
-            <Button
-              isIconOnly
-              variant="ghost"
-              className="hidden header-full:inline-flex"
-              onPress={() => play("click_confirm")}
-              onMouseEnter={() => play("hover")}
+            {/* Popover.Trigger is HeroUI's pressable (a react-aria Pressable
+                around a role="button" div). It needs tabIndex to be
+                focusable — omitted, it logs "<Pressable> child must be
+                focusable" — and it must be the only interactive element:
+                nesting a Button inside it, or wrapping it in a Tooltip,
+                leaves the DialogTrigger's PressResponder unconsumed. So the
+                trigger is styled as the ghost icon button itself. */}
+            <Popover.Trigger
+              tabIndex={0}
               aria-label="Support on Ko-fi"
+              className="hidden size-8 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 header-full:inline-flex"
+              style={{ outlineColor: "var(--focus)" }}
+              onClick={() => play("click_confirm")}
+              onMouseEnter={() => play("hover")}
             >
               <Coffee size={16} />
-            </Button>
+            </Popover.Trigger>
             <Popover.Content className="p-0" placement="bottom end">
               <Popover.Dialog className="w-85 overflow-hidden rounded-xl">
                 <iframe

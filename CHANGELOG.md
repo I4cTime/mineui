@@ -37,6 +37,11 @@ All notable changes to MineUI are documented here. Format follows
 
 ### Changed
 
+- The theme picker moved out of the header into Settings → Appearance, next
+  to the accent override, as a card grid with a description per theme.
+- Header tooltips now say what each page is for ("Players — Who's on, history
+  and notes") and only appear at widths where the nav is icon-only; at full
+  width the visible label speaks for itself.
 - Tauri 2.12 (tao 0.37 restores GTK's own Wayland decorations; the old
   overlay left title-bar buttons dead), `@tauri-apps/api` / `cli` 2.12.
 - Settings gained `scheduler` and `backups` sections with serde defaults —

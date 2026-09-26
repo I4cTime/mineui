@@ -301,7 +301,12 @@ centering — this is an app chrome bar, not a web page), `padding-inline: 1rem`
 |---|---|---|
 | brand | `Logo` (28px) + wordmark (`font-display`, `text-accent`) linking `/` | fixed, `shrink-0` |
 | nav | 8 nav items + (at narrow tiers) the "More" overflow `Menu` | center, `min-w-0`, the only zone that adapts |
-| controls | sound mute · mode `ToggleButtonGroup` (icon-only, as today) · theme `Select` · Ko-fi `Popover` | fixed, `shrink-0` |
+| controls | sound mute · mode `ToggleButtonGroup` (icon-only, as today) · Ko-fi `Popover` | fixed, `shrink-0` |
+
+Amendment (2.5.0): the theme `Select` left the header. Theme choice lives in
+Settings → Appearance next to the accent override (`app/hooks/useTheme.ts`
+owns the registry, localStorage key `mineui-theme`, and `data-theme`
+stamping; the navbar only applies the stored theme on mount).
 
 Shell CSS (all values from vars — no theme conditionals in TSX):
 
@@ -353,10 +358,10 @@ measurement**. Minimum supported window width: 640px.
 
 | Tier | Range | nav | controls |
 |---|---|---|---|
-| T1 | ≥ 1200px | 8 items, icon + label | sound · mode · theme Select (`w-48`) · Ko-fi |
+| T1 | ≥ 1200px | 8 items, icon + label (nav Tooltips disabled — the label is visible) | sound · mode · Ko-fi |
 | T2 | 900–1199px | 8 items, **icon-only** (Tooltip required, §9.6) | same minus Ko-fi |
-| T3 | 700–899px | first 4 items (Dashboard, Status, Mods, Players) icon-only + **"More" overflow `Menu`** (Ellipsis trigger) holding RCON, Config, Backups, Settings as icon+label items | wordmark hidden (logo only) · sound · mode · theme Select `w-32` (truncating value, existing pattern) |
-| T4 | 640–699px | "More" `Menu` holds **all 8** items | logo only · sound · mode · theme Select `w-32` |
+| T3 | 700–899px | first 4 items (Dashboard, Status, Mods, Players) icon-only + **"More" overflow `Menu`** (Ellipsis trigger) holding RCON, Config, Backups, Settings as icon+label items | wordmark hidden (logo only) · sound · mode |
+| T4 | 640–699px | "More" `Menu` holds **all 8** items | logo only · sound · mode |
 
 Rules:
 - The "More" overflow is a HeroUI `Menu` opened from an icon `Button` — a
@@ -432,6 +437,11 @@ A11y:
 - Icon-only nav items (T2–T4) and all icon-only controls get HeroUI `Tooltip`
   (~400ms delay) **and** keep a text `aria-label`; `aria-current="page"` stays
   on the active item wherever it renders (bar or More menu).
+- Nav tooltips carry the label **plus a one-line purpose** (`navItems[].
+  description`, e.g. "Players — Who's on, history and notes"), never the bare
+  label alone, and are `isDisabled` at T1 where the label is already visible
+  (`useMediaQuery("(min-width: 75rem)")`, the `header-full` screen). The
+  `aria-label` remains the accessible name at every tier.
 - Focus ring: `--focus` (= accent) at 2px offset 2 on all header
   interactives, including the active item (ring must remain visible over
   `--nav-active-bg`). Verified ≥ 3:1 vs every theme's `--header-bg`: emerald

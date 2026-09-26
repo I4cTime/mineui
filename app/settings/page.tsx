@@ -42,6 +42,7 @@ import PageHeader from "@/app/components/PageHeader";
 import { formatDateTime } from "@/app/lib/format";
 import { useUISound } from "@/app/hooks/useUISound";
 import { ACCENT_PRESETS, useAccentColor } from "@/app/hooks/useAccentColor";
+import { THEMES, useTheme, type ThemeId } from "@/app/hooks/useTheme";
 import { useMode } from "@/app/components/ModeProvider";
 import { usePageMotion } from "@/app/lib/motion";
 import {
@@ -242,6 +243,29 @@ export default function SettingsPage() {
   });
   const { play } = useUISound();
   const { accent, setAccent } = useAccentColor();
+  const { theme, setTheme } = useTheme();
+  const themeRefs = useRef<Record<ThemeId, HTMLButtonElement | null>>({
+    deepslate: null,
+    phosphor: null,
+    quantum: null,
+    softglass: null,
+  });
+  const handleThemeSelect = (next: ThemeId) => {
+    if (next === theme) return;
+    play("toggle_on");
+    setTheme(next);
+  };
+  const handleThemeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const index = THEMES.findIndex((t) => t.id === theme);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % THEMES.length;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + THEMES.length) % THEMES.length;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const next = THEMES[nextIndex].id;
+    handleThemeSelect(next);
+    themeRefs.current[next]?.focus();
+  };
   // What the custom ColorPicker shows: the override when set, else the
   // current theme's own accent read from the DOM. Safe to read during
   // render — this card only mounts after the IPC load effect (client-only),
@@ -904,22 +928,71 @@ export default function SettingsPage() {
           </motion.section>
         )}
 
-        {/* Shared: appearance — user accent override. The swatch fills are
-            user-pickable data values (see ACCENT_PRESETS), not UI styling;
-            the surrounding chrome stays on theme tokens. */}
+        {/* Shared: appearance — theme choice + user accent override. The
+            swatch fills are user-pickable data values (see ACCENT_PRESETS),
+            not UI styling; the surrounding chrome stays on theme tokens. */}
         <motion.section variants={cardMotion}>
           <Card className="p-6">
             <Card.Header className="flex-col items-start gap-1">
               <div className="flex items-center gap-2">
                 <Palette size={16} className="text-accent" />
-                <Card.Title>Accent color</Card.Title>
+                <Card.Title>Appearance</Card.Title>
               </div>
               <Card.Description>
-                Override the theme&apos;s accent everywhere in the app. Themes
-                themselves are picked from the navbar.
+                Pick a theme, then optionally override its accent everywhere
+                in the app. Both apply instantly and persist on this machine.
               </Card.Description>
             </Card.Header>
             <Card.Content className="mt-4 flex flex-col items-start gap-4">
+              <div
+                role="radiogroup"
+                aria-label="Theme"
+                className="grid w-full gap-3 sm:grid-cols-2"
+                onKeyDown={handleThemeKeyDown}
+              >
+                {THEMES.map((option) => {
+                  const selected = option.id === theme;
+                  return (
+                    <button
+                      key={option.id}
+                      ref={(node) => {
+                        themeRefs.current[option.id] = node;
+                      }}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      tabIndex={selected ? 0 : -1}
+                      onClick={() => handleThemeSelect(option.id)}
+                      onMouseEnter={() => play("hover")}
+                      className="relative flex items-start gap-3 rounded-lg border p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2"
+                      style={{
+                        borderColor: selected ? "var(--accent)" : "var(--border)",
+                        background: selected
+                          ? "color-mix(in oklab, var(--accent) 8%, transparent)"
+                          : "var(--surface-secondary)",
+                        outlineColor: "var(--focus)",
+                        transition:
+                          "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
+                      }}
+                    >
+                      <span className="flex-1">
+                        <span className="block text-sm font-semibold">{option.label}</span>
+                        <span className="mt-1 block text-xs text-muted">{option.description}</span>
+                      </span>
+                      {selected && (
+                        <span
+                          aria-hidden
+                          className="flex size-5 shrink-0 items-center justify-center rounded-full"
+                          style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+                        >
+                          <Check size={12} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <Label className="text-sm">Accent override</Label>
               {/* Preset swatches. The transparent sentinel keeps the picker
                   controlled while matching no preset when no override is
                   set (RAC selects by color equality). */}
