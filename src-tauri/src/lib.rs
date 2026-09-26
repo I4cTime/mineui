@@ -23,8 +23,29 @@ fn forward_event(app: &tauri::AppHandle, event: CoreEvent) {
     }
 }
 
+/// WebKitGTK's DMA-BUF renderer crashes the webview on NVIDIA + Wayland
+/// ("Gdk-Message: Error 71 (Protocol error) dispatching to Wayland display")
+/// before a single frame is drawn. Opt out of it on Linux when the NVIDIA
+/// kernel module is loaded, unless the user has already made their own
+/// choice via the environment. Must run before the webview is created.
+#[cfg(target_os = "linux")]
+fn apply_webkit_nvidia_workaround() {
+    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    if std::env::var_os(VAR).is_some() {
+        return;
+    }
+    if std::path::Path::new("/proc/driver/nvidia/version").exists() {
+        // Safety: called from `run()` on the main thread before any other
+        // thread is spawned, so no concurrent environment access exists.
+        unsafe { std::env::set_var(VAR, "1") };
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    apply_webkit_nvidia_workaround();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
