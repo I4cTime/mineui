@@ -301,12 +301,44 @@ centering — this is an app chrome bar, not a web page), `padding-inline: 1rem`
 |---|---|---|
 | brand | `Logo` (28px) + wordmark (`font-display`, `text-accent`) linking `/` | fixed, `shrink-0` |
 | nav | 8 nav items + (at narrow tiers) the "More" overflow `Menu` | center, `min-w-0`, the only zone that adapts |
-| controls | sound mute · mode `ToggleButtonGroup` (icon-only, as today) · Ko-fi `Popover` | fixed, `shrink-0` |
+| controls | server switcher · mode `ToggleButtonGroup` (icon-only, as today) · sound mute · app settings · Ko-fi `Popover` | fixed, `shrink-0` |
 
 Amendment (2.5.0): the theme `Select` left the header. Theme choice lives in
 Settings → Appearance next to the accent override (`app/hooks/useTheme.ts`
 owns the registry, localStorage key `mineui-theme`, and `data-theme`
 stamping; the navbar only applies the stored theme on mount).
+
+Amendment (2.6.0): the controls zone gains a **server switcher** as its first
+control (`app/components/ServerSwitcher.tsx`; server profiles are
+`docs/v2-contract.md` §2.5). It is a ghost `Button` opening a HeroUI
+`Dropdown` (`bottom end`): a status dot (`bg-success` running · `bg-warning`
+starting/stopping · `bg-danger` crashed · `bg-muted` otherwise — semantic
+tokens, no literals), the open server's name, and a chevron. The menu lists
+every server with its dot, name and a one-line state ("Running · 2/20 players ·
+Advanced"), marks the open one, and ends with "Manage servers…" (App Settings →
+Servers). It sits first, with the mode toggle right after it — that toggle is
+the *open server's* mode. Tiers: the name shows at T1–T2
+(`header-mid:` and up, truncated at 9rem) and is CSS-hidden at T3–T4, leaving
+dot + chevron; the trigger itself is rendered at every tier, so no
+`matchMedia` gate is needed. Tooltip + `aria-label` per §9.6.
+
+Amendment (2.6.0, scope split): the eight nav items are all **per-server**
+pages. Everything that is not about one server — the server list, theme and
+accent — lives on `/app-settings` ("App Settings"), reached from an icon
+button in the controls zone (`SlidersHorizontal`, Tooltip + `aria-label`,
+`aria-current="page"` and `--nav-active-fg` on that route), never from the
+nav. The controls zone therefore reads as two groups: *this server* (switcher,
+mode toggle) then *the app* (sound, app settings, Ko-fi). The nav's "Settings"
+item is the open server's settings; its page title is "Server Settings".
+
+Page header (`app/components/PageHeader.tsx`, every page but the dashboard):
+one compact row — icon (18px) · title (`font-pixel`, `text-base`) · on
+per-server pages the **server identity** (`app/components/ServerIdentity.tsx`):
+status dot, server name, then a muted line naming what it actually is —
+loader + version, container name, address ("Forge 1.21.1 · mc-forge ·
+127.0.0.1:25566"). Actions sit right-aligned on the same row; the row wraps
+before it truncates the name. App-scope pages (`scope="app"`) show "All
+servers" in place of an identity. A `border-border` hairline closes the row.
 
 Shell CSS (all values from vars — no theme conditionals in TSX):
 
@@ -364,10 +396,10 @@ measurement; everything else stays CSS-only.
 
 | Tier | Range | nav | controls |
 |---|---|---|---|
-| T1 | ≥ 1200px | 8 items, icon + label (nav Tooltips disabled — the label is visible) | sound · mode · Ko-fi |
+| T1 | ≥ 1200px | 8 items, icon + label (nav Tooltips disabled — the label is visible) | server (dot + name) · mode · sound · app settings · Ko-fi |
 | T2 | 900–1199px | 8 items, **icon-only** (Tooltip required, §9.6) | same minus Ko-fi |
-| T3 | 700–899px | first 4 items (Dashboard, Status, Mods, Players) icon-only + **"More" overflow `Menu`** (Ellipsis trigger) holding RCON, Config, Backups, Settings as icon+label items | wordmark hidden (logo only) · sound · mode |
-| T4 | 640–699px | "More" `Menu` holds **all 8** items | logo only · sound · mode |
+| T3 | 700–899px | first 4 items (Dashboard, Status, Mods, Players) icon-only + **"More" overflow `Menu`** (Ellipsis trigger) holding RCON, Config, Backups, Settings as icon+label items | wordmark hidden (logo only) · server (dot only) · mode · sound · app settings |
+| T4 | 640–699px | "More" `Menu` holds **all 8** items | logo only · server (dot only) · mode · sound · app settings |
 
 Rules:
 - The "More" overflow is a HeroUI `Menu` opened from an icon `Button` — a

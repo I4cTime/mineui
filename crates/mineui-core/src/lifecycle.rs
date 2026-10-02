@@ -7,7 +7,7 @@ use crate::model::{
 };
 use crate::settings::Mode;
 
-fn phase_from_container(detail: &ContainerDetail) -> ServerPhase {
+pub(crate) fn phase_from_container(detail: &ContainerDetail) -> ServerPhase {
     if !detail.exists {
         return ServerPhase::NotCreated;
     }
@@ -16,6 +16,21 @@ fn phase_from_container(detail: &ContainerDetail) -> ServerPhase {
             ServerPhase::Running
         }
         _ => ServerPhase::Stopped,
+    }
+}
+
+pub(crate) fn simple_phase(core: &crate::Core, settings: &crate::Settings) -> ServerPhase {
+    let instance_exists = settings
+        .simple
+        .instance_dir
+        .join(crate::instance::META_FILE)
+        .is_file();
+    if core.supervisor.is_active() {
+        core.supervisor.phase()
+    } else if !instance_exists {
+        ServerPhase::NotCreated
+    } else {
+        core.supervisor.phase() // stopped or crashed
     }
 }
 
@@ -39,18 +54,7 @@ pub async fn state(core: &crate::Core) -> Result<ServerState> {
             })
         }
         Mode::Simple => {
-            let instance_exists = settings
-                .simple
-                .instance_dir
-                .join(crate::instance::META_FILE)
-                .is_file();
-            let phase = if core.supervisor.is_active() {
-                core.supervisor.phase()
-            } else if !instance_exists {
-                ServerPhase::NotCreated
-            } else {
-                core.supervisor.phase() // stopped or crashed
-            };
+            let phase = simple_phase(core, &settings);
             Ok(ServerState {
                 mode: Mode::Simple,
                 phase,

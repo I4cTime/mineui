@@ -68,6 +68,13 @@ The following areas are in scope for security reports:
 - **Container attachment (Advanced mode)** — unauthorized access to a
   container's filesystem or Docker/Podman socket beyond the attached
   server.
+- **Container creation (Advanced mode)** — argument or environment
+  injection into the runtime `run` call, the generated RCON password
+  reaching an argv or a log, or the create flow touching a container or
+  volume it did not just create.
+- **Server profiles** — one profile's commands, events or files reaching
+  another profile (a `serverId` resolving outside `servers/<id>/`, or
+  events delivered under the wrong server).
 - **Secrets and credentials** — RCON passwords or other locally stored
   credentials leaking to logs, disk in plaintext where avoidable, or the
   frontend bundle.

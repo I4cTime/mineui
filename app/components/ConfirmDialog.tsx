@@ -60,60 +60,61 @@ export default function ConfirmDialog({
     onConfirm();
   };
 
+  // Controlled: Backdrop without the <AlertDialog> root, whose DialogTrigger
+  // expects a pressable child and logs "PressResponder was rendered without
+  // a pressable child" on every mount when there is none.
   return (
-    <AlertDialog>
-      <AlertDialog.Backdrop
-        isOpen={isOpen}
-        onOpenChange={(open) => {
-          if (!open) handleCancel();
-        }}
-        isDismissable
-        isKeyboardDismissDisabled={false}
-        variant="blur"
-      >
-        <AlertDialog.Container>
-          <AlertDialog.Dialog className="sm:max-w-[420px]">
-            <AlertDialog.Header>
-              <AlertDialog.Icon status={variant === "danger" ? "danger" : "accent"}>
-                {variant === "danger" && <AlertTriangle className="size-5" />}
-              </AlertDialog.Icon>
-              <AlertDialog.Heading className="font-pixel text-sm uppercase tracking-[0.2em]">
-                {title}
-              </AlertDialog.Heading>
-            </AlertDialog.Header>
-            <AlertDialog.Body>
-              {description && <p className="text-sm text-muted">{description}</p>}
-              {footer}
-            </AlertDialog.Body>
-            <AlertDialog.Footer>
-              <Button
-                variant="tertiary"
-                onPress={handleCancel}
-                isDisabled={isLoading}
-                onMouseEnter={() => play("hover")}
-              >
-                {cancelLabel}
-              </Button>
-              <Button
-                variant={variant === "danger" ? "danger" : "primary"}
-                onPress={handleConfirm}
-                isDisabled={isLoading}
-                isPending={isLoading}
-                onMouseEnter={() => play("hover")}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Working...
-                  </>
-                ) : (
-                  confirmLabel
-                )}
-              </Button>
-            </AlertDialog.Footer>
-          </AlertDialog.Dialog>
-        </AlertDialog.Container>
-      </AlertDialog.Backdrop>
-    </AlertDialog>
+    <AlertDialog.Backdrop
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) handleCancel();
+      }}
+      isDismissable
+      isKeyboardDismissDisabled={false}
+      variant="blur"
+    >
+      <AlertDialog.Container>
+        <AlertDialog.Dialog className="sm:max-w-[420px]">
+          <AlertDialog.Header>
+            <AlertDialog.Icon status={variant === "danger" ? "danger" : "accent"}>
+              {variant === "danger" && <AlertTriangle className="size-5" />}
+            </AlertDialog.Icon>
+            <AlertDialog.Heading className="font-pixel text-sm uppercase tracking-[0.2em]">
+              {title}
+            </AlertDialog.Heading>
+          </AlertDialog.Header>
+          <AlertDialog.Body>
+            {description && <p className="text-sm text-muted">{description}</p>}
+            {footer}
+          </AlertDialog.Body>
+          <AlertDialog.Footer>
+            <Button
+              variant="tertiary"
+              onPress={handleCancel}
+              isDisabled={isLoading}
+              onMouseEnter={() => play("hover")}
+            >
+              {cancelLabel}
+            </Button>
+            <Button
+              variant={variant === "danger" ? "danger" : "primary"}
+              onPress={handleConfirm}
+              isDisabled={isLoading}
+              isPending={isLoading}
+              onMouseEnter={() => play("hover")}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Working...
+                </>
+              ) : (
+                confirmLabel
+              )}
+            </Button>
+          </AlertDialog.Footer>
+        </AlertDialog.Dialog>
+      </AlertDialog.Container>
+    </AlertDialog.Backdrop>
   );
 }

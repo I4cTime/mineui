@@ -20,7 +20,8 @@ import "@fontsource/commit-mono/latin-500.css";
 
 import "./globals.css";
 import Navbar from "@/app/components/Navbar";
-import ModeProvider from "@/app/components/ModeProvider";
+import ModeProvider, { PageBoundary } from "@/app/components/ModeProvider";
+import ServerProvider from "@/app/components/ServerProvider";
 
 export const metadata: Metadata = {
   title: "MineUI",
@@ -40,11 +41,16 @@ export default function RootLayout({
             for users with the OS-level preference set, app-wide, without
             every component needing its own useReducedMotion() branch. */}
         <MotionConfig reducedMotion="user">
-          <ModeProvider>
-            <Navbar />
-            {children}
-            <Toast.Provider placement="bottom end" />
-          </ModeProvider>
+          {/* Server profile (which server is open) wraps mode (that
+              server's Simple/Advanced). The header stays mounted across a
+              server switch; only the page is remounted (PageBoundary). */}
+          <ServerProvider>
+            <ModeProvider>
+              <Navbar />
+              <PageBoundary>{children}</PageBoundary>
+              <Toast.Provider placement="bottom end" />
+            </ModeProvider>
+          </ServerProvider>
         </MotionConfig>
       </body>
     </html>

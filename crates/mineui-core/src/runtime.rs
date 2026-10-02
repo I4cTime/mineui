@@ -25,6 +25,43 @@ impl ExecOutput {
     }
 }
 
+/// Everything `run_detached` needs to make a new container (§3.13). Built by
+/// `provision`; the argv is assembled here so CLI knowledge stays in one file.
+#[derive(Debug, Clone)]
+pub struct ContainerSpec {
+    pub name: String,
+    /// Full image reference including the tag.
+    pub image: String,
+    /// `KEY=VALUE` lines; keeps secrets out of the argv.
+    pub env_file: std::path::PathBuf,
+    /// (host bind address, host port, container port).
+    pub ports: Vec<(String, u16, u16)>,
+    /// (named volume, container path).
+    pub volume: (String, String),
+}
+
+impl ContainerSpec {
+    /// The `run` argv (without the binary).
+    pub fn run_args(&self) -> Vec<String> {
+        let mut args: Vec<String> = vec![
+            "run".into(),
+            "-d".into(),
+            "--name".into(),
+            self.name.clone(),
+            "--env-file".into(),
+            self.env_file.to_string_lossy().to_string(),
+        ];
+        for (bind, host, container) in &self.ports {
+            args.push("-p".into());
+            args.push(format!("{bind}:{host}:{container}"));
+        }
+        args.push("-v".into());
+        args.push(format!("{}:{}", self.volume.0, self.volume.1));
+        args.push(self.image.clone());
+        args
+    }
+}
+
 /// Raw (pre-normalization) container stats parsed from `stats --no-stream`.
 #[derive(Debug, Clone, Default)]
 pub struct RawStats {
@@ -69,6 +106,15 @@ pub trait Runtime: Send + Sync {
     async fn stats(&self, name: &str) -> Result<RawStats>;
     /// `inspect -f {{.State.StartedAt}} <name>` → normalized RFC 3339.
     async fn inspect_started_at(&self, name: &str) -> Result<Option<String>>;
+    /// The container's configured environment as (key, value) pairs; empty
+    /// when the container cannot be inspected.
+    async fn inspect_env(&self, name: &str) -> Result<Vec<(String, String)>>;
+    /// `run -d …` per `spec` (§3.13). Pulls the image when missing, so this
+    /// can take minutes. The raw outcome is returned for the caller to map.
+    async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput>;
+    /// `rm -f <name>` — only ever used to clean up a container this app
+    /// failed to finish creating.
+    async fn remove_force(&self, name: &str) -> Result<()>;
 }
 
 /// Shared CLI backend. Podman and docker take identical argv for everything we
@@ -350,6 +396,40 @@ impl Runtime for CliBackend {
         }
         Ok(crate::util::normalize_timestamp(&out.stdout))
     }
+
+    async fn inspect_env(&self, name: &str) -> Result<Vec<(String, String)>> {
+        let out = self
+            .run(&[
+                "inspect",
+                "-f",
+                "{{range .Config.Env}}{{println .}}{{end}}",
+                name,
+            ])
+            .await?;
+        if !out.success() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_env_lines(&out.stdout))
+    }
+
+    async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput> {
+        let args = spec.run_args();
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.run(&args).await
+    }
+
+    async fn remove_force(&self, name: &str) -> Result<()> {
+        self.run_ok(&["rm", "-f", name]).await.map(|_| ())
+    }
+}
+
+/// `KEY=VALUE` per line → pairs; lines without `=` are skipped.
+fn parse_env_lines(stdout: &str) -> Vec<(String, String)> {
+    stdout
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(k, v)| (k.trim().to_string(), v.to_string()))
+        .collect()
 }
 
 pub struct PodmanCli(pub CliBackend);
@@ -397,6 +477,15 @@ macro_rules! delegate_runtime {
             }
             async fn inspect_started_at(&self, name: &str) -> Result<Option<String>> {
                 self.0.inspect_started_at(name).await
+            }
+            async fn inspect_env(&self, name: &str) -> Result<Vec<(String, String)>> {
+                self.0.inspect_env(name).await
+            }
+            async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput> {
+                self.0.run_detached(spec).await
+            }
+            async fn remove_force(&self, name: &str) -> Result<()> {
+                self.0.remove_force(name).await
             }
         }
     };
@@ -630,6 +719,51 @@ mod tests {
         assert_eq!(
             str_field(&entry, &["CreatedAt", "Created"]).unwrap(),
             "16 seconds ago"
+        );
+    }
+
+    #[test]
+    fn parses_inspect_env_lines() {
+        let env = parse_env_lines("TYPE=FORGE\nVERSION=1.21.1\nMOTD=a=b c\nnoequals\n\n");
+        assert_eq!(
+            env,
+            vec![
+                ("TYPE".to_string(), "FORGE".to_string()),
+                ("VERSION".to_string(), "1.21.1".to_string()),
+                ("MOTD".to_string(), "a=b c".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn container_spec_builds_run_argv() {
+        let spec = ContainerSpec {
+            name: "mc-forge".into(),
+            image: "docker.io/itzg/minecraft-server:java21".into(),
+            env_file: "/tmp/x.env".into(),
+            ports: vec![
+                ("0.0.0.0".into(), 25566, 25565),
+                ("127.0.0.1".into(), 25576, 25575),
+            ],
+            volume: ("mc-forge-data".into(), "/data".into()),
+        };
+        assert_eq!(
+            spec.run_args(),
+            [
+                "run",
+                "-d",
+                "--name",
+                "mc-forge",
+                "--env-file",
+                "/tmp/x.env",
+                "-p",
+                "0.0.0.0:25566:25565",
+                "-p",
+                "127.0.0.1:25576:25575",
+                "-v",
+                "mc-forge-data:/data",
+                "docker.io/itzg/minecraft-server:java21",
+            ]
         );
     }
 

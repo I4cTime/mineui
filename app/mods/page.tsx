@@ -1,20 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import {
   Boxes,
-  CheckCircle2,
   Copy,
-  Download,
   Filter,
   Info,
+  Plus,
   Search,
   SlidersHorizontal,
   Sparkles,
   Trash2,
-  Upload,
-  X,
 } from "lucide-react";
 import {
   Accordion,
@@ -23,28 +20,22 @@ import {
   Chip,
   Label,
   ListBox,
-  Modal,
-  ProgressBar,
   Select,
   TextField,
   Input,
   toast,
 } from "@heroui/react";
+import AddModDialog from "@/app/components/AddModDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { formatBytes, formatDateTime } from "@/app/lib/format";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
-import { pickModFile } from "@/app/lib/dialog";
-import { transition, usePageMotion } from "@/app/lib/motion";
+import { usePageMotion } from "@/app/lib/motion";
 import {
   deleteMod,
-  downloadMod,
   listMods,
-  onDownloadProgress,
-  uploadMod,
   IpcError,
-  type DownloadProgressEvent,
   type ModEntry,
   type ModTarget,
   type ModsList,
@@ -65,13 +56,6 @@ export default function ModsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(24);
   const [showUpload, setShowUpload] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState("");
-  const [downloadName, setDownloadName] = useState("");
-  const [target, setTarget] = useState<ModTarget>("mods");
-  const [busy, setBusy] = useState(false);
-  const [downloadProgress, setDownloadProgress] =
-    useState<DownloadProgressEvent | null>(null);
-  const activeDownloadId = useRef<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(["mods", "plugins"]));
   const { play } = useUISound();
 
@@ -188,77 +172,8 @@ export default function ModsPage() {
     }
   };
 
-  // v2 has no multipart upload: pick a host path via the Tauri dialog plugin,
-  // then hand the path to the backend (upload_mod).
-  const handleUpload = async () => {
-    setBusy(true);
-    play("click_confirm");
-    try {
-      const sourcePath = await pickModFile();
-      if (sourcePath === null) return; // user cancelled
-      const { filename } = await uploadMod(sourcePath, target);
-      play("success");
-      toast.success(`Uploaded ${filename}`);
-      await refreshMods();
-    } catch (error) {
-      play("error");
-      toast.danger(error instanceof IpcError ? error.message : "Upload failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!downloadUrl.trim()) {
-      toast.danger("Enter a URL");
-      return;
-    }
-    setBusy(true);
-    setDownloadProgress(null);
-    play("click_confirm");
-    const unlisten = await onDownloadProgress((event) => {
-      if (event.kind !== "mod") return;
-      if (
-        activeDownloadId.current !== null &&
-        event.downloadId !== activeDownloadId.current
-      ) {
-        return;
-      }
-      setDownloadProgress(event);
-    });
-    try {
-      const { filename, downloadId } = await downloadMod(
-        downloadUrl.trim(),
-        target,
-        downloadName.trim() || undefined,
-      );
-      activeDownloadId.current = downloadId;
-      play("success");
-      toast.success(`Downloaded ${filename}`);
-      setDownloadUrl("");
-      setDownloadName("");
-      await refreshMods();
-    } catch (error) {
-      play("error");
-      toast.danger(error instanceof IpcError ? error.message : "Download failed");
-    } finally {
-      unlisten();
-      activeDownloadId.current = null;
-      setBusy(false);
-      setDownloadProgress(null);
-    }
-  };
-
   const showMods = filter === "all" || filter === "mods";
   const showPlugins = filter === "all" || filter === "plugins";
-
-  const downloadPercent =
-    downloadProgress && downloadProgress.totalBytes
-      ? Math.min(
-          100,
-          (downloadProgress.receivedBytes / downloadProgress.totalBytes) * 100,
-        )
-      : null;
 
   if (loading) {
     return (
@@ -281,7 +196,7 @@ export default function ModsPage() {
       style={{ background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)` }}
     >
       <motion.main
-        className="page-main mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-5xl flex-col gap-6 px-4 pt-5 pb-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
@@ -321,8 +236,8 @@ export default function ModsPage() {
             </Card.Content>
             <Card.Footer className="flex flex-wrap items-center gap-3">
               <Button onPress={() => setShowUpload(true)} onMouseEnter={() => play("hover")}>
-                <Upload size={16} />
-                Add mod
+                <Plus size={16} />
+                Add mod or plugin
               </Button>
               <div className="flex items-center gap-2">
                 <Search size={16} className="text-muted" />
@@ -542,159 +457,11 @@ export default function ModsPage() {
         </motion.section>
       </motion.main>
 
-      <Modal>
-        <Modal.Backdrop
-          isOpen={showUpload}
-          onOpenChange={setShowUpload}
-          variant="blur"
-        >
-          <Modal.Container>
-            <Modal.Dialog className="sm:max-w-160">
-              <Modal.Header className="flex items-center justify-between">
-                <div className="font-pixel text-xs tracking-wide text-accent">
-                  Add Mods
-                </div>
-                <Button
-                  variant="tertiary"
-                  onPress={() => setShowUpload(false)}
-                  onMouseEnter={() => play("hover")}
-                >
-                  <X size={14} />
-                  Close
-                </Button>
-              </Modal.Header>
-              <Modal.Body className="grid gap-4 text-sm">
-                <Card className="rounded-xl p-4">
-                  <Card.Header className="flex items-center gap-2 text-xs text-muted">
-                    <Upload size={14} />
-                    Upload a mod (.jar/.zip)
-                  </Card.Header>
-                  <Card.Content className="mt-3 grid gap-3">
-                    <Select
-                      className="w-40 text-xs"
-                      placeholder="Target"
-                      value={target}
-                      onChange={(value) => setTarget(value as ModTarget)}
-                    >
-                      <Label className="sr-only">Target</Label>
-                      <Select.Trigger>
-                        <Select.Value />
-                        <Select.Indicator />
-                      </Select.Trigger>
-                      <Select.Popover>
-                        <ListBox>
-                          <ListBox.Item id="mods">mods</ListBox.Item>
-                          <ListBox.Item id="plugins">plugins</ListBox.Item>
-                        </ListBox>
-                      </Select.Popover>
-                    </Select>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button
-                        onPress={handleUpload}
-                        isDisabled={busy}
-                        onMouseEnter={() => play("hover")}
-                      >
-                        <Upload size={14} />
-                        Choose file & upload
-                      </Button>
-                    </div>
-                  </Card.Content>
-                </Card>
-
-                <Card className="rounded-xl p-4">
-                  <Card.Header className="flex items-center gap-2 text-xs text-muted">
-                    <Download size={14} />
-                    Download from URL
-                  </Card.Header>
-                  <Card.Content className="mt-3 grid gap-3">
-                    <Select
-                      className="w-40 text-xs"
-                      placeholder="Target"
-                      value={target}
-                      onChange={(value) => setTarget(value as ModTarget)}
-                    >
-                      <Label className="sr-only">Target</Label>
-                      <Select.Trigger>
-                        <Select.Value />
-                        <Select.Indicator />
-                      </Select.Trigger>
-                      <Select.Popover>
-                        <ListBox>
-                          <ListBox.Item id="mods">mods</ListBox.Item>
-                          <ListBox.Item id="plugins">plugins</ListBox.Item>
-                        </ListBox>
-                      </Select.Popover>
-                    </Select>
-                    <TextField>
-                      <Label className="sr-only">Download URL</Label>
-                      <Input
-                        placeholder="https://example.com/mod.jar"
-                        value={downloadUrl}
-                        onChange={(event) => setDownloadUrl(event.target.value)}
-                      />
-                    </TextField>
-                    <TextField>
-                      <Label className="sr-only">Filename</Label>
-                      <Input
-                        placeholder="Filename (required if the URL has no filename)"
-                        value={downloadName}
-                        onChange={(event) => setDownloadName(event.target.value)}
-                      />
-                    </TextField>
-                    <Button
-                      onPress={handleDownload}
-                      isDisabled={busy}
-                      isPending={busy && downloadProgress !== null}
-                      onMouseEnter={() => play("hover")}
-                    >
-                      Download
-                    </Button>
-                    {busy && downloadProgress && (
-                      <div className="grid gap-1">
-                        <ProgressBar
-                          className="progress-bar-steps"
-                          aria-label="Mod download progress"
-                          size="sm"
-                          value={downloadPercent ?? 0}
-                          isIndeterminate={downloadPercent === null}
-                        >
-                          <ProgressBar.Track>
-                            <ProgressBar.Fill />
-                          </ProgressBar.Track>
-                        </ProgressBar>
-                        <span className="flex items-center gap-2 text-xs text-muted">
-                          {formatBytes(downloadProgress.receivedBytes)}
-                          {downloadProgress.totalBytes
-                            ? ` / ${formatBytes(downloadProgress.totalBytes)}`
-                            : ""}{" "}
-                          — {downloadProgress.filename}
-                          {/* Completion tick — separate element, not layered
-                              onto ProgressBar.Fill (that width transition is
-                              owned by HeroUI's own CSS). */}
-                          <AnimatePresence>
-                            {downloadPercent === 100 && (
-                              <motion.span
-                                key="done"
-                                initial={{ opacity: 0, scale: 0.6 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.6 }}
-                                transition={transition("fast")}
-                                className="inline-flex text-success"
-                              >
-                                <CheckCircle2 size={14} />
-                              </motion.span>
-                            )}
-                          </AnimatePresence>
-                        </span>
-                      </div>
-                    )}
-                  </Card.Content>
-                </Card>
-              </Modal.Body>
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
+      <AddModDialog
+        isOpen={showUpload}
+        onClose={() => setShowUpload(false)}
+        onInstalled={refreshMods}
+      />
     </div>
   );
 }

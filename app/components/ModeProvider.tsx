@@ -1,6 +1,10 @@
 "use client";
 
-// App-wide Simple/Advanced mode state (feature: persistent mode toggle).
+// Simple/Advanced mode of the server that is open (feature: persistent mode
+// toggle). Mode is per server profile (contract §2.5): this provider re-reads
+// it whenever <ServerProvider> switches server, and reports `loading` from
+// the very render in which the server changes, so <PageBoundary> never
+// mounts a page with the previous server's mode.
 //
 // Backs onto the same backend settings store every page used to fetch
 // independently (app/lib/ipc.ts get_settings/set_settings) — this component
@@ -27,6 +31,7 @@ import {
   IpcError,
   type Mode,
 } from "@/app/lib/ipc";
+import { ServerBoundary, useServers } from "@/app/components/ServerProvider";
 
 const DEFAULT_MODE: Mode = "simple";
 const UNAVAILABLE_MESSAGE =
@@ -35,7 +40,8 @@ const UNAVAILABLE_MESSAGE =
 interface ModeContextValue {
   /** Current app-wide mode. Defaults to "simple" until the initial load resolves. */
   mode: Mode;
-  /** True until the initial get_settings() call resolves (or fails soft). */
+  /** True until get_settings() has resolved (or failed soft) for the server
+   *  that is currently open. */
   loading: boolean;
   /** True while a setMode() call is in flight — gate mode controls on this. */
   switching: boolean;
@@ -53,35 +59,46 @@ export default function ModeProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { activeId, ready: serversReady } = useServers();
   const [mode, setModeState] = useState<Mode>(DEFAULT_MODE);
-  const [loading, setLoading] = useState(true);
+  // Which server `mode` was read for. Derived loading (not a flag flipped in
+  // an effect) so it is already true in the render where activeId changes.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const loading = !serversReady || loadedFor !== activeId;
   const [switching, setSwitching] = useState(false);
+  // Only the latest refresh() may commit — a slow read for the previous
+  // server must not overwrite the current server's mode.
+  const refreshId = useRef(0);
   // Guards against out-of-order resolution when setMode() is called again
   // (e.g. a fast double toggle) before the first call's round trip finishes —
   // only the most recent call is allowed to commit its result.
   const requestId = useRef(0);
 
   const refresh = useCallback(async () => {
+    const myRefresh = ++refreshId.current;
     if (!isTauri()) {
       setModeState(DEFAULT_MODE);
-      setLoading(false);
+      setLoadedFor(activeId);
       return;
     }
+    let next: Mode | null = null;
     try {
-      const settings = await getSettings();
-      setModeState(settings.activeMode);
+      next = (await getSettings()).activeMode;
     } catch {
-      // Fail soft: keep whatever mode is currently held (DEFAULT_MODE on
-      // first load) rather than crashing the whole app over a mode read.
-    } finally {
-      setLoading(false);
+      // Fail soft: fall back to DEFAULT_MODE on a server's first read (or
+      // keep the held mode on a re-read) rather than crashing the whole app
+      // over a mode read.
     }
-  }, []);
+    if (refreshId.current !== myRefresh) return;
+    setModeState((held) => next ?? (loadedFor === activeId ? held : DEFAULT_MODE));
+    setLoadedFor(activeId);
+  }, [activeId, loadedFor]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
+    if (!serversReady || loadedFor === activeId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount / on server switch
     refresh();
-  }, [refresh]);
+  }, [serversReady, loadedFor, activeId, refresh]);
 
   const setMode = useCallback(
     async (next: Mode) => {
@@ -123,6 +140,13 @@ export default function ModeProvider({
       {children}
     </ModeContext.Provider>
   );
+}
+
+/** The routed page, held back until the open server and its mode are known
+ *  and remounted on every server switch (see ServerBoundary). */
+export function PageBoundary({ children }: { children: React.ReactNode }) {
+  const { loading } = useMode();
+  return <ServerBoundary isLoading={loading}>{children}</ServerBoundary>;
 }
 
 export function useMode(): ModeContextValue {

@@ -18,6 +18,7 @@ import {
   Server,
   Settings,
   Shield,
+  SlidersHorizontal,
   Sparkles,
   Users,
   Volume2,
@@ -34,6 +35,7 @@ import {
 } from "@heroui/react";
 import type { Key } from "@heroui/react";
 import Logo from "./Logo";
+import ServerSwitcher from "./ServerSwitcher";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
 import { applyTheme, useTheme } from "@/app/hooks/useTheme";
 import { useMediaQuery } from "@/app/hooks/useMediaQuery";
@@ -53,7 +55,7 @@ const navItems = [
   { href: "/rcon", label: "RCON", icon: Shield, description: "Run allowlisted server commands" },
   { href: "/config", label: "Config", icon: ScrollText, description: "Edit server.properties and configs" },
   { href: "/backups", label: "Backups", icon: Archive, description: "World snapshots and restore" },
-  { href: "/settings", label: "Settings", icon: Settings, description: "Mode, scheduler, appearance" },
+  { href: "/settings", label: "Settings", icon: Settings, description: "This server: mode, connection, schedule" },
 ];
 
 /** Tooltip body for a nav item: label + what the page is for. */
@@ -76,6 +78,10 @@ const LABELS_VISIBLE_QUERY = "(min-width: 75rem)";
 const OVERFLOW_QUERY = "(max-width: 56.24rem)";
 
 const PRIORITY_COUNT = 4;
+
+// App-wide settings (server list, theme) — a controls-zone button, not a
+// nav item: the nav holds per-server pages only (§9.1 scope split).
+const APP_SETTINGS_HREF = "/app-settings";
 
 /**
  * Active-item background/shadow/radius treatment — the shared skeleton
@@ -417,20 +423,9 @@ export default function Navbar() {
 
         {/* Controls zone — fixed, shrink-0 (§9.1). */}
         <div className="flex shrink-0 items-center gap-1">
-          <Tooltip delay={400}>
-            <Button
-              isIconOnly
-              variant="ghost"
-              onPress={toggleSound}
-              aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
-              onMouseEnter={() => play("hover")}
-            >
-              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            </Button>
-            <Tooltip.Content placement="bottom">
-              {soundEnabled ? "Mute sounds" : "Enable sounds"}
-            </Tooltip.Content>
-          </Tooltip>
+          {/* This server: which one the pages show, then its mode (§9.1
+              amendment, 2.6.0). */}
+          <ServerSwitcher />
 
           {/* Simple/Advanced mode switch. Persists app-wide via ModeProvider
               (app/components/ModeProvider.tsx). Individual ToggleButtons are
@@ -456,6 +451,41 @@ export default function Navbar() {
               <Container size={14} />
             </ToggleButton>
           </ToggleButtonGroup>
+
+          {/* The app: sound, app-wide settings, Ko-fi. */}
+          <Tooltip delay={400}>
+            <Button
+              isIconOnly
+              variant="ghost"
+              onPress={toggleSound}
+              aria-label={soundEnabled ? "Mute sounds" : "Enable sounds"}
+              onMouseEnter={() => play("hover")}
+            >
+              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            </Button>
+            <Tooltip.Content placement="bottom">
+              {soundEnabled ? "Mute sounds" : "Enable sounds"}
+            </Tooltip.Content>
+          </Tooltip>
+
+          <Tooltip delay={400}>
+            <Button
+              isIconOnly
+              variant="ghost"
+              onPress={() => handleNavigate(APP_SETTINGS_HREF)}
+              aria-label="App settings"
+              aria-current={isActive(APP_SETTINGS_HREF) ? "page" : undefined}
+              style={
+                isActive(APP_SETTINGS_HREF) ? { color: "var(--nav-active-fg)" } : undefined
+              }
+              onMouseEnter={() => play("hover")}
+            >
+              <SlidersHorizontal size={16} />
+            </Button>
+            <Tooltip.Content placement="bottom">
+              <NavTooltip label="App settings" description="Servers, theme and accent" />
+            </Tooltip.Content>
+          </Tooltip>
 
           {labelsVisible && (
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>

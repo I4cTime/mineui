@@ -3,6 +3,69 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.6.0] - 2026-10-01
+
+### Added
+
+- **Several servers at once**: MineUI now manages any number of server
+  profiles (up to 16) simultaneously — for example a Forge and a Fabric
+  container side by side. Each profile has its own mode, connection settings,
+  RCON allowlist, scheduled tasks, backup policy, player notes and activity
+  log, and scheduled tasks run for every server whether or not it is on
+  screen. A server switcher in the header and an *All servers* strip on the
+  dashboard show each server's state and player count, with start/stop for
+  any of them (the strip shows two rows and scrolls beyond that). Manage the
+  list in App Settings → Servers. Removing a server only removes it from
+  MineUI; its container, world and backups stay.
+- **Create containers from MineUI**: adding a server now offers *New
+  container* — MineUI creates an `itzg/minecraft-server` container (Vanilla,
+  Paper, Purpur, Fabric, Quilt, Forge or NeoForge; any Minecraft version;
+  memory; ports; LAN or local-only), chooses the image tag with the Java that
+  version needs, generates the RCON password and attaches to it. Attaching to
+  an existing container and the managed vanilla server remain.
+- **App Settings** page (sliders button in the header) for what is not about
+  one server: the server list, theme and accent.
+- Page headers and the server switcher now say what each server actually is —
+  "Forge 1.21.1 · mc-forge · 127.0.0.1:25566" — read from the container itself.
+- Seven new IPC commands (`list_servers`, `add_server`, `rename_server`,
+  `remove_server`, `set_active_server`, `get_servers_overview`,
+  `create_container`), an optional `serverId` on every existing command,
+  `serverId` on every event, and the `SERVER_NOT_FOUND`, `CONTAINER_EXISTS`
+  and `CONTAINER_CREATE_FAILED` error codes; contract §2.5, §3.0, §3.12,
+  §3.13, §4.
+
+### Fixed
+
+- **RCON on Forge**: a command with no output (`say`, and with it scheduled
+  broadcasts and restart warnings) waited 5 s and was reported as
+  `RCON read timed out` even though it ran — Forge sends no reply packet for
+  empty output where vanilla and Fabric send an empty one. The client now
+  frames every command with a terminator packet.
+- RCON output longer than 4096 bytes (large mod or player lists) was cut off
+  after the first packet; multi-packet responses are now reassembled.
+- A `PressResponder was rendered without a pressable child` console warning
+  on every page that mounts a confirmation dialog.
+
+### Changed
+
+- **Settings is now per-server only** and titled "Server Settings";
+  Appearance moved to App Settings.
+- **Add mod or plugin** dialog (Mods) rebuilt as one flow: choose mod or
+  plugin (preselected from what the server runs, with a warning when the
+  choice cannot load there), then a link or a file from this computer.
+  Fields are labelled and validated before anything is sent, progress and
+  errors show inside the dialog, and it stays open listing what was added so
+  several files can go in a row.
+- Page headers are a single compact row (icon, title, server identity,
+  actions) instead of a tall centred block.
+- Header controls are grouped: this server (switcher, mode) then the app
+  (sound, app settings, Ko-fi).
+- `list_mc_versions` works in advanced mode too (the container flow uses it).
+- Existing installs upgrade in place: the current server becomes the
+  "Default" profile and keeps its files where they are
+  (`settings.json`, scheduler state, notes, activity log). Additional servers
+  live under `servers/<id>/`. A new `servers.json` holds the list.
+
 ## [2.5.0] - 2026-09-26
 
 ### Added

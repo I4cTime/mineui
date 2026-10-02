@@ -21,13 +21,14 @@ export function isTauri(): boolean {
 /* ---------- errors ---------- */
 
 export type ErrorCode =
-  | "RUNTIME_NOT_FOUND" | "CONTAINER_NOT_FOUND" | "SERVER_NOT_RUNNING"
+  | "RUNTIME_NOT_FOUND" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
+  | "CONTAINER_CREATE_FAILED" | "SERVER_NOT_RUNNING"
   | "SERVER_RUNNING" | "RCON_UNAVAILABLE" | "RCON_COMMAND_BLOCKED"
   | "QUERY_UNAVAILABLE" | "JAVA_NOT_FOUND" | "JAVA_INCOMPATIBLE"
   | "EULA_NOT_ACCEPTED" | "INSTANCE_NOT_FOUND" | "INSTANCE_EXISTS"
   | "DOWNLOAD_FAILED" | "CHECKSUM_MISMATCH" | "SERVER_UTILS_UNAVAILABLE"
   | "PATH_NOT_ALLOWED" | "FILE_TOO_LARGE" | "WRONG_MODE" | "INVALID_INPUT"
-  | "SETTINGS_INVALID" | "IO" | "INTERNAL";
+  | "SETTINGS_INVALID" | "SERVER_NOT_FOUND" | "IO" | "INTERNAL";
 
 export class IpcError extends Error {
   constructor(public readonly code: ErrorCode, message: string) {
@@ -53,6 +54,28 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
     if (isErrorShape(e)) throw new IpcError(e.code, e.message);
     throw new IpcError("INTERNAL", String(e));
   }
+}
+
+/* ---------- server targeting (§3.0) ---------- */
+
+let targetServerId: string | null = null;
+
+/**
+ * The server profile (§2.5) every scoped wrapper and event helper below
+ * addresses. Owned by ServerProvider (app/components/ServerProvider.tsx),
+ * which only moves it while no page is mounted — pages never call this.
+ */
+export function setIpcTargetServer(id: string | null): void {
+  targetServerId = id;
+}
+
+export function getIpcTargetServer(): string | null {
+  return targetServerId;
+}
+
+/** A §3.1–§3.11 command, sent to the current target server. */
+function scoped<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  return call<T>(cmd, { ...args, serverId: targetServerId });
 }
 
 /* ---------- settings ---------- */
@@ -150,11 +173,11 @@ export type JavaCheck = {
   compatible: boolean | null;
 };
 
-export const getSettings = () => call<Settings>("get_settings");
+export const getSettings = () => scoped<Settings>("get_settings");
 export const setSettings = (settings: Settings) =>
-  call<Settings>("set_settings", { settings });
-export const detectRuntimes = () => call<RuntimeProbe>("detect_runtimes");
-export const javaCheck = () => call<JavaCheck>("java_check");
+  scoped<Settings>("set_settings", { settings });
+export const detectRuntimes = () => scoped<RuntimeProbe>("detect_runtimes");
+export const javaCheck = () => scoped<JavaCheck>("java_check");
 
 /* ---------- server state / lifecycle / status ---------- */
 
@@ -188,18 +211,88 @@ export type ServerStatus = {
   error: string | null;
 };
 
-export const getServerState = () => call<ServerState>("get_server_state");
-export const startServer = () => call<void>("start_server");
-export const stopServer = () => call<void>("stop_server");
-export const restartServer = () => call<void>("restart_server");
-export const getServerStatus = () => call<ServerStatus>("get_server_status");
+export const getServerState = () => scoped<ServerState>("get_server_state");
+export const startServer = () => scoped<void>("start_server");
+export const stopServer = () => scoped<void>("stop_server");
+export const restartServer = () => scoped<void>("restart_server");
+export const getServerStatus = () => scoped<ServerStatus>("get_server_status");
+
+/** Lifecycle for a server other than the current target (the all-servers
+ *  strip on the dashboard acts on every profile at once). */
+export const startServerById = (serverId: string) =>
+  call<void>("start_server", { serverId });
+export const stopServerById = (serverId: string) =>
+  call<void>("stop_server", { serverId });
+
+/* ---------- server profiles (§2.5, §3.12) ---------- */
+
+export type ServerProfile = { id: string; name: string };
+
+export type ServerList = { activeServerId: string; servers: ServerProfile[] };
+
+export type ServerOverview = {
+  id: string;
+  name: string;
+  mode: Mode;
+  /** null when the phase could not be read (see `error`). */
+  phase: ServerPhase | null;
+  status: ServerStatus;
+  error: string | null;
+  /** Advanced: the attached container. Simple: null. */
+  containerName: string | null;
+  /** `host:port` of the game port. */
+  address: string;
+  /** Lowercased server type ("forge", "fabric", "vanilla", …) or null. */
+  loader: string | null;
+  /** Known version, or null (fall back to `status.version` while online). */
+  mcVersion: string | null;
+};
+
+export const DEFAULT_SERVER_ID = "default";
+export const MAX_SERVERS = 16;
+export const MAX_SERVER_NAME_CHARS = 40;
+
+export const listServers = () => call<ServerList>("list_servers");
+export const addServer = (name: string, mode?: Mode) =>
+  call<ServerList>("add_server", { name, mode });
+export const renameServer = (id: string, name: string) =>
+  call<ServerList>("rename_server", { id, name });
+export const removeServer = (id: string) =>
+  call<ServerList>("remove_server", { id, confirm: true });
+export const setActiveServer = (id: string) =>
+  call<ServerList>("set_active_server", { id });
+export const getServersOverview = () =>
+  call<ServerOverview[]>("get_servers_overview");
+
+/* ---------- container creation (§3.13) ---------- */
+
+export type ContainerLoader =
+  | "vanilla" | "fabric" | "forge" | "neoforge" | "paper" | "quilt" | "purpur";
+
+export type CreateContainerArgs = {
+  loader: ContainerLoader;
+  /** A Mojang version id ("1.21.1") or "LATEST". */
+  mcVersion: string;
+  containerName: string;
+  memoryMb: number;
+  gamePort: number;
+  rconPort: number;
+  /** true: game port on every interface; false: 127.0.0.1 only. */
+  exposeToNetwork: boolean;
+  acceptEula: boolean;
+};
+
+/** Creates an itzg/minecraft-server container for the target server. Pulls
+ *  the image when missing — the first call can take minutes. */
+export const createContainer = (args: CreateContainerArgs) =>
+  scoped<ServerState>("create_container", { args });
 
 /* ---------- logs ---------- */
 
 export const getLogs = (tail?: number) =>
-  call<{ lines: string[] }>("get_logs", { tail });
-export const startLogStream = () => call<void>("start_log_stream");
-export const stopLogStream = () => call<void>("stop_log_stream");
+  scoped<{ lines: string[] }>("get_logs", { tail });
+export const startLogStream = () => scoped<void>("start_log_stream");
+export const stopLogStream = () => scoped<void>("stop_log_stream");
 
 /* ---------- players / rcon ---------- */
 
@@ -212,11 +305,11 @@ export type PlayerHistoryRow = {
   isOnline: boolean;
 };
 
-export const getPlayers = () => call<PlayersResult>("get_players");
+export const getPlayers = () => scoped<PlayersResult>("get_players");
 export const getPlayerHistory = () =>
-  call<{ users: PlayerHistoryRow[] }>("get_player_history");
+  scoped<{ users: PlayerHistoryRow[] }>("get_player_history");
 export const runRconCommand = (command: string) =>
-  call<{ output: string }>("run_rcon_command", { command });
+  scoped<{ output: string }>("run_rcon_command", { command });
 
 /* ---------- mods ---------- */
 
@@ -233,15 +326,15 @@ export type ModEntry = {
 
 export type ModsList = { mods: ModEntry[]; plugins: ModEntry[] };
 
-export const listMods = () => call<ModsList>("list_mods");
+export const listMods = () => scoped<ModsList>("list_mods");
 export const uploadMod = (sourcePath: string, target: ModTarget) =>
-  call<{ filename: string }>("upload_mod", { sourcePath, target });
+  scoped<{ filename: string }>("upload_mod", { sourcePath, target });
 export const downloadMod = (url: string, target: ModTarget, filename?: string) =>
-  call<{ filename: string; downloadId: string }>("download_mod", {
+  scoped<{ filename: string; downloadId: string }>("download_mod", {
     url, target, filename,
   });
 export const deleteMod = (filename: string, target: ModTarget) =>
-  call<void>("delete_mod", { filename, target });
+  scoped<void>("delete_mod", { filename, target });
 
 /* ---------- instance (simple mode) ---------- */
 
@@ -271,21 +364,21 @@ export type InstanceStatus = {
 };
 
 export const listMcVersions = (includeSnapshots?: boolean) =>
-  call<McVersion[]>("list_mc_versions", { includeSnapshots });
+  scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
 export const createInstance = (args: CreateInstanceArgs) =>
-  call<InstanceStatus>("create_instance", { args });
+  scoped<InstanceStatus>("create_instance", { args });
 export const deleteInstance = () =>
-  call<void>("delete_instance", { confirm: true });
-export const instanceStatus = () => call<InstanceStatus>("instance_status");
+  scoped<void>("delete_instance", { confirm: true });
+export const instanceStatus = () => scoped<InstanceStatus>("instance_status");
 
 /* ---------- config files ---------- */
 
 export const listConfigFiles = () =>
-  call<{ files: string[] }>("list_config_files");
+  scoped<{ files: string[] }>("list_config_files");
 export const readConfigFile = (path: string) =>
-  call<{ content: string }>("read_config_file", { path });
+  scoped<{ content: string }>("read_config_file", { path });
 export const writeConfigFile = (path: string, content: string) =>
-  call<void>("write_config_file", { path, content });
+  scoped<void>("write_config_file", { path, content });
 
 /* ---------- backups ---------- */
 
@@ -295,12 +388,12 @@ export type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-export const createBackup = () => call<BackupEntry>("create_backup");
-export const listBackups = () => call<BackupEntry[]>("list_backups");
+export const createBackup = () => scoped<BackupEntry>("create_backup");
+export const listBackups = () => scoped<BackupEntry[]>("list_backups");
 export const restoreBackup = (filename: string) =>
-  call<void>("restore_backup", { filename });
+  scoped<void>("restore_backup", { filename });
 export const deleteBackup = (filename: string) =>
-  call<void>("delete_backup", { filename });
+  scoped<void>("delete_backup", { filename });
 
 /* ---------- scheduler (§3.10) ---------- */
 
@@ -315,9 +408,9 @@ export type ScheduledJobStatus = {
 export type SchedulerStatus = { enabled: boolean; jobs: ScheduledJobStatus[] };
 
 export const getSchedulerStatus = () =>
-  call<SchedulerStatus>("get_scheduler_status");
+  scoped<SchedulerStatus>("get_scheduler_status");
 export const runScheduledJobNow = (id: string) =>
-  call<JobRunResult>("run_scheduled_job_now", { id });
+  scoped<JobRunResult>("run_scheduled_job_now", { id });
 
 /* ---------- player notes / audit log (§3.11) ---------- */
 
@@ -337,11 +430,11 @@ export type AuditEntry = {
 };
 
 export const getPlayerNotes = () =>
-  call<{ notes: PlayerNote[] }>("get_player_notes");
+  scoped<{ notes: PlayerNote[] }>("get_player_notes");
 export const setPlayerNote = (username: string, note: string) =>
-  call<PlayerNote | null>("set_player_note", { username, note });
+  scoped<PlayerNote | null>("set_player_note", { username, note });
 export const getAuditLog = (limit?: number) =>
-  call<{ entries: AuditEntry[] }>("get_audit_log", { limit });
+  scoped<{ entries: AuditEntry[] }>("get_audit_log", { limit });
 
 /* ---------- metrics ---------- */
 
@@ -365,15 +458,17 @@ export type Metrics = {
   players: { online: number | null; max: number | null } | null;
 };
 
-export const getMetrics = () => call<Metrics>("get_metrics");
+export const getMetrics = () => scoped<Metrics>("get_metrics");
 
 /* ---------- events ---------- */
 
+// Every event payload carries the server profile it came from (§4).
 export type LogSource = "stdout" | "stderr" | "runtime";
 export type LogLine = { text: string; epochMs: number; source: LogSource };
-export type LogsEvent = { lines: LogLine[] };
+export type LogsEvent = { serverId: string; lines: LogLine[] };
 
 export type ServerStateEvent = {
+  serverId: string;
   mode: Mode;
   phase: ServerPhase;
   previousPhase: ServerPhase;
@@ -383,6 +478,7 @@ export type ServerStateEvent = {
 
 export type DownloadKind = "server-jar" | "mod";
 export type DownloadProgressEvent = {
+  serverId: string;
   downloadId: string;
   kind: DownloadKind;
   filename: string;
@@ -399,21 +495,35 @@ export const EVENT_DOWNLOAD_PROGRESS = "mineui://download-progress";
 
 const NOOP_UNLISTEN: UnlistenFn = () => {};
 
+/**
+ * Subscribe to one event channel for the server that is the IPC target
+ * *now* — the binding is fixed at subscribe time, so a listener can never
+ * start receiving another server's events after a switch.
+ */
+function onScoped<E extends { serverId: string }>(
+  channel: string,
+  cb: (e: E) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) return Promise.resolve(NOOP_UNLISTEN);
+  const target = targetServerId;
+  return listen<E>(channel, (ev) => {
+    if (target === null || ev.payload.serverId === target) cb(ev.payload);
+  });
+}
+
 export const onLogs = (cb: (e: LogsEvent) => void): Promise<UnlistenFn> =>
-  isTauri()
-    ? listen<LogsEvent>(EVENT_LOGS, (ev) => cb(ev.payload))
-    : Promise.resolve(NOOP_UNLISTEN);
+  onScoped(EVENT_LOGS, cb);
 export const onServerState = (
+  cb: (e: ServerStateEvent) => void,
+): Promise<UnlistenFn> => onScoped(EVENT_SERVER_STATE, cb);
+export const onDownloadProgress = (
+  cb: (e: DownloadProgressEvent) => void,
+): Promise<UnlistenFn> => onScoped(EVENT_DOWNLOAD_PROGRESS, cb);
+
+/** Phase transitions of every server profile, not just the target. */
+export const onAnyServerState = (
   cb: (e: ServerStateEvent) => void,
 ): Promise<UnlistenFn> =>
   isTauri()
     ? listen<ServerStateEvent>(EVENT_SERVER_STATE, (ev) => cb(ev.payload))
-    : Promise.resolve(NOOP_UNLISTEN);
-export const onDownloadProgress = (
-  cb: (e: DownloadProgressEvent) => void,
-): Promise<UnlistenFn> =>
-  isTauri()
-    ? listen<DownloadProgressEvent>(EVENT_DOWNLOAD_PROGRESS, (ev) =>
-        cb(ev.payload),
-      )
     : Promise.resolve(NOOP_UNLISTEN);
