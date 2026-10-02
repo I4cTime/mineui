@@ -22,7 +22,11 @@ import { KPI } from "@heroui-pro/react/kpi";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
+import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
+import ServerIdentity from "@/app/components/ServerIdentity";
+import ServersOverview from "@/app/components/ServersOverview";
+import { useServers } from "@/app/components/ServerProvider";
 import {
   createBackup,
   getLogs,
@@ -94,14 +98,19 @@ export default function Home() {
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
+  const { active: activeServer } = useServers();
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
   const maxPlayers = status?.players.max ?? 0;
 
   const isSimple = mode === "simple";
-  const needsOnboarding =
-    isSimple && instance !== null && !instance.exists;
+  // Nothing to show yet: simple mode without an instance, or advanced mode
+  // whose container does not exist. Each has its own create flow below.
+  const needsInstance = isSimple && instance !== null && !instance.exists;
+  const needsContainer =
+    !isSimple && settings !== null && serverState?.phase === "not-created";
+  const needsOnboarding = needsInstance || needsContainer;
   const showDashboard = !loading && backendError === null && !needsOnboarding;
 
   // Depends on `mode`/`modeLoading` so a live mode toggle (no remount) also
@@ -328,6 +337,8 @@ export default function Home() {
               <h1 className="font-pixel text-2xl uppercase tracking-[0.2em] text-accent -mr-[0.2em]">
                 MineUI
               </h1>
+              {/* Which server this dashboard is, named properly. */}
+              <ServerIdentity className="relative mt-2" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Chip variant="soft" color="accent">
@@ -396,7 +407,19 @@ export default function Home() {
           </div>
         </motion.header>
 
-        {needsOnboarding ? (
+        {/* Every server at once (renders nothing with a single server). */}
+        <ServersOverview />
+
+        {needsContainer && settings ? (
+          <CreateContainerFlow
+            serverName={activeServer.name}
+            settings={settings}
+            onCreated={() => {
+              setLoading(true);
+              bootstrap();
+            }}
+          />
+        ) : needsInstance ? (
           <CreateServerFlow
             defaultMemoryMb={settings?.simple.memoryMb ?? 2048}
             onCreated={() => {

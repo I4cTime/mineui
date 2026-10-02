@@ -110,7 +110,7 @@ export default function BackupsPage() {
       }}
     >
       <motion.main
-        className="page-main mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 md:px-6"
+        className="page-main mx-auto flex max-w-5xl flex-col gap-6 px-4 pt-5 pb-10 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}

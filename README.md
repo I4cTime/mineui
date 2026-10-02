@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The desktop app your Minecraft server has been missing.</b><br>
-  Run a managed vanilla server, or attach to an existing Docker/Podman container.<br>
+  Run managed vanilla servers, create modded ones in containers, or attach to the Docker/Podman containers you already have — several at once.<br>
   One native app. No dashboard to self-host, no local API server.
 </p>
 
@@ -41,19 +41,20 @@ it) just to manage the one you actually care about.
 
 MineUI is a native desktop app, not a web panel: **Tauri v2** (Rust backend)
 driving a **Next.js** static-export frontend over Tauri IPC — no Electron, no
-bundled Chromium, no local HTTP server to expose or secure. It runs in one of
-two modes:
+bundled Chromium, no local HTTP server to expose or secure. It manages any
+number of servers at once, and each one runs in one of two modes:
 
 - **Simple mode (default)** — MineUI creates and runs a vanilla server for
   you: pick a Minecraft version, set memory, accept the EULA, and MineUI
   downloads the official server jar (SHA-1 verified), configures RCON, and
   supervises the Java process. No containers required.
-- **Advanced mode** — attach to an existing Minecraft server container
-  managed by **Docker or Podman** (auto-detected, Podman preferred): control,
-  logs, players, RCON, mods/plugins, config editing, backups, and container
-  metrics. MineUI attaches to a container that already exists (e.g. an
-  `itzg/minecraft-server`-style image with the world/config under `/data`) —
-  it does not create or pull one for you.
+- **Advanced mode** — a Minecraft server container managed by **Docker or
+  Podman** (auto-detected, Podman preferred): control, logs, players, RCON,
+  mods/plugins, config editing, backups, and container metrics. MineUI can
+  **create** the container for you from the `itzg/minecraft-server` image —
+  Vanilla, Paper, Purpur, Fabric, Quilt, Forge or NeoForge — or **attach** to
+  one that already exists (any image of that style, with the world/config
+  under `/data`).
 
 ## Install
 
@@ -62,11 +63,11 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.0.0_amd64.AppImage` — `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.0.0_amd64.deb` — `sudo apt install ./MineUI_2.0.0_amd64.deb` |
-| Windows x64 | `MineUI_2.0.0_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.0.0_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.0.0_x64.dmg` |
+| Linux x86_64 | `MineUI_2.6.0_amd64.AppImage` — `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.6.0_amd64.deb` — `sudo apt install ./MineUI_2.6.0_amd64.deb` |
+| Windows x64 | `MineUI_2.6.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.6.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.6.0_x64.dmg` |
 
 Simple mode needs Java installed (MineUI version-checks it against the
 Minecraft release you pick). Advanced mode needs Docker or Podman.
@@ -81,6 +82,38 @@ you start.
 Website & docs: [mineui.i4c.studio](https://mineui.i4c.studio)
 
 ## Features
+
+### Several servers at once
+
+Add as many servers as you run — a Forge pack, a Fabric pack, a managed
+vanilla world — and MineUI manages all of them at the same time. Each one is
+its own profile with its own mode, connection, RCON allowlist, schedule,
+backup policy, player notes and activity log; scheduled restarts and backups
+keep running for every server, not just the one on screen. The header
+switcher and the dashboard's *All servers* strip show every server's state
+and player count at a glance, with start/stop right there. Every page header
+names the server it is showing and what that server actually is — loader and
+version, container, address — so two similar servers are never mixed up. Add,
+rename and remove servers in App Settings → Servers. Removing one only makes
+MineUI forget it: its container, world and backups are never touched.
+
+### Create a modded server without touching the command line
+
+Adding a server offers three routes: a **new container**, an **existing
+container**, or a **managed vanilla** process. For a new container MineUI
+creates an [`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)
+container for you — pick Vanilla, Paper, Purpur, Fabric, Quilt, Forge or
+NeoForge, the Minecraft version, memory and ports — picks the image with the
+right Java for that version, generates the RCON password, and connects itself
+to the result. The world lives in a named volume; MineUI never deletes a
+container or a volume.
+
+### App settings vs. server settings
+
+The header's sliders button opens **App Settings** — the server list, theme
+and accent, which apply to MineUI as a whole. **Settings** in the navigation
+is always the open server's own: mode, connection, scheduled tasks, backup
+policy, RCON allowlist.
 
 ### Server control and live status
 
@@ -132,12 +165,12 @@ CPU, memory, and disk, plus network/block IO when attached to a container.
 ### Four themes
 
 Deepslate & Emerald (default), Phosphor Amber, Quantum Fluidity, and Soft
-Glass — switchable in Settings, persisted locally. The token contract behind
+Glass — switchable in App Settings, persisted locally. The token contract behind
 them is in [`docs/theme-contract.md`](docs/theme-contract.md).
 
 ### Enriched metrics via a companion mod (Advanced mode, optional)
 
-Point Settings' **Server utils URL** at an instance of
+Point a server's Settings → **Server utils URL** at an instance of
 [mineui_server_utils](https://github.com/I4cTime/mineui_server_utils) — a
 Forge 1.20.1 mod or Paper/Bukkit plugin that runs inside the server JVM — for
 real tick-based TPS/MSPT, per-dimension chunk/entity counts, and the actual
@@ -146,8 +179,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 121 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (36 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 151 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (43 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -175,7 +208,7 @@ Other commands:
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (121 tests; must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (151 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

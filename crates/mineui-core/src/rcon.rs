@@ -19,7 +19,11 @@ pub const TYPE_RESPONSE: i32 = 0;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long to keep waiting for the terminator once output has arrived.
+const TERMINATOR_GRACE: Duration = Duration::from_secs(1);
 const MAX_PACKET_BODY: usize = 4096;
+/// Cap on one command's reassembled output.
+const MAX_OUTPUT_BYTES: usize = 256 * 1024;
 
 /// Encode an RCON packet.
 pub fn encode_packet(id: i32, ptype: i32, body: &str) -> Vec<u8> {
@@ -84,12 +88,44 @@ impl RconClient {
         Ok(client)
     }
 
-    /// Execute one command and return its output (single response packet,
-    /// v1 parity: one connection per command).
+    /// Execute one command and return its output.
+    ///
+    /// The command is followed by an empty `TYPE_RESPONSE` packet, which
+    /// every Minecraft server echoes back as "Unknown request 0" under its
+    /// own id — a terminator (§3.4). Reading up to it is what makes two
+    /// loader differences invisible: Forge sends **nothing** for a command
+    /// with no output (`say`, `save-all` on some versions), where vanilla and
+    /// Fabric send one empty packet; and output over 4096 bytes arrives as
+    /// several packets.
     pub async fn exec(&mut self, command: &str) -> Result<String> {
-        let _id = self.send_packet(TYPE_EXEC, command).await?;
-        let (_id, _ptype, body) = self.read_packet().await?;
-        Ok(body)
+        let exec_id = self.send_packet(TYPE_EXEC, command).await?;
+        let end_id = self.send_packet(TYPE_RESPONSE, "").await?;
+        let mut output = String::new();
+        let mut answered = false;
+        loop {
+            let wait = if answered {
+                TERMINATOR_GRACE
+            } else {
+                IO_TIMEOUT
+            };
+            let Some((id, _ptype, body)) = self.read_packet_within(wait).await? else {
+                if answered {
+                    // A server that ignores the terminator: keep what it said.
+                    break;
+                }
+                return Err(Error::RconUnavailable("RCON read timed out".into()));
+            };
+            if id == end_id {
+                break;
+            }
+            if id == exec_id {
+                answered = true;
+                if output.len() + body.len() <= MAX_OUTPUT_BYTES {
+                    output.push_str(&body);
+                }
+            }
+        }
+        Ok(output)
     }
 
     async fn send_packet(&mut self, ptype: i32, body: &str) -> Result<i32> {
@@ -104,11 +140,20 @@ impl RconClient {
     }
 
     async fn read_packet(&mut self) -> Result<(i32, i32, String)> {
+        self.read_packet_within(IO_TIMEOUT)
+            .await?
+            .ok_or_else(|| Error::RconUnavailable("RCON read timed out".into()))
+    }
+
+    /// One packet, or `None` if none starts arriving within `wait`.
+    async fn read_packet_within(&mut self, wait: Duration) -> Result<Option<(i32, i32, String)>> {
         let mut len_buf = [0u8; 4];
-        tokio::time::timeout(IO_TIMEOUT, self.stream.read_exact(&mut len_buf))
-            .await
-            .map_err(|_| Error::RconUnavailable("RCON read timed out".into()))?
-            .map_err(|e| Error::RconUnavailable(format!("RCON read failed: {e}")))?;
+        match tokio::time::timeout(wait, self.stream.read_exact(&mut len_buf)).await {
+            Err(_) => return Ok(None),
+            Ok(read) => {
+                read.map_err(|e| Error::RconUnavailable(format!("RCON read failed: {e}")))?;
+            }
+        }
         let len = i32::from_le_bytes(len_buf);
         if !(10..=(MAX_PACKET_BODY as i32 + 10)).contains(&len) {
             return Err(Error::RconUnavailable(format!(
@@ -120,7 +165,7 @@ impl RconClient {
             .await
             .map_err(|_| Error::RconUnavailable("RCON read timed out".into()))?
             .map_err(|e| Error::RconUnavailable(format!("RCON read failed: {e}")))?;
-        decode_payload(&payload)
+        decode_payload(&payload).map(Some)
     }
 }
 
@@ -221,6 +266,107 @@ mod tests {
     #[test]
     fn decode_rejects_short_payload() {
         assert!(decode_payload(&[0, 0, 0]).is_err());
+    }
+
+    /// How a fake server answers an exec packet.
+    #[derive(Clone, Copy)]
+    enum Loader {
+        /// One packet per 4096 bytes, and one empty packet for no output.
+        Vanilla,
+        /// Like vanilla, but silent when there is no output (Forge 52).
+        Forge,
+        /// Vanilla answers, but the terminator packet is ignored.
+        NoTerminator,
+    }
+
+    /// Minimal RCON server: accepts one client, authenticates anything, and
+    /// answers every exec with `output` the way `loader` would.
+    async fn fake_server(loader: Loader, output: &'static str) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            loop {
+                let mut len_buf = [0u8; 4];
+                if sock.read_exact(&mut len_buf).await.is_err() {
+                    return;
+                }
+                let mut payload = vec![0u8; i32::from_le_bytes(len_buf) as usize];
+                sock.read_exact(&mut payload).await.unwrap();
+                let (id, ptype, _body) = decode_payload(&payload).unwrap();
+                let replies: Vec<(i32, String)> = match ptype {
+                    TYPE_AUTH => vec![(TYPE_AUTH_RESPONSE, String::new())],
+                    TYPE_EXEC => {
+                        let mut chunks: Vec<(i32, String)> = output
+                            .as_bytes()
+                            .chunks(MAX_PACKET_BODY)
+                            .map(|c| (TYPE_RESPONSE, String::from_utf8(c.to_vec()).unwrap()))
+                            .collect();
+                        if chunks.is_empty() && !matches!(loader, Loader::Forge) {
+                            chunks.push((TYPE_RESPONSE, String::new()));
+                        }
+                        chunks
+                    }
+                    _ if matches!(loader, Loader::NoTerminator) => Vec::new(),
+                    other => vec![(TYPE_RESPONSE, format!("Unknown request {other:x}"))],
+                };
+                for (rtype, body) in replies {
+                    sock.write_all(&encode_packet(id, rtype, &body))
+                        .await
+                        .unwrap();
+                }
+            }
+        });
+        port
+    }
+
+    async fn exec_against(loader: Loader, output: &'static str) -> Result<String> {
+        let port = fake_server(loader, output).await;
+        // The fake server accepts anything; a generated value keeps a literal
+        // credential out of the source.
+        let password = crate::instance::generate_rcon_password();
+        let mut client = RconClient::connect("127.0.0.1", port, &password).await?;
+        client.exec("say hi").await
+    }
+
+    #[tokio::test]
+    async fn exec_returns_single_packet_output() {
+        let out = exec_against(
+            Loader::Vanilla,
+            "There are 0 of a max of 20 players online: ",
+        );
+        assert_eq!(
+            out.await.unwrap(),
+            "There are 0 of a max of 20 players online: "
+        );
+    }
+
+    #[tokio::test]
+    async fn exec_with_no_output_is_empty_not_a_timeout() {
+        // Vanilla/Fabric answer with an empty packet; Forge answers with
+        // nothing at all (verified live on Forge 52.1.0 / 1.21.1).
+        let started = std::time::Instant::now();
+        assert_eq!(exec_against(Loader::Vanilla, "").await.unwrap(), "");
+        assert_eq!(exec_against(Loader::Forge, "").await.unwrap(), "");
+        assert!(
+            started.elapsed() < IO_TIMEOUT,
+            "must not wait out a timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn exec_reassembles_multi_packet_output() {
+        let long: &'static str = Box::leak("0123456789".repeat(1000).into_boxed_str());
+        for loader in [Loader::Vanilla, Loader::Forge] {
+            assert_eq!(exec_against(loader, long).await.unwrap(), long);
+        }
+    }
+
+    #[tokio::test]
+    async fn exec_tolerates_a_server_that_ignores_the_terminator() {
+        let out = exec_against(Loader::NoTerminator, "pong").await.unwrap();
+        assert_eq!(out, "pong");
     }
 
     #[test]

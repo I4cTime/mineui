@@ -83,6 +83,12 @@ async fn append(core: &crate::Core, entry: &AuditEntry) -> Result<()> {
     file.write_all(line.as_bytes())
         .await
         .map_err(|e| Error::Io(format!("failed to append audit entry: {e}")))?;
+    // tokio's File hands the write to a blocking thread; without this the
+    // entry can still be in flight when we return, and a `recent()` right
+    // after (the Activity log refreshing on an action) would miss it.
+    file.flush()
+        .await
+        .map_err(|e| Error::Io(format!("failed to flush audit entry: {e}")))?;
     Ok(())
 }
 

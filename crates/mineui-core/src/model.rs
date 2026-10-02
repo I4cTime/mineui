@@ -514,6 +514,80 @@ pub struct AuditLog {
     pub entries: Vec<AuditEntry>,
 }
 
+/* ---------- §2.5 / §3.12 server profiles ---------- */
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerProfile {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerList {
+    pub active_server_id: String,
+    pub servers: Vec<ServerProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerOverview {
+    pub id: String,
+    pub name: String,
+    pub mode: Mode,
+    /// None when the phase probe failed (see `error`).
+    pub phase: Option<ServerPhase>,
+    pub status: ServerStatus,
+    pub error: Option<String>,
+    pub container_name: Option<String>,
+    pub address: String,
+    pub loader: Option<String>,
+    pub mc_version: Option<String>,
+}
+
+/* ---------- §3.13 container creation ---------- */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContainerLoader {
+    Vanilla,
+    Fabric,
+    Forge,
+    Neoforge,
+    Paper,
+    Quilt,
+    Purpur,
+}
+
+impl ContainerLoader {
+    /// The image's `TYPE` value.
+    pub fn itzg_type(&self) -> &'static str {
+        match self {
+            ContainerLoader::Vanilla => "VANILLA",
+            ContainerLoader::Fabric => "FABRIC",
+            ContainerLoader::Forge => "FORGE",
+            ContainerLoader::Neoforge => "NEOFORGE",
+            ContainerLoader::Paper => "PAPER",
+            ContainerLoader::Quilt => "QUILT",
+            ContainerLoader::Purpur => "PURPUR",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateContainerArgs {
+    pub loader: ContainerLoader,
+    pub mc_version: String,
+    pub container_name: String,
+    pub memory_mb: u32,
+    pub game_port: u16,
+    pub rcon_port: u16,
+    pub expose_to_network: bool,
+    pub accept_eula: bool,
+}
+
 /// Core-side event bus payload; the Tauri layer forwards each variant to its
 /// channel name (`mineui://logs`, `mineui://server-state`, `mineui://download-progress`).
 #[derive(Debug, Clone)]
@@ -521,6 +595,23 @@ pub enum CoreEvent {
     Logs(LogsEvent),
     ServerState(ServerStateEvent),
     DownloadProgress(DownloadProgressEvent),
+}
+
+/// A `CoreEvent` tagged with the server profile it came from (§4): what the
+/// hub's event bus carries.
+#[derive(Debug, Clone)]
+pub struct HubEvent {
+    pub server_id: String,
+    pub event: CoreEvent,
+}
+
+/// Wire shape of every §4 event: the payload's own fields plus `serverId`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerScoped<T: Serialize> {
+    pub server_id: String,
+    #[serde(flatten)]
+    pub payload: T,
 }
 
 pub const EVENT_LOGS: &str = "mineui://logs";
@@ -541,6 +632,25 @@ mod tests {
             serde_json::to_string(&ServerPhase::Running).unwrap(),
             "\"running\""
         );
+    }
+
+    #[test]
+    fn server_scoped_flattens_payload_next_to_server_id() {
+        let scoped = ServerScoped {
+            server_id: "a1b2c3d4".into(),
+            payload: ServerStateEvent {
+                mode: Mode::Advanced,
+                phase: ServerPhase::Running,
+                previous_phase: ServerPhase::Stopped,
+                epoch_ms: 7,
+                exit_code: None,
+            },
+        };
+        let v = serde_json::to_value(&scoped).unwrap();
+        assert_eq!(v["serverId"], "a1b2c3d4");
+        assert_eq!(v["phase"], "running");
+        assert_eq!(v["previousPhase"], "stopped");
+        assert!(v.get("payload").is_none());
     }
 
     #[test]

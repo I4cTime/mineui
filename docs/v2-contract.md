@@ -13,6 +13,11 @@ Architecture (fixed, decided by council — do not relitigate here):
 - Two modes: **simple** (managed vanilla server, MineUI downloads jar + supervises Java
   process) and **advanced** (attach to existing Podman/Docker container — the v1 feature
   set behind a runtime adapter).
+- **Multiple servers (2.6.0)**: MineUI manages N independent *server profiles* at
+  once (§2.5). Each profile is a complete, isolated copy of everything in this
+  contract — its own settings file, mode, supervisor, log stream, scheduler, notes
+  and audit log. Every command in §3 targets one profile (§3.0); every event in §4
+  names the profile it came from.
 
 Type derivation chain (single source of truth):
 
@@ -42,6 +47,8 @@ type IpcErrorShape = {
 type ErrorCode =
   | "RUNTIME_NOT_FOUND"        // no usable podman/docker CLI (advanced)
   | "CONTAINER_NOT_FOUND"      // configured container does not exist
+  | "CONTAINER_EXISTS"         // create_container over an existing container (§3.13)
+  | "CONTAINER_CREATE_FAILED"  // the runtime refused to create/start it (§3.13)
   | "SERVER_NOT_RUNNING"       // operation requires a running server
   | "SERVER_RUNNING"           // operation requires a stopped server (e.g. restore)
   | "RCON_UNAVAILABLE"         // connect/auth failure to RCON
@@ -60,6 +67,7 @@ type ErrorCode =
   | "WRONG_MODE"               // command not available in active mode (§5)
   | "INVALID_INPUT"            // failed argument validation
   | "SETTINGS_INVALID"         // set_settings payload failed validation
+  | "SERVER_NOT_FOUND"         // serverId names no server profile (§2.5, §3.0)
   | "IO"                       // filesystem error
   | "INTERNAL";                // anything else (bug); message carries detail
 
@@ -303,6 +311,54 @@ v1 import (best effort, one-time, optional): if `settings.json` does not exist y
 Unparseable/absent v1 file → fall through to defaults silently (import is best effort).
 The v1 file is left in place, never deleted.
 
+### 2.5 Server profiles (2.6.0)
+
+A *server profile* is one managed Minecraft server: a name plus a full, independent
+`Settings` (§2.1) and its own state files. The profile list lives in
+`<app-config-dir>/servers.json` (atomic write, `0o600`), owned by `mineui-core::hub`:
+
+```ts
+type ServerProfile = {
+  /** Stable, core-generated, path-safe: ^[a-z0-9][a-z0-9-]{0,31}$. */
+  id: string;
+  /** Display name, 1–40 chars, trimmed, no control characters, unique
+   *  case-insensitively across profiles. */
+  name: string;
+};
+
+// servers.json
+type ServerIndex = {
+  schemaVersion: 1;
+  /** The profile commands target when they carry no serverId (§3.0); also the
+   *  profile the UI opens on. Always names an existing profile. */
+  activeServerId: string;
+  servers: ServerProfile[];             // 1–16, order = display order
+};
+```
+
+Storage layout — the first profile keeps the pre-2.6.0 paths, so upgrading moves
+nothing and a downgrade still finds its files:
+
+| Profile | Settings file | State dir (`scheduler-state.json`, `player-notes.json`, `audit-log.jsonl`, `tmp/`, default `instances/default`) |
+| --- | --- | --- |
+| `default` | `<app-config-dir>/settings.json` | `<app-data-dir>/` |
+| any other id | `<app-config-dir>/servers/<id>/settings.json` | `<app-data-dir>/servers/<id>/` |
+
+Rules:
+
+- A missing `servers.json` means exactly one profile: `{ id: "default", name:
+  "Default" }`, active. The file is written on first load. The `default` profile
+  always exists (it is re-inserted first if a hand-edited file drops it) and cannot
+  be removed; it can be renamed.
+- Unknown future `schemaVersion`, invalid JSON, an invalid or duplicate id, or more
+  than 16 profiles → `SETTINGS_INVALID` at startup (never silently truncate). An
+  `activeServerId` naming no profile falls back to `default`.
+- All profiles are **live at once**: each has its own supervisor, refcounted log
+  stream, advanced-mode phase poller state and scheduler, and scheduled jobs run for
+  every profile regardless of which one the UI is showing.
+- Profiles are isolated: nothing in one profile's `Settings` is read by another.
+  The only cross-profile logic is the port suggestion in `add_server` (§3.12).
+
 ---
 
 ## 3. Command table (complete invoke surface)
@@ -311,6 +367,21 @@ Naming: snake_case command names; one `#[tauri::command]` per row in `src-tauri`
 each a thin delegate to the listed `mineui-core` function. Args objects are passed as a
 single `args` parameter unless the command takes none. "Mode" = which `activeMode`
 the command works in; calling a command outside its mode rejects with `WRONG_MODE`.
+
+### 3.0 Server targeting (2.6.0)
+
+Every command in §3.1–§3.11 accepts one extra optional argument, `serverId: string
+| null`, alongside the args listed in its row (it is omitted from the tables below):
+
+- `serverId` set → the command runs against that profile's core. Unknown id →
+  `SERVER_NOT_FOUND`.
+- `serverId` null/absent → the command runs against `activeServerId` (§2.5).
+
+"Mode" and `activeMode` in every row below mean the **targeted profile's** mode.
+`src-tauri` resolves the profile with `hub.core(server_id)` and then delegates to
+the same core function as before; core functions keep their `&Core` signature — a
+`Core` *is* one profile. The frontend always sends the id (`app/lib/ipc.ts` keeps
+the current target, §7); the null fallback exists for robustness, not for use.
 
 ### 3.1 Settings & environment
 
@@ -471,6 +542,16 @@ Semantics:
   (`INVALID_INPUT`); first whitespace-delimited token lowercased must be in
   `rconAllowlist` else `RCON_COMMAND_BLOCKED` (message includes the allowlist,
   comma-joined). One connection per call (connect, auth, send, close) — same as v1.
+- Response framing (2.6.0): after the exec packet the client sends an empty
+  `SERVERDATA_RESPONSE_VALUE` (type 0) packet; every Minecraft server answers it
+  with `Unknown request 0` under that packet's id, which marks the end of the
+  command's output. Output is the concatenation of every response packet carrying
+  the exec id before that marker (capped at 256 KiB). This is required for modded
+  servers: **Forge sends no packet at all for a command with empty output** (`say`),
+  where vanilla/Fabric send one empty packet, and long output (mod lists) spans
+  several 4096-byte packets. A server that never answers the marker is tolerated:
+  once output has arrived the client waits 1 s for the marker, then returns what it
+  has. No output and no marker within 5 s → `RCON_UNAVAILABLE`.
 - `get_player_history`: RCON `list` for online set, then parse
   `logs/latest.log` (+ rotated `latest.log.1` if the primary read succeeds but you want
   parity: v1 read both; keep both). Log acquisition: advanced →
@@ -537,11 +618,11 @@ Semantics:
 - `delete_mod`: filename per §6.2; advanced →
   `runtime exec <name> rm -f -- <root>/<filename>`; simple → `std::fs::remove_file`.
 
-### 3.6 Simple-mode instance management (all `WRONG_MODE` outside simple)
+### 3.6 Simple-mode instance management (`WRONG_MODE` outside simple, except `list_mc_versions`)
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_mc_versions` | `{ includeSnapshots?: boolean }` | `McVersion[]` | simple | `mojang::list_versions` | — (new) |
+| `list_mc_versions` | `{ includeSnapshots?: boolean }` | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `mojang::list_versions` | — (new) |
 | `create_instance` | `CreateInstanceArgs` | `InstanceStatus` | simple | `instance::create` | — (new) |
 | `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | — (new) |
 | `instance_status` | — | `InstanceStatus` | simple | `instance::status` | — (new) |
@@ -576,8 +657,9 @@ type InstanceStatus = {
 
 Semantics:
 
-- One instance this phase (at `settings.simple.instanceDir`); no instance ids anywhere
-  in the API. Multi-instance is a future schema bump.
+- One instance per server profile (at that profile's `settings.simple.instanceDir`);
+  no instance ids anywhere in the API. Several managed servers = several profiles
+  (§2.5), each with its own instance dir and ports.
 - `list_mc_versions`: fetch
   `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`; filter to
   `release` unless `includeSnapshots`; cache in memory for 15 minutes; network failure
@@ -830,7 +912,167 @@ type AuditEntry = {
   `backup.create`, `backup.restore`, `backup.delete`, `backup.prune`, `backup.copy`,
   `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `settings.update`,
   `instance.create`, `instance.delete`, `note.set`, `note.clear`,
-  `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`.
+  `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
+  `server.add`, `server.rename`, `server.remove` (§3.12), `container.create` (§3.13).
+
+### 3.12 Server profiles (2.6.0)
+
+These commands act on the profile list itself and take **no** `serverId` targeting
+argument (§3.0 does not apply); where a row lists `id`, it is the profile acted on.
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `list_servers` | — | `ServerList` | both | `Hub::list` | — (new) |
+| `add_server` | `{ name: string; mode?: Mode }` | `ServerList` | both | `Hub::add` | — (new) |
+| `rename_server` | `{ id: string; name: string }` | `ServerList` | both | `Hub::rename` | — (new) |
+| `remove_server` | `{ id: string; confirm: true }` | `ServerList` | both | `Hub::remove` | — (new) |
+| `set_active_server` | `{ id: string }` | `ServerList` | both | `Hub::set_active` | — (new) |
+| `get_servers_overview` | — | `ServerOverview[]` | both | `Hub::overview` | — (new) |
+
+```ts
+type ServerList = { activeServerId: string; servers: ServerProfile[] };
+
+type ServerOverview = {
+  id: string;
+  name: string;
+  mode: Mode;
+  /** null when the phase could not be read (see `error`). */
+  phase: ServerPhase | null;
+  /** Same value `get_server_status` returns for this profile. */
+  status: ServerStatus;
+  /** `ErrorCode: message` when the phase probe failed (e.g. no runtime). */
+  error: string | null;
+  /* Identity — what this profile actually points at, so two servers with
+     similar names can be told apart at a glance. */
+  /** Advanced: `advanced.containerName`. Simple: null. */
+  containerName: string | null;
+  /** `host:port` of the game port: advanced `queryHost:queryPort`, simple
+   *  `127.0.0.1:serverPort`. */
+  address: string;
+  /** Lowercased server type. Simple: "vanilla". Advanced: the container's
+   *  `TYPE` env (itzg convention: "forge", "fabric", "paper", …), null when
+   *  the container is missing or has no `TYPE`. */
+  loader: string | null;
+  /** Simple: the instance's version, null before one exists. Advanced: the
+   *  container's `VERSION` env, null when absent or `LATEST` (the frontend
+   *  then falls back to `status.version` while the server is online). */
+  mcVersion: string | null;
+};
+```
+
+Semantics:
+
+- `add_server`: validates `name` (§2.5, `INVALID_INPUT`), rejects a 17th profile
+  (`INVALID_INPUT`), mints an id (8 lowercase hex chars, unique), creates the
+  profile's settings file with defaults and `activeMode = mode ?? "advanced"`, and
+  appends it to the list. Port suggestion: the new profile's
+  `simple.serverPort`/`advanced.queryPort` and `simple.rconPort`/`advanced.rconPort`
+  are set to the first `25565 + n` / `25575 + n` pair (n ≥ 0) that no existing
+  profile's settings use, so two managed servers never start on the same ports by
+  default. It does **not** change `activeServerId`. Returns the new list; the new
+  profile is the last entry.
+- `rename_server`: name rules as above; unknown id → `SERVER_NOT_FOUND`.
+- `remove_server`: `confirm !== true` → `INVALID_INPUT`; `id === "default"` →
+  `INVALID_INPUT`; a simple-mode server process still supervised → `SERVER_RUNNING`.
+  Stops the profile's log stream, drops it from the list and deletes
+  `<app-config-dir>/servers/<id>/` (its settings). The state dir
+  `<app-data-dir>/servers/<id>/` — which holds a simple-mode world by default — is
+  **left on disk**; removing a profile never deletes a world, a container or a
+  backup. If the removed profile was active, `default` becomes active.
+- `set_active_server`: persists `activeServerId`; unknown id → `SERVER_NOT_FOUND`.
+- `get_servers_overview`: one entry per profile, in list order, probed
+  concurrently. `phase` is the §3.2 phase (advanced: runtime `ps`; simple:
+  supervisor/instance check); `status` is `status::get`. Never rejects for a
+  per-profile fault — the fault lands in that entry's `error`. `loader`/`mcVersion`
+  of an advanced profile come from `runtime inspect` of the container's env,
+  cached per container id (re-read only when the container is recreated).
+- Audit (§3.11): `server.add` (target = name) goes to the new profile's log,
+  `server.rename` (target = new name) to the renamed profile's, and `server.remove`
+  (target = name) to `default`'s, since the removed profile's log is orphaned. A
+  rejected `server.add`, or a `server.rename` of an unknown id, is recorded in
+  `default`'s log.
+
+### 3.13 Container creation (2.6.0)
+
+Until 2.6.0 advanced mode could only attach to a container the user had already
+made. `create_container` makes one: an
+[`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server) container
+for the targeted profile, with the loader the user picks.
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `create_container` | `{ args: CreateContainerArgs }` | `ServerState` | advanced | `provision::create` | — (new) |
+
+```ts
+type ContainerLoader =
+  | "vanilla" | "fabric" | "forge" | "neoforge" | "paper" | "quilt" | "purpur";
+
+type CreateContainerArgs = {
+  loader: ContainerLoader;
+  /** A Mojang version id ("1.21.1") or "LATEST". */
+  mcVersion: string;
+  /** Becomes `advanced.containerName`; §2.3 container-name grammar. */
+  containerName: string;
+  /** JVM heap for the server, MiB, 512–65536. */
+  memoryMb: number;
+  /** Host port published for the game (container 25565). */
+  gamePort: number;
+  /** Host port published for RCON (container 25575). Always loopback-only. */
+  rconPort: number;
+  /** true: the game port is published on every interface (LAN/internet play).
+   *  false: on 127.0.0.1 only. */
+  exposeToNetwork: boolean;
+  /** Must be true — the image refuses to start without EULA=TRUE. */
+  acceptEula: boolean;
+};
+```
+
+Sequence (first failure wins; nothing is created before step 7):
+
+1. Profile not in advanced mode → `WRONG_MODE`.
+2. `acceptEula !== true` → `EULA_NOT_ACCEPTED`.
+3. Validation (`INVALID_INPUT`): `containerName` per §2.3; `mcVersion` trimmed, empty
+   or any-case "latest" → `LATEST`, otherwise `^[0-9A-Za-z][0-9A-Za-z._-]{0,31}$`;
+   `memoryMb` in 512–65536; ports 1–65535 and different from each other.
+4. Resolve the runtime (`RUNTIME_NOT_FOUND`).
+5. A container with that name already exists → `CONTAINER_EXISTS` (attach to it in
+   settings instead — this command never touches an existing container).
+6. Either host port cannot be bound right now → `INVALID_INPUT` ("port N is already
+   in use"). Checked host-side with a throwaway listener; the runtime's own check
+   in step 7 remains the authority.
+7. Pick the image tag from the Java the version needs — `javaVersion.majorVersion`
+   of the Mojang version detail (the latest release for `LATEST`): ≤ 8 → `java8`,
+   9–17 → `java17`, 18–21 → `java21`, 22–25 → `java25`, anything else or an
+   unresolvable version → `latest`. Then one argv-array runtime call:
+
+   ```
+   run -d --name <containerName>
+       --env-file <tmpfile>
+       -p <bind>:<gamePort>:25565      # bind = 0.0.0.0 or 127.0.0.1
+       -p 127.0.0.1:<rconPort>:25575
+       -v <containerName>-data:/data
+       docker.io/itzg/minecraft-server:<tag>
+   ```
+
+   The env file (`<app-data-dir>/tmp/`, `0o600`, deleted right after the call) holds
+   `EULA=TRUE`, `TYPE=<LOADER>`, `VERSION=<mcVersion>`, `MEMORY=<memoryMb>M`,
+   `ENABLE_RCON=true` and `RCON_PASSWORD=<generated>` (24-char alphanumeric, CSPRNG,
+   same generator as §3.6) — the password never appears in an argv. The runtime
+   pulls the image if it is missing, so the first call can take minutes; the
+   command resolves when the container has *started*, not when the server inside
+   is ready (the image installs the loader on first boot — watch the log stream).
+   Non-zero exit → best-effort `rm -f <containerName>` of the half-made container
+   (safe: step 5 proved it was not there before), then `CONTAINER_CREATE_FAILED`
+   with the runtime's stderr. The `<containerName>-data` volume is never removed;
+   if one already exists it is reused, world included.
+8. Save the profile's settings: `advanced.containerName`, `queryHost`/`rconHost` =
+   `127.0.0.1`, `queryPort`/`rconPort`, `rconPassword`, `worldDir` = `world`.
+9. Return `lifecycle::state`; a `mineui://server-state` transition follows from the
+   §4.2 poll.
+
+Audited as `container.create` (target = container name, detail =
+`<LOADER> <mcVersion> <image>:<tag>`). There is deliberately no `delete_container`:
+removing a container and its world stays a deliberate act outside the app.
 
 ---
 
@@ -840,6 +1082,13 @@ Events are emitted by `src-tauri` (core exposes callbacks/channels; the Tauri la
 forwards to `app.emit`). All events are app-global (no per-window targeting).
 Frontend subscribes with `listen()` from `@tauri-apps/api/event` via the typed helpers
 in `app/lib/ipc.ts` (§7).
+
+**Server scoping (2.6.0)**: every event payload below additionally carries
+`serverId: string` — the profile (§2.5) it came from — flattened into the payload
+object (`{ serverId, ...payload }`). Core emits `HubEvent { serverId, event }`;
+`src-tauri` serializes it as `ServerScoped<T>`. The `on*` helpers in §7 deliver only
+the events of the profile that was the IPC target when the helper was called;
+`onAnyServerState` delivers every profile's transitions.
 
 ### 4.1 `mineui://logs`
 
@@ -859,8 +1108,9 @@ may dedupe by `epochMs + text`, not required).
 
 ### 4.2 `mineui://server-state`
 
-Emitted on every phase transition, in both modes. Advanced-mode transitions are
-detected by a core-side poll (every 2 s while any frontend window exists) plus
+Emitted on every phase transition, in both modes, for every profile. Advanced-mode
+transitions are detected by a core-side poll of all advanced-mode profiles (every
+2 s while any frontend window exists) plus
 immediately after `start_server`/`stop_server`/`restart_server` resolve.
 
 ```ts
@@ -928,7 +1178,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | TPS | RCON `tps` (vanilla: null) | RCON `tps` or server-utils |
 | Instance commands (§3.6) | full | `WRONG_MODE` |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
-| Container create/pull | **out of scope this phase** — advanced attaches to an existing container only | — |
+| Container create/pull | — | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; never deletes one |
 
 ---
 
@@ -1007,19 +1257,36 @@ is discovered, this section and the section above must be fixed together).
 
 ```ts
 // app/lib/ipc.ts
+//
+// Single typed IPC module — generated verbatim from docs/v2-contract.md §7.
+// This is the ONLY file that imports @tauri-apps/api/core or
+// @tauri-apps/api/event. Pages/components import types and wrappers from here;
+// no raw invoke(), no locally re-declared IPC types anywhere else.
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+
+/* ---------- runtime guard ---------- */
+
+/**
+ * True when running inside the Tauri webview. In a plain browser
+ * (`pnpm dev` without `pnpm tauri dev`) all wrappers reject with a clear
+ * IpcError instead of crashing, and event subscriptions become no-ops.
+ */
+export function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
 
 /* ---------- errors ---------- */
 
 export type ErrorCode =
-  | "RUNTIME_NOT_FOUND" | "CONTAINER_NOT_FOUND" | "SERVER_NOT_RUNNING"
+  | "RUNTIME_NOT_FOUND" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
+  | "CONTAINER_CREATE_FAILED" | "SERVER_NOT_RUNNING"
   | "SERVER_RUNNING" | "RCON_UNAVAILABLE" | "RCON_COMMAND_BLOCKED"
   | "QUERY_UNAVAILABLE" | "JAVA_NOT_FOUND" | "JAVA_INCOMPATIBLE"
   | "EULA_NOT_ACCEPTED" | "INSTANCE_NOT_FOUND" | "INSTANCE_EXISTS"
   | "DOWNLOAD_FAILED" | "CHECKSUM_MISMATCH" | "SERVER_UTILS_UNAVAILABLE"
   | "PATH_NOT_ALLOWED" | "FILE_TOO_LARGE" | "WRONG_MODE" | "INVALID_INPUT"
-  | "SETTINGS_INVALID" | "IO" | "INTERNAL";
+  | "SETTINGS_INVALID" | "SERVER_NOT_FOUND" | "IO" | "INTERNAL";
 
 export class IpcError extends Error {
   constructor(public readonly code: ErrorCode, message: string) {
@@ -1033,12 +1300,40 @@ function isErrorShape(e: unknown): e is { code: ErrorCode; message: string } {
 }
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri()) {
+    throw new IpcError(
+      "INTERNAL",
+      `Tauri runtime not available (command "${cmd}"). Run the app via \`pnpm tauri dev\`, not a plain browser.`,
+    );
+  }
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
     if (isErrorShape(e)) throw new IpcError(e.code, e.message);
     throw new IpcError("INTERNAL", String(e));
   }
+}
+
+/* ---------- server targeting (§3.0) ---------- */
+
+let targetServerId: string | null = null;
+
+/**
+ * The server profile (§2.5) every scoped wrapper and event helper below
+ * addresses. Owned by ServerProvider (app/components/ServerProvider.tsx),
+ * which only moves it while no page is mounted — pages never call this.
+ */
+export function setIpcTargetServer(id: string | null): void {
+  targetServerId = id;
+}
+
+export function getIpcTargetServer(): string | null {
+  return targetServerId;
+}
+
+/** A §3.1–§3.11 command, sent to the current target server. */
+function scoped<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  return call<T>(cmd, { ...args, serverId: targetServerId });
 }
 
 /* ---------- settings ---------- */
@@ -1136,11 +1431,11 @@ export type JavaCheck = {
   compatible: boolean | null;
 };
 
-export const getSettings = () => call<Settings>("get_settings");
+export const getSettings = () => scoped<Settings>("get_settings");
 export const setSettings = (settings: Settings) =>
-  call<Settings>("set_settings", { settings });
-export const detectRuntimes = () => call<RuntimeProbe>("detect_runtimes");
-export const javaCheck = () => call<JavaCheck>("java_check");
+  scoped<Settings>("set_settings", { settings });
+export const detectRuntimes = () => scoped<RuntimeProbe>("detect_runtimes");
+export const javaCheck = () => scoped<JavaCheck>("java_check");
 
 /* ---------- server state / lifecycle / status ---------- */
 
@@ -1174,18 +1469,88 @@ export type ServerStatus = {
   error: string | null;
 };
 
-export const getServerState = () => call<ServerState>("get_server_state");
-export const startServer = () => call<void>("start_server");
-export const stopServer = () => call<void>("stop_server");
-export const restartServer = () => call<void>("restart_server");
-export const getServerStatus = () => call<ServerStatus>("get_server_status");
+export const getServerState = () => scoped<ServerState>("get_server_state");
+export const startServer = () => scoped<void>("start_server");
+export const stopServer = () => scoped<void>("stop_server");
+export const restartServer = () => scoped<void>("restart_server");
+export const getServerStatus = () => scoped<ServerStatus>("get_server_status");
+
+/** Lifecycle for a server other than the current target (the all-servers
+ *  strip on the dashboard acts on every profile at once). */
+export const startServerById = (serverId: string) =>
+  call<void>("start_server", { serverId });
+export const stopServerById = (serverId: string) =>
+  call<void>("stop_server", { serverId });
+
+/* ---------- server profiles (§2.5, §3.12) ---------- */
+
+export type ServerProfile = { id: string; name: string };
+
+export type ServerList = { activeServerId: string; servers: ServerProfile[] };
+
+export type ServerOverview = {
+  id: string;
+  name: string;
+  mode: Mode;
+  /** null when the phase could not be read (see `error`). */
+  phase: ServerPhase | null;
+  status: ServerStatus;
+  error: string | null;
+  /** Advanced: the attached container. Simple: null. */
+  containerName: string | null;
+  /** `host:port` of the game port. */
+  address: string;
+  /** Lowercased server type ("forge", "fabric", "vanilla", …) or null. */
+  loader: string | null;
+  /** Known version, or null (fall back to `status.version` while online). */
+  mcVersion: string | null;
+};
+
+export const DEFAULT_SERVER_ID = "default";
+export const MAX_SERVERS = 16;
+export const MAX_SERVER_NAME_CHARS = 40;
+
+export const listServers = () => call<ServerList>("list_servers");
+export const addServer = (name: string, mode?: Mode) =>
+  call<ServerList>("add_server", { name, mode });
+export const renameServer = (id: string, name: string) =>
+  call<ServerList>("rename_server", { id, name });
+export const removeServer = (id: string) =>
+  call<ServerList>("remove_server", { id, confirm: true });
+export const setActiveServer = (id: string) =>
+  call<ServerList>("set_active_server", { id });
+export const getServersOverview = () =>
+  call<ServerOverview[]>("get_servers_overview");
+
+/* ---------- container creation (§3.13) ---------- */
+
+export type ContainerLoader =
+  | "vanilla" | "fabric" | "forge" | "neoforge" | "paper" | "quilt" | "purpur";
+
+export type CreateContainerArgs = {
+  loader: ContainerLoader;
+  /** A Mojang version id ("1.21.1") or "LATEST". */
+  mcVersion: string;
+  containerName: string;
+  memoryMb: number;
+  gamePort: number;
+  rconPort: number;
+  /** true: game port on every interface; false: 127.0.0.1 only. */
+  exposeToNetwork: boolean;
+  acceptEula: boolean;
+};
+
+/** Creates an itzg/minecraft-server container for the target server. Pulls
+ *  the image when missing — the first call can take minutes. */
+export const createContainer = (args: CreateContainerArgs) =>
+  scoped<ServerState>("create_container", { args });
 
 /* ---------- logs ---------- */
 
 export const getLogs = (tail?: number) =>
-  call<{ lines: string[] }>("get_logs", { tail });
-export const startLogStream = () => call<void>("start_log_stream");
-export const stopLogStream = () => call<void>("stop_log_stream");
+  scoped<{ lines: string[] }>("get_logs", { tail });
+export const startLogStream = () => scoped<void>("start_log_stream");
+export const stopLogStream = () => scoped<void>("stop_log_stream");
 
 /* ---------- players / rcon ---------- */
 
@@ -1198,11 +1563,11 @@ export type PlayerHistoryRow = {
   isOnline: boolean;
 };
 
-export const getPlayers = () => call<PlayersResult>("get_players");
+export const getPlayers = () => scoped<PlayersResult>("get_players");
 export const getPlayerHistory = () =>
-  call<{ users: PlayerHistoryRow[] }>("get_player_history");
+  scoped<{ users: PlayerHistoryRow[] }>("get_player_history");
 export const runRconCommand = (command: string) =>
-  call<{ output: string }>("run_rcon_command", { command });
+  scoped<{ output: string }>("run_rcon_command", { command });
 
 /* ---------- mods ---------- */
 
@@ -1219,15 +1584,15 @@ export type ModEntry = {
 
 export type ModsList = { mods: ModEntry[]; plugins: ModEntry[] };
 
-export const listMods = () => call<ModsList>("list_mods");
+export const listMods = () => scoped<ModsList>("list_mods");
 export const uploadMod = (sourcePath: string, target: ModTarget) =>
-  call<{ filename: string }>("upload_mod", { sourcePath, target });
+  scoped<{ filename: string }>("upload_mod", { sourcePath, target });
 export const downloadMod = (url: string, target: ModTarget, filename?: string) =>
-  call<{ filename: string; downloadId: string }>("download_mod", {
+  scoped<{ filename: string; downloadId: string }>("download_mod", {
     url, target, filename,
   });
 export const deleteMod = (filename: string, target: ModTarget) =>
-  call<void>("delete_mod", { filename, target });
+  scoped<void>("delete_mod", { filename, target });
 
 /* ---------- instance (simple mode) ---------- */
 
@@ -1257,21 +1622,21 @@ export type InstanceStatus = {
 };
 
 export const listMcVersions = (includeSnapshots?: boolean) =>
-  call<McVersion[]>("list_mc_versions", { includeSnapshots });
+  scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
 export const createInstance = (args: CreateInstanceArgs) =>
-  call<InstanceStatus>("create_instance", { args });
+  scoped<InstanceStatus>("create_instance", { args });
 export const deleteInstance = () =>
-  call<void>("delete_instance", { confirm: true });
-export const instanceStatus = () => call<InstanceStatus>("instance_status");
+  scoped<void>("delete_instance", { confirm: true });
+export const instanceStatus = () => scoped<InstanceStatus>("instance_status");
 
 /* ---------- config files ---------- */
 
 export const listConfigFiles = () =>
-  call<{ files: string[] }>("list_config_files");
+  scoped<{ files: string[] }>("list_config_files");
 export const readConfigFile = (path: string) =>
-  call<{ content: string }>("read_config_file", { path });
+  scoped<{ content: string }>("read_config_file", { path });
 export const writeConfigFile = (path: string, content: string) =>
-  call<void>("write_config_file", { path, content });
+  scoped<void>("write_config_file", { path, content });
 
 /* ---------- backups ---------- */
 
@@ -1281,12 +1646,12 @@ export type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-export const createBackup = () => call<BackupEntry>("create_backup");
-export const listBackups = () => call<BackupEntry[]>("list_backups");
+export const createBackup = () => scoped<BackupEntry>("create_backup");
+export const listBackups = () => scoped<BackupEntry[]>("list_backups");
 export const restoreBackup = (filename: string) =>
-  call<void>("restore_backup", { filename });
+  scoped<void>("restore_backup", { filename });
 export const deleteBackup = (filename: string) =>
-  call<void>("delete_backup", { filename });
+  scoped<void>("delete_backup", { filename });
 
 /* ---------- scheduler (§3.10) ---------- */
 
@@ -1301,9 +1666,9 @@ export type ScheduledJobStatus = {
 export type SchedulerStatus = { enabled: boolean; jobs: ScheduledJobStatus[] };
 
 export const getSchedulerStatus = () =>
-  call<SchedulerStatus>("get_scheduler_status");
+  scoped<SchedulerStatus>("get_scheduler_status");
 export const runScheduledJobNow = (id: string) =>
-  call<JobRunResult>("run_scheduled_job_now", { id });
+  scoped<JobRunResult>("run_scheduled_job_now", { id });
 
 /* ---------- player notes / audit log (§3.11) ---------- */
 
@@ -1323,11 +1688,11 @@ export type AuditEntry = {
 };
 
 export const getPlayerNotes = () =>
-  call<{ notes: PlayerNote[] }>("get_player_notes");
+  scoped<{ notes: PlayerNote[] }>("get_player_notes");
 export const setPlayerNote = (username: string, note: string) =>
-  call<PlayerNote | null>("set_player_note", { username, note });
+  scoped<PlayerNote | null>("set_player_note", { username, note });
 export const getAuditLog = (limit?: number) =>
-  call<{ entries: AuditEntry[] }>("get_audit_log", { limit });
+  scoped<{ entries: AuditEntry[] }>("get_audit_log", { limit });
 
 /* ---------- metrics ---------- */
 
@@ -1351,15 +1716,17 @@ export type Metrics = {
   players: { online: number | null; max: number | null } | null;
 };
 
-export const getMetrics = () => call<Metrics>("get_metrics");
+export const getMetrics = () => scoped<Metrics>("get_metrics");
 
 /* ---------- events ---------- */
 
+// Every event payload carries the server profile it came from (§4).
 export type LogSource = "stdout" | "stderr" | "runtime";
 export type LogLine = { text: string; epochMs: number; source: LogSource };
-export type LogsEvent = { lines: LogLine[] };
+export type LogsEvent = { serverId: string; lines: LogLine[] };
 
 export type ServerStateEvent = {
+  serverId: string;
   mode: Mode;
   phase: ServerPhase;
   previousPhase: ServerPhase;
@@ -1369,6 +1736,7 @@ export type ServerStateEvent = {
 
 export type DownloadKind = "server-jar" | "mod";
 export type DownloadProgressEvent = {
+  serverId: string;
   downloadId: string;
   kind: DownloadKind;
   filename: string;
@@ -1383,22 +1751,52 @@ export const EVENT_LOGS = "mineui://logs";
 export const EVENT_SERVER_STATE = "mineui://server-state";
 export const EVENT_DOWNLOAD_PROGRESS = "mineui://download-progress";
 
+const NOOP_UNLISTEN: UnlistenFn = () => {};
+
+/**
+ * Subscribe to one event channel for the server that is the IPC target
+ * *now* — the binding is fixed at subscribe time, so a listener can never
+ * start receiving another server's events after a switch.
+ */
+function onScoped<E extends { serverId: string }>(
+  channel: string,
+  cb: (e: E) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) return Promise.resolve(NOOP_UNLISTEN);
+  const target = targetServerId;
+  return listen<E>(channel, (ev) => {
+    if (target === null || ev.payload.serverId === target) cb(ev.payload);
+  });
+}
+
 export const onLogs = (cb: (e: LogsEvent) => void): Promise<UnlistenFn> =>
-  listen<LogsEvent>(EVENT_LOGS, (ev) => cb(ev.payload));
+  onScoped(EVENT_LOGS, cb);
 export const onServerState = (
   cb: (e: ServerStateEvent) => void,
-): Promise<UnlistenFn> =>
-  listen<ServerStateEvent>(EVENT_SERVER_STATE, (ev) => cb(ev.payload));
+): Promise<UnlistenFn> => onScoped(EVENT_SERVER_STATE, cb);
 export const onDownloadProgress = (
   cb: (e: DownloadProgressEvent) => void,
+): Promise<UnlistenFn> => onScoped(EVENT_DOWNLOAD_PROGRESS, cb);
+
+/** Phase transitions of every server profile, not just the target. */
+export const onAnyServerState = (
+  cb: (e: ServerStateEvent) => void,
 ): Promise<UnlistenFn> =>
-  listen<DownloadProgressEvent>(EVENT_DOWNLOAD_PROGRESS, (ev) => cb(ev.payload));
+  isTauri()
+    ? listen<ServerStateEvent>(EVENT_SERVER_STATE, (ev) => cb(ev.payload))
+    : Promise.resolve(NOOP_UNLISTEN);
 ```
 
 Frontend rules:
 
 - Pages import only from `app/lib/ipc.ts`; no raw `invoke`, no locally re-declared IPC
   types, no `fetch("/api/…")` remnants.
+- Server targeting (§3.0, 2.6.0): pages never pass a `serverId`. `ipc.ts` holds the
+  one current target; `app/components/ServerProvider.tsx` is the only caller of
+  `setIpcTargetServer`, and it moves the target only while the routed page is
+  unmounted (switch = unmount page → move target → remount page keyed by server
+  id). That ordering is what lets a page's cleanup (`stopLogStream`, unlisten) reach
+  the server it was opened for. Event helpers bind to the target at subscribe time.
 - v1 shape changes the port must absorb: timestamps are now epoch-ms numbers
   (`lastSeenEpochMs`, `updatedAtEpochMs`, `createdAtEpochMs`) — format client-side;
   config paths are relative; players/users routes merged shapes as in §3.4;
@@ -1412,7 +1810,7 @@ Frontend rules:
 | --- | --- |
 | `error` | `Error` enum + serde serialization to `{code,message}` (§1) |
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
-| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), cp_to, cp_from, stats, inspect_started_at) + `PodmanCli`/`DockerCli` impls + `detect`. All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
+| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, run_detached, remove_force) + `PodmanCli`/`DockerCli` impls + `detect`. All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
@@ -1430,9 +1828,14 @@ Frontend rules:
 | `scheduler` | job engine: due-time math, 30 s tick, run state file, `status`/`run_now` (§3.10) |
 | `audit` | append-only JSONL audit log + rotation, `recent` (§3.11) |
 | `notes` | per-player notes store (§3.11) |
+| `provision` | `create_container` (§3.13): validation, Java → image tag, env file, run, settings write-back |
+| `identity` | per-profile identity for the overview (§3.12): one `ps` for the phase + cached container `TYPE`/`VERSION` |
+| `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview` |
 
-`src-tauri` contains: one command fn per §3 row (thin delegation), event forwarding
-(core callbacks → `app.emit`), the 2 s advanced-mode state poller, the 30 s scheduler
-tick (§3.10), and path-resolver
+`src-tauri` contains: one command fn per §3 row (thin delegation — resolve the
+targeted profile's `Core` via `hub.core(server_id)`, §3.0, then call the listed core
+fn), event forwarding (`HubEvent` → `app.emit` of `ServerScoped<T>`), the 2 s
+advanced-mode state poller (`Hub::poll_all`), the 30 s scheduler tick
+(`Hub::tick_all`, §3.10), and path-resolver
 wiring (`app_config_dir`, `app_data_dir`) injected into core at startup. No business
 logic, no validation, no subprocess calls in `src-tauri`.

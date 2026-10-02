@@ -112,6 +112,16 @@ impl Manager {
         }
         Ok(())
     }
+
+    /// Drop every subscription at once and kill the follower — used when the
+    /// server profile itself goes away (§3.12 `remove_server`).
+    pub async fn shutdown(&self) {
+        *self.refcount.lock().unwrap() = 0;
+        self.active.store(false, Ordering::Relaxed);
+        if let Some(mut child) = self.follow_child.lock().await.take() {
+            let _ = child.start_kill();
+        }
+    }
 }
 
 fn spawn_follow_reader(stream: impl tokio::io::AsyncRead + Unpin + Send + 'static, sink: LogSink) {

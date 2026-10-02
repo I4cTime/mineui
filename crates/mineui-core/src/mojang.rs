@@ -100,18 +100,10 @@ async fn fetch_manifest(core: &crate::Core) -> Result<VersionManifest> {
         .map_err(|e| Error::DownloadFailed(format!("invalid version manifest: {e}")))
 }
 
-/// `list_mc_versions` (§3.6): WRONG_MODE outside simple mode; 15-minute
-/// in-memory cache; network failure with a warm cache serves the cache,
-/// otherwise DOWNLOAD_FAILED.
+/// `list_mc_versions` (§3.6): both modes (simple-mode instances and §3.13
+/// container creation pick from it); 15-minute in-memory cache; network
+/// failure with a warm cache serves the cache, otherwise DOWNLOAD_FAILED.
 pub async fn list_versions(core: &crate::Core, include_snapshots: bool) -> Result<Vec<McVersion>> {
-    crate::instance::ensure_simple_mode(core).await?;
-    list_versions_unchecked(core, include_snapshots).await
-}
-
-pub(crate) async fn list_versions_unchecked(
-    core: &crate::Core,
-    include_snapshots: bool,
-) -> Result<Vec<McVersion>> {
     let mut cache = core.mojang_cache.lock().await;
     if let Some(cached) = cache.as_ref() {
         if cached.fetched_at.elapsed() < CACHE_TTL {
@@ -145,7 +137,7 @@ pub async fn version_detail(core: &crate::Core, version_id: &str) -> Result<Vers
         let cache = core.mojang_cache.lock().await;
         if cache.is_none() || cache.as_ref().unwrap().fetched_at.elapsed() >= CACHE_TTL {
             drop(cache);
-            let _ = list_versions_unchecked(core, true).await?;
+            let _ = list_versions(core, true).await?;
         }
     }
     let url = {

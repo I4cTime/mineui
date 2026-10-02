@@ -7,16 +7,23 @@ mod commands;
 use std::sync::Arc;
 use std::time::Duration;
 
-use mineui_core::model::{CoreEvent, EVENT_DOWNLOAD_PROGRESS, EVENT_LOGS, EVENT_SERVER_STATE};
-use mineui_core::Core;
+use mineui_core::model::{
+    CoreEvent, HubEvent, ServerScoped, EVENT_DOWNLOAD_PROGRESS, EVENT_LOGS, EVENT_SERVER_STATE,
+};
+use mineui_core::Hub;
 use tauri::{Emitter, Manager};
 
-/// Forward one core event to its `mineui://*` channel (§4).
-fn forward_event(app: &tauri::AppHandle, event: CoreEvent) {
+/// Forward one hub event to its `mineui://*` channel, tagged with the server
+/// profile it came from (§4).
+fn forward_event(app: &tauri::AppHandle, HubEvent { server_id, event }: HubEvent) {
     let result = match event {
-        CoreEvent::Logs(payload) => app.emit(EVENT_LOGS, payload),
-        CoreEvent::ServerState(payload) => app.emit(EVENT_SERVER_STATE, payload),
-        CoreEvent::DownloadProgress(payload) => app.emit(EVENT_DOWNLOAD_PROGRESS, payload),
+        CoreEvent::Logs(payload) => app.emit(EVENT_LOGS, ServerScoped { server_id, payload }),
+        CoreEvent::ServerState(payload) => {
+            app.emit(EVENT_SERVER_STATE, ServerScoped { server_id, payload })
+        }
+        CoreEvent::DownloadProgress(payload) => {
+            app.emit(EVENT_DOWNLOAD_PROGRESS, ServerScoped { server_id, payload })
+        }
     };
     if let Err(e) = result {
         eprintln!("mineui: failed to emit event: {e}");
@@ -54,12 +61,13 @@ pub fn run() {
             let config_dir = app.path().app_config_dir()?;
             let data_dir = app.path().app_data_dir()?;
 
-            let core: Arc<Core> = tauri::async_runtime::block_on(Core::init(config_dir, data_dir))
+            // One core per server profile (§2.5), all live at once.
+            let hub: Arc<Hub> = tauri::async_runtime::block_on(Hub::init(config_dir, data_dir))
                 .map_err(|e| format!("failed to initialize MineUI core: {e}"))?;
 
             // Core events → webview events.
             let handle = app.handle().clone();
-            let mut rx = core.subscribe_events();
+            let mut rx = hub.subscribe_events();
             tauri::async_runtime::spawn(async move {
                 loop {
                     match rx.recv().await {
@@ -72,25 +80,25 @@ pub fn run() {
 
             // 2 s advanced-mode phase poller (§4.2). The timer lives here;
             // change detection + event emission live in core.
-            let poll_core = core.clone();
+            let poll_hub = hub.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    mineui_core::lifecycle::poll_advanced_state(&poll_core).await;
+                    poll_hub.poll_all().await;
                     tokio::time::sleep(Duration::from_secs(2)).await;
                 }
             });
 
             // 30 s scheduler tick (§3.10). The timer lives here; due-time
             // math, job execution and run state live in core.
-            let tick_core = core.clone();
+            let tick_hub = hub.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
-                    mineui_core::scheduler::tick(&tick_core).await;
+                    tick_hub.tick_all().await;
                 }
             });
 
-            app.manage(core);
+            app.manage(hub);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -141,6 +149,15 @@ pub fn run() {
             commands::get_player_notes,
             commands::set_player_note,
             commands::get_audit_log,
+            // §3.13 container creation
+            commands::create_container,
+            // §3.12 server profiles
+            commands::list_servers,
+            commands::add_server,
+            commands::rename_server,
+            commands::remove_server,
+            commands::set_active_server,
+            commands::get_servers_overview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MineUI");

@@ -13,6 +13,10 @@ pub enum Error {
     #[error("{0}")]
     ContainerNotFound(String),
     #[error("{0}")]
+    ContainerExists(String),
+    #[error("{0}")]
+    ContainerCreateFailed(String),
+    #[error("{0}")]
     ServerNotRunning(String),
     #[error("{0}")]
     ServerRunning(String),
@@ -49,6 +53,8 @@ pub enum Error {
     #[error("{0}")]
     SettingsInvalid(String),
     #[error("{0}")]
+    ServerNotFound(String),
+    #[error("{0}")]
     Io(String),
     #[error("{0}")]
     Internal(String),
@@ -59,6 +65,8 @@ impl Error {
         match self {
             Error::RuntimeNotFound(_) => "RUNTIME_NOT_FOUND",
             Error::ContainerNotFound(_) => "CONTAINER_NOT_FOUND",
+            Error::ContainerExists(_) => "CONTAINER_EXISTS",
+            Error::ContainerCreateFailed(_) => "CONTAINER_CREATE_FAILED",
             Error::ServerNotRunning(_) => "SERVER_NOT_RUNNING",
             Error::ServerRunning(_) => "SERVER_RUNNING",
             Error::RconUnavailable(_) => "RCON_UNAVAILABLE",
@@ -77,6 +85,7 @@ impl Error {
             Error::WrongMode(_) => "WRONG_MODE",
             Error::InvalidInput(_) => "INVALID_INPUT",
             Error::SettingsInvalid(_) => "SETTINGS_INVALID",
+            Error::ServerNotFound(_) => "SERVER_NOT_FOUND",
             Error::Io(_) => "IO",
             Error::Internal(_) => "INTERNAL",
         }

@@ -11,6 +11,8 @@ pub mod backups;
 pub mod config_files;
 pub mod download;
 pub mod error;
+pub mod hub;
+pub mod identity;
 pub mod instance;
 pub mod java;
 pub mod lifecycle;
@@ -21,6 +23,7 @@ pub mod mods;
 pub mod mojang;
 pub mod notes;
 pub mod players;
+pub mod provision;
 pub mod query;
 pub mod rcon;
 pub mod runtime;
@@ -36,7 +39,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use error::{Error, Result};
-pub use model::CoreEvent;
+pub use hub::Hub;
+pub use model::{CoreEvent, HubEvent};
 pub use settings::{Mode, Settings};
 
 /// Platform paths injected by the shell (`app_config_dir`, `app_data_dir`).
@@ -58,6 +62,9 @@ pub struct Core {
     pub(crate) events: tokio::sync::broadcast::Sender<CoreEvent>,
     pub(crate) mojang_cache: tokio::sync::Mutex<Option<mojang::ManifestCache>>,
     pub(crate) last_advanced_phase: std::sync::Mutex<Option<model::ServerPhase>>,
+    /// Loader/version of the attached container, cached per container id
+    /// (§3.12 overview identity).
+    pub(crate) container_kind: std::sync::Mutex<Option<identity::ContainerKind>>,
     /// Serializes appends to the audit log (§3.11).
     pub(crate) audit_lock: tokio::sync::Mutex<()>,
     /// Serializes read-modify-write of the player notes store (§3.11).
@@ -100,6 +107,7 @@ impl Core {
             events,
             mojang_cache: tokio::sync::Mutex::new(None),
             last_advanced_phase: std::sync::Mutex::new(None),
+            container_kind: std::sync::Mutex::new(None),
             audit_lock: tokio::sync::Mutex::new(()),
             notes_lock: tokio::sync::Mutex::new(()),
             scheduler: scheduler::Engine::new(),
