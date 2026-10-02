@@ -2,12 +2,13 @@
 
 // Dashboard onboarding for an advanced-mode server that has no container
 // yet: create one from the itzg/minecraft-server image (contract §3.13) —
-// pick a loader and version, MineUI does the `run` and wires the server up.
+// pick a server type or a modpack, MineUI does the `run` and wires the
+// server up. Without Podman or Docker it explains how to get one instead.
 // The simple-mode counterpart is CreateServerFlow.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Container, HardDrive, Loader2, Rocket } from "lucide-react";
+import { Boxes, Container, HardDrive, Loader2, Package, Rocket, type LucideIcon } from "lucide-react";
 import {
   Button,
   Card,
@@ -21,14 +22,19 @@ import {
   TextField,
   toast,
 } from "@heroui/react";
+import DiscardServerButton from "@/app/components/DiscardServerButton";
+import ModpackPicker, { type ModpackChoice } from "@/app/components/ModpackPicker";
+import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import { useUISound } from "@/app/hooks/useUISound";
 import { fadeUp } from "@/app/lib/motion";
 import {
   createContainer,
+  detectRuntimes,
   listMcVersions,
   IpcError,
   type ContainerLoader,
   type McVersion,
+  type RuntimeProbe,
   type Settings,
 } from "@/app/lib/ipc";
 
@@ -37,6 +43,27 @@ const DEFAULT_CONTAINER_NAME = "minecraft-server";
 const MEMORY_MIN = 1024;
 const MEMORY_MAX = 16384;
 const MEMORY_STEP = 512;
+const MEMORY_DEFAULT = 4096;
+/** Modpacks are heavier than a bare loader. */
+const MEMORY_DEFAULT_MODPACK = 6144;
+
+/** What the new container runs. */
+type Kind = "type" | "modpack";
+
+const KINDS: { id: Kind; title: string; description: string; icon: LucideIcon }[] = [
+  {
+    id: "type",
+    title: "A server type",
+    description: "Vanilla, Paper, Fabric, Forge… You add mods or plugins yourself afterwards.",
+    icon: Boxes,
+  },
+  {
+    id: "modpack",
+    title: "A modpack",
+    description: "A ready-made pack from Modrinth or CurseForge, installed with its loader and mods.",
+    icon: Package,
+  },
+];
 
 const LOADERS: { id: ContainerLoader; label: string; hint: string }[] = [
   { id: "vanilla", label: "Vanilla", hint: "Mojang's own server. No mods or plugins." },
@@ -75,6 +102,10 @@ export default function CreateContainerFlow({
 }: CreateContainerFlowProps) {
   const router = useRouter();
   const { play } = useUISound();
+  const [kind, setKind] = useState<Kind>("type");
+  const [modpack, setModpack] = useState<ModpackChoice | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeProbe | null>(null);
+  const [runtimeChecking, setRuntimeChecking] = useState(false);
   const [loader, setLoader] = useState<ContainerLoader>("vanilla");
   const [versions, setVersions] = useState<McVersion[]>([]);
   const [version, setVersion] = useState(LATEST);
@@ -83,7 +114,9 @@ export default function CreateContainerFlow({
       ? settings.advanced.containerName
       : containerNameFor(serverName),
   );
-  const [memoryMb, setMemoryMb] = useState(4096);
+  const [memoryMb, setMemoryMb] = useState(MEMORY_DEFAULT);
+  // Follow the kind's default until the user moves the slider themselves.
+  const [memoryTouched, setMemoryTouched] = useState(false);
   const [gamePort, setGamePort] = useState(settings.advanced.queryPort);
   const [rconPort, setRconPort] = useState(settings.advanced.rconPort);
   const [exposeToNetwork, setExposeToNetwork] = useState(true);
@@ -97,9 +130,69 @@ export default function CreateContainerFlow({
       .catch(() => setVersions([]));
   }, []);
 
+  const checkRuntime = useCallback(() => {
+    setRuntimeChecking(true);
+    detectRuntimes()
+      .then(setRuntime)
+      .catch(() => setRuntime(null))
+      .finally(() => setRuntimeChecking(false));
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
+    checkRuntime();
+  }, [checkRuntime]);
+
+  // Known to be missing (not merely unchecked): explain, and block Create.
+  const noRuntime = runtime !== null && runtime.resolved === null;
+
+  const changeKind = (next: Kind) => {
+    if (next === kind || creating) return;
+    play("toggle_on");
+    setKind(next);
+    setModpack(null);
+    // A modpack needs a concrete version; a server type can take the latest.
+    setVersion(next === "modpack" ? "" : LATEST);
+    if (!memoryTouched) {
+      setMemoryMb(next === "modpack" ? MEMORY_DEFAULT_MODPACK : MEMORY_DEFAULT);
+    }
+  };
+
+  const changeModpack = (choice: ModpackChoice | null) => {
+    setModpack(choice);
+    if (choice === null) {
+      setVersion("");
+    } else if (choice.source === "modrinth") {
+      // The pack says which versions it has builds for; start on the newest.
+      setVersion(choice.gameVersions[0] ?? "");
+    } else if (modpack?.source !== "curseforge") {
+      setVersion("");
+    }
+  };
+
+  // Which Minecraft versions can be chosen, and whether "latest" is one.
+  const packVersions = modpack?.source === "modrinth" ? modpack.gameVersions : null;
+  const versionIds = packVersions ?? versions.map((item) => item.id);
+  const versionHint =
+    kind === "type"
+      ? "Mod loaders can trail the newest release — for a modded server, pick the version your mods are built for."
+      : modpack === null
+        ? "Choose the modpack first."
+        : modpack.source === "modrinth"
+          ? "The versions this pack has builds for. MineUI installs its newest release for the one you pick."
+          : "The Minecraft version the pack is made for — it decides which Java the server gets, and a pack on the wrong Java does not start.";
+
   const loaderMeta = LOADERS.find((item) => item.id === loader);
+  const workloadReady =
+    kind === "type" || (modpack !== null && version !== "" && version !== LATEST);
   const canCreate =
-    eulaAccepted && containerName.trim() !== "" && gamePort > 0 && rconPort > 0 && !creating;
+    eulaAccepted &&
+    containerName.trim() !== "" &&
+    gamePort > 0 &&
+    rconPort > 0 &&
+    workloadReady &&
+    !noRuntime &&
+    !creating;
 
   const handleCreate = async () => {
     if (!canCreate) return;
@@ -115,6 +208,10 @@ export default function CreateContainerFlow({
         rconPort,
         exposeToNetwork,
         acceptEula: true,
+        modpack:
+          kind === "modpack" && modpack
+            ? { source: modpack.source, project: modpack.project }
+            : null,
       });
       play("success");
       toast.success(`${containerName.trim()} created — the server is installing`);
@@ -131,12 +228,16 @@ export default function CreateContainerFlow({
   return (
     <motion.section initial="hidden" animate="show" variants={fadeUp("base")}>
       <Card className="mx-auto max-w-2xl p-6">
-        <Card.Header className="flex-col items-start gap-2">
-          <div className="flex items-center gap-3 text-sm text-accent">
-            <Container size={18} />
-            <span className="font-display text-xs tracking-wide">
-              Create this server
-            </span>
+        <Card.Header className="flex-col items-stretch gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3 text-sm text-accent">
+              <Container size={18} />
+              <span className="font-display text-xs tracking-wide">
+                Create this server
+              </span>
+            </div>
+            {/* Added by mistake, or changed your mind: back out from here. */}
+            <DiscardServerButton isDisabled={creating} />
           </div>
           <Card.Description>
             {serverName} has no container yet. MineUI can create one from the{" "}
@@ -145,7 +246,58 @@ export default function CreateContainerFlow({
           </Card.Description>
         </Card.Header>
 
+        {noRuntime && (
+          <Card.Content className="mt-4">
+            <RuntimeInstallHelp onRecheck={checkRuntime} checking={runtimeChecking} />
+          </Card.Content>
+        )}
+
         <Card.Content className="mt-4 grid gap-5 text-sm md:grid-cols-2">
+          <div
+            role="radiogroup"
+            aria-label="What the server runs"
+            className="grid gap-2 sm:grid-cols-2 md:col-span-2"
+          >
+            {KINDS.map((option) => {
+              const selected = option.id === kind;
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={creating}
+                  onClick={() => changeKind(option.id)}
+                  onMouseEnter={() => play("hover")}
+                  className="flex items-start gap-3 rounded-lg border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
+                  style={{
+                    borderColor: selected ? "var(--accent)" : "var(--border)",
+                    background: selected
+                      ? "color-mix(in oklab, var(--accent) 8%, transparent)"
+                      : "var(--surface-secondary)",
+                    outlineColor: "var(--focus)",
+                    transition:
+                      "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
+                  }}
+                >
+                  <Icon size={16} className="mt-0.5 shrink-0 text-accent" />
+                  <span className="flex-1">
+                    <span className="block text-sm font-semibold">{option.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted">{option.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {kind === "modpack" && (
+            <div className="md:col-span-2">
+              <ModpackPicker value={modpack} onChange={changeModpack} isDisabled={creating} />
+            </div>
+          )}
+
+          {kind === "type" && (
           <div className="flex flex-col gap-2">
             <Label>Server type</Label>
             <Select
@@ -176,13 +328,17 @@ export default function CreateContainerFlow({
             </Select>
             <span className="text-xs text-muted">{loaderMeta?.hint}</span>
           </div>
+          )}
 
-          <div className="flex flex-col gap-2">
+          <div className={`flex flex-col gap-2 ${kind === "modpack" ? "md:col-span-2" : ""}`}>
             <Label>Minecraft version</Label>
             <Select
               className="w-full text-sm"
-              value={version}
-              isDisabled={creating}
+              placeholder={
+                kind === "modpack" && modpack === null ? "Choose the modpack first" : "Pick the version"
+              }
+              value={version === "" ? null : version}
+              isDisabled={creating || (kind === "modpack" && modpack === null)}
               onChange={(value) => {
                 if (value === null) return;
                 play("click_confirm");
@@ -196,23 +352,22 @@ export default function CreateContainerFlow({
               </Select.Trigger>
               <Select.Popover>
                 <ListBox className="max-h-72 overflow-auto">
-                  <ListBox.Item id={LATEST} textValue="Latest release">
-                    Latest release
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                  {versions.map((item) => (
-                    <ListBox.Item key={item.id} id={item.id} textValue={item.id}>
-                      {item.id}
+                  {kind === "type" && (
+                    <ListBox.Item id={LATEST} textValue="Latest release">
+                      Latest release
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  )}
+                  {versionIds.map((id) => (
+                    <ListBox.Item key={id} id={id} textValue={id}>
+                      {id}
                       <ListBox.ItemIndicator />
                     </ListBox.Item>
                   ))}
                 </ListBox>
               </Select.Popover>
             </Select>
-            <span className="text-xs text-muted">
-              Mod loaders can trail the newest release — for a modded server,
-              pick the version your mods are built for.
-            </span>
+            <span className="text-xs text-muted">{versionHint}</span>
           </div>
 
           <TextField
@@ -261,7 +416,10 @@ export default function CreateContainerFlow({
               step={MEMORY_STEP}
               isDisabled={creating}
               formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
-              onChange={(value) => setMemoryMb(value as number)}
+              onChange={(value) => {
+                setMemoryTouched(true);
+                setMemoryMb(value as number);
+              }}
             >
               <Label className="sr-only">Server memory in megabytes</Label>
               <Slider.Output />
@@ -272,7 +430,7 @@ export default function CreateContainerFlow({
             </Slider>
             <span className="text-xs text-muted">
               JVM heap. 2048 MB suits a small vanilla server; modded servers
-              usually want 4096 MB or more.
+              usually want 4096 MB or more, large modpacks 6144–8192 MB.
             </span>
           </div>
 

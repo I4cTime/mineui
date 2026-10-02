@@ -45,7 +45,7 @@
    the `header-full:` / `header-mid:` / `header-min:` variants.
    NOT inside `@theme inline`: breakpoints must be static values. */
 @theme {
-  --breakpoint-header-full: 75rem; /* 1200px — full labels + Ko-fi */
+  --breakpoint-header-full: 80rem; /* 1280px — full labels + Ko-fi */
   --breakpoint-header-mid: 56.25rem; /* 900px — icon-only nav */
   --breakpoint-header-min: 43.75rem; /* 700px — priority overflow */
 }

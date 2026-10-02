@@ -31,7 +31,9 @@ import {
   toast,
 } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import DeleteContainerButton from "@/app/components/DeleteContainerButton";
 import PageHeader from "@/app/components/PageHeader";
+import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import { formatDateTime } from "@/app/lib/format";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
@@ -690,6 +692,15 @@ export default function SettingsPage() {
                 </Card.Description>
               </Card.Header>
               <Card.Content className="mt-4 grid gap-4 md:grid-cols-2">
+                {runtimes && runtimes.resolved === null && (
+                  <div className="md:col-span-2">
+                    <RuntimeInstallHelp
+                      onRecheck={() =>
+                        detectRuntimes().then(setRuntimes).catch(() => setRuntimes(null))
+                      }
+                    />
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   <Label>Container runtime</Label>
                   <Select
@@ -877,6 +888,9 @@ export default function SettingsPage() {
                   />
                 </TextField>
               </Card.Content>
+              {/* The card's footer; renders nothing while there is no
+                  container to delete. */}
+              <DeleteContainerButton />
             </Card>
           </motion.section>
         )}

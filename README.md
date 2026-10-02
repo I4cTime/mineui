@@ -63,14 +63,29 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.6.0_amd64.AppImage` — `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.6.0_amd64.deb` — `sudo apt install ./MineUI_2.6.0_amd64.deb` |
-| Windows x64 | `MineUI_2.6.0_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.6.0_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.6.0_x64.dmg` |
+| Linux x86_64 | `MineUI_2.7.0_amd64.AppImage` — `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.7.0_amd64.deb` — `sudo apt install ./MineUI_2.7.0_amd64.deb` |
+| Windows x64 | `MineUI_2.7.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.7.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.7.0_x64.dmg` |
 
 Simple mode needs Java installed (MineUI version-checks it against the
 Minecraft release you pick). Advanced mode needs Docker or Podman.
+
+### Installing a container runtime
+
+Either works; MineUI finds it by itself and prefers Podman when both exist.
+
+| | Podman (recommended) | Docker |
+| --- | --- | --- |
+| **Linux** | `sudo apt install podman` · `sudo dnf install podman` · `sudo pacman -S podman` · `sudo zypper install podman` | Install [Docker Engine](https://docs.docker.com/engine/install/), then `sudo usermod -aG docker $USER` and log out and back in — MineUI runs `docker` as you, without sudo |
+| **Windows** | `wsl --install` (once, restart), `winget install RedHat.Podman`, `podman machine init`, `podman machine start` — or [Podman Desktop](https://podman-desktop.io) | `winget install Docker.DockerDesktop`, start it once |
+| **macOS** | `brew install podman`, `podman machine init`, `podman machine start` — or [Podman Desktop](https://podman-desktop.io) | `brew install --cask docker-desktop`, start it once |
+
+Installed but MineUI still reports none? An app started from a launcher can
+have a shorter `PATH` than your terminal (common with Homebrew on macOS). Put
+the full path to `podman` or `docker` in Server Settings → Runtime binary
+override.
 
 > `v1.0.0` on the Releases page is the old Electron app — it predates this
 > architecture and isn't what this README describes.
@@ -105,8 +120,27 @@ creates an [`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-se
 container for you — pick Vanilla, Paper, Purpur, Fabric, Quilt, Forge or
 NeoForge, the Minecraft version, memory and ports — picks the image with the
 right Java for that version, generates the RCON password, and connects itself
-to the result. The world lives in a named volume; MineUI never deletes a
-container or a volume.
+to the result. The world lives in a named volume.
+
+**Deleting is always your call.** MineUI removes a container only when you
+ask it to — *Delete container* in Server Settings, or the tick box when you
+remove a server — and it keeps the world unless you tick that too and type
+the container's name. A world stored in a folder on your computer is never
+deleted. Deleting just the container is also how you start a server over
+with a different loader or modpack.
+
+**Or start from a modpack.** Choose *A modpack* instead of a server type:
+search [Modrinth](https://modrinth.com/modpacks) right in the app (only packs
+that can run on a server are listed) or paste a CurseForge pack's page
+address, pick the Minecraft version, and the server comes up with the pack's
+loader and mods installed. No API key needed for either. A modpack is applied
+when the container is created — to switch packs, delete the container in
+Server Settings and create it again.
+
+**No Podman or Docker yet?** Wherever a container is needed and neither is
+installed, MineUI shows the install steps for your OS (Linux, Windows, macOS)
+with copyable commands, and a *Check again* button — see also
+[Installing a container runtime](#installing-a-container-runtime).
 
 ### App settings vs. server settings
 
@@ -135,6 +169,11 @@ raw RCON access configured.
 ### Mods & plugins
 
 Browse what's installed, upload a jar from disk, or download one from a URL.
+The add dialog preselects mod or plugin from what the server runs and warns
+when the choice cannot load there. Have a whole set of mods as a `.zip` — a
+zipped folder, or a server pack? MineUI unpacks the jars inside and installs
+them together, which is the way to put a pack's mods onto a server that
+already exists.
 
 ### Configuration editor
 
@@ -179,8 +218,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 151 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (43 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 173 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (46 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -208,7 +247,7 @@ Other commands:
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (151 tests; must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (173 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

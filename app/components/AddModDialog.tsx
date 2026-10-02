@@ -2,16 +2,18 @@
 
 // Mods → "Add mod or plugin". One flow, top to bottom:
 //   1. what it is (mod or plugin — decides the folder),
-//   2. where it comes from (a link, or a file on this computer),
+//   2. where it comes from (a link, or a file on this computer) — and, when
+//      that is a .zip, whether it is one mod or a bundle of mods to unpack,
 //   3. what happened (progress, errors in place, what was added so far).
 // The dialog stays open after a success so several files can be added in a
-// row. IPC: upload_mod / download_mod (contract §3.5).
+// row. IPC: upload_mod / download_mod / unpack_mod_archive (contract §3.5).
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Blocks,
   CheckCircle2,
   Download,
+  FileArchive,
   FolderOpen,
   Link2,
   Plug,
@@ -35,6 +37,7 @@ import { formatBytes } from "@/app/lib/format";
 import {
   downloadMod,
   onDownloadProgress,
+  unpackModArchive,
   uploadMod,
   IpcError,
   type DownloadProgressEvent,
@@ -42,6 +45,26 @@ import {
 } from "@/app/lib/ipc";
 
 type Source = "link" | "file";
+
+/** What a .zip is: several mods to unpack, or one mod shipped as a zip. */
+type ZipAs = "bundle" | "single";
+
+const ZIP_CHOICES: { id: ZipAs; title: string; description: string }[] = [
+  {
+    id: "bundle",
+    title: "Several mods",
+    description: "A zipped folder of mods or a server pack. MineUI unpacks the .jar files inside.",
+  },
+  {
+    id: "single",
+    title: "One mod",
+    description: "A mod that is itself a .zip. It is added as it is.",
+  },
+];
+
+const isZip = (name: string) => /\.zip$/i.test(name);
+
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 const TARGETS: {
   id: ModTarget;
@@ -166,6 +189,12 @@ function AddModForm({
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<{ filename: string; target: ModTarget }[]>([]);
+  // How a .zip link is treated; a bundle is by far the common case.
+  const [zipAs, setZipAs] = useState<ZipAs>("bundle");
+  // A .zip picked from this computer, waiting for that same answer.
+  const [pendingZip, setPendingZip] = useState<string | null>(null);
+  // One line about the last bundle: how many went in, how many were left out.
+  const [bundleNote, setBundleNote] = useState<string | null>(null);
 
   // A transfer cut short by unmount must not leave the backdrop locked.
   useEffect(() => () => setBusy(false), [setBusy]);
@@ -178,6 +207,9 @@ function AddModForm({
   const nameRequired = url !== null && linkName === null;
   const canDownload =
     !busy && url !== null && !nameInvalid && (linkName !== null || typedName !== "");
+  // The name the file will have decides whether the zip question applies.
+  const linkIsZip = url !== null && isZip(typedName || linkName || "");
+  const unpackLink = linkIsZip && zipAs === "bundle";
 
   // Says so when the choice above cannot work on this server.
   const loaderName = loader ? (LOADER_NAMES[loader] ?? loader) : null;
@@ -188,9 +220,31 @@ function AddModForm({
         ? `${active.name} runs ${loaderName}, which loads ${loads}, not ${target}.`
         : null;
 
+  // Newest first. A file added again replaced the earlier copy on the
+  // server, so it is listed once.
+  const remember = (filenames: string[]) =>
+    setAdded((list) => [
+      ...filenames.map((filename) => ({ filename, target })),
+      ...list.filter((item) => item.target !== target || !filenames.includes(item.filename)),
+    ]);
+
   const finish = (filename: string) => {
     play("success");
-    setAdded((list) => [{ filename, target }, ...list]);
+    remember([filename]);
+    setBundleNote(null);
+    onInstalled();
+  };
+
+  const finishBundle = (archive: string, installed: string[], skipped: number) => {
+    play("success");
+    remember(installed);
+    const what = target === "mods" ? "mod" : "plugin";
+    setBundleNote(
+      `${installed.length} ${what}${installed.length === 1 ? "" : "s"} unpacked from ${archive}` +
+        (skipped > 0
+          ? ` — ${skipped} other file${skipped === 1 ? " was" : "s were"} left out (configs and anything that is not a ${what}).`
+          : "."),
+    );
     onInstalled();
   };
 
@@ -209,8 +263,16 @@ function AddModForm({
       if (event.kind === "mod") setProgress(event);
     });
     try {
-      const { filename } = await downloadMod(url.toString(), target, typedName || undefined);
-      finish(filename);
+      if (unpackLink) {
+        const done = await unpackModArchive(
+          { url: url.toString(), filename: typedName || undefined },
+          target,
+        );
+        finishBundle(typedName || linkName || "the archive", done.installed, done.skipped);
+      } else {
+        const { filename } = await downloadMod(url.toString(), target, typedName || undefined);
+        finish(filename);
+      }
       setLink("");
       setSaveAs("");
     } catch (err) {
@@ -232,8 +294,35 @@ function AddModForm({
     try {
       const sourcePath = await pickModFile();
       if (sourcePath === null) return; // cancelled
+      setPendingZip(null);
+      if (isZip(sourcePath)) {
+        // A zip is either one mod or many: ask before doing anything.
+        setPendingZip(sourcePath);
+        return;
+      }
       const { filename } = await uploadMod(sourcePath, target);
       finish(filename);
+    } catch (err) {
+      fail(err, "The file could not be added.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePendingZip = async (as: ZipAs) => {
+    if (busy || pendingZip === null) return;
+    play("click_confirm");
+    setBusy(true);
+    setError(null);
+    try {
+      if (as === "bundle") {
+        const done = await unpackModArchive({ sourcePath: pendingZip }, target);
+        finishBundle(baseName(pendingZip), done.installed, done.skipped);
+      } else {
+        const { filename } = await uploadMod(pendingZip, target);
+        finish(filename);
+      }
+      setPendingZip(null);
     } catch (err) {
       fail(err, "The file could not be added.");
     } finally {
@@ -325,6 +414,7 @@ function AddModForm({
               if (busy) return;
               setSource(key as Source);
               setError(null);
+              setPendingZip(null);
             }}
           >
             <Tabs.ListContainer>
@@ -400,17 +490,98 @@ function AddModForm({
                 </Description>
                 <FieldError>The file name must end in .jar or .zip.</FieldError>
               </TextField>
+
+              {linkIsZip && (
+                <div className="flex flex-col gap-2">
+                  <span id="add-mod-zip-as" className="text-sm font-medium">
+                    This is a .zip. What is inside?
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-labelledby="add-mod-zip-as"
+                    className="grid gap-2 sm:grid-cols-2"
+                  >
+                    {ZIP_CHOICES.map((choice) => {
+                      const selected = choice.id === zipAs;
+                      return (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          disabled={busy}
+                          onClick={() => {
+                            play("toggle_on");
+                            setZipAs(choice.id);
+                          }}
+                          className="rounded-lg border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
+                          style={{
+                            borderColor: selected ? "var(--accent)" : "var(--border)",
+                            background: selected
+                              ? "color-mix(in oklab, var(--accent) 8%, transparent)"
+                              : "var(--surface-secondary)",
+                            outlineColor: "var(--focus)",
+                          }}
+                        >
+                          <span className="block text-sm font-semibold">{choice.title}</span>
+                          <span className="mt-0.5 block text-xs text-muted">
+                            {choice.description}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </Tabs.Panel>
 
             <Tabs.Panel id="file" className="pt-4">
-              <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
-                <FolderOpen size={22} className="text-accent" />
-                <p className="text-sm">Pick a .jar or .zip from this computer.</p>
-                <p className="text-xs text-muted">
-                  MineUI copies it into the server&apos;s {target} folder. Your
-                  original file stays where it is.
-                </p>
-              </div>
+              {pendingZip === null ? (
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
+                  <FolderOpen size={22} className="text-accent" />
+                  <p className="text-sm">Pick a .jar or .zip from this computer.</p>
+                  <p className="text-xs text-muted">
+                    MineUI copies it into the server&apos;s {target} folder. Your
+                    original file stays where it is. A .zip holding several
+                    mods can be unpacked.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="flex flex-col gap-3 rounded-lg border border-accent p-4"
+                  role="group"
+                  aria-label="What is inside the zip"
+                >
+                  <div className="flex items-center gap-2">
+                    <FileArchive size={16} className="shrink-0 text-accent" />
+                    <span className="truncate font-mono text-xs">{baseName(pendingZip)}</span>
+                  </div>
+                  <p className="text-sm">This is a .zip. What is inside?</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button
+                      isDisabled={busy}
+                      isPending={busy}
+                      onPress={() => handlePendingZip("bundle")}
+                      onMouseEnter={() => play("hover")}
+                    >
+                      Several mods — unpack them
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      isDisabled={busy}
+                      onPress={() => handlePendingZip("single")}
+                      onMouseEnter={() => play("hover")}
+                    >
+                      One mod — add as it is
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Unpacking takes the .jar files from the zip&apos;s top level
+                    or its {target} folder. Configs and other files in it are
+                    not installed.
+                  </p>
+                </div>
+              )}
             </Tabs.Panel>
           </Tabs>
         </section>
@@ -457,7 +628,8 @@ function AddModForm({
             style={{ background: "var(--surface-secondary)" }}
             role="status"
           >
-            <ul className="flex flex-col gap-1.5">
+            {bundleNote && <p className="text-xs">{bundleNote}</p>}
+            <ul className="flex max-h-40 flex-col gap-1.5 overflow-y-auto">
               {added.map((item) => (
                 <li key={`${item.target}/${item.filename}`} className="flex items-center gap-2 text-xs">
                   <CheckCircle2 size={14} className="shrink-0 text-success" />
@@ -493,17 +665,23 @@ function AddModForm({
             onMouseEnter={() => play("hover")}
           >
             <Download size={16} />
-            {busy ? "Downloading…" : `Download ${target === "mods" ? "mod" : "plugin"}`}
+            {busy
+              ? "Downloading…"
+              : unpackLink
+                ? "Download and unpack"
+                : `Download ${target === "mods" ? "mod" : "plugin"}`}
           </Button>
         ) : (
           <Button
+            // While the zip question is open, its answer is the primary action.
+            variant={pendingZip ? "secondary" : "primary"}
             isDisabled={busy}
-            isPending={busy}
+            isPending={busy && pendingZip === null}
             onPress={handleChooseFile}
             onMouseEnter={() => play("hover")}
           >
             <FolderOpen size={16} />
-            {busy ? "Adding…" : "Choose file…"}
+            {busy ? "Adding…" : pendingZip ? "Choose another file…" : "Choose file…"}
           </Button>
         )}
       </Modal.Footer>

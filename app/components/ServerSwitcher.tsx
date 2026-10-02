@@ -59,7 +59,7 @@ export default function ServerSwitcher() {
             aria-hidden
             className={`size-2 shrink-0 rounded-full ${phaseDotClass(activeState?.phase)}`}
           />
-          <span className="hidden max-w-36 truncate header-mid:inline">
+          <span className="hidden max-w-28 truncate header-mid:inline">
             {active.name}
           </span>
           <ChevronsUpDown size={14} className="shrink-0 text-muted" />

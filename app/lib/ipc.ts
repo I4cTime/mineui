@@ -246,6 +246,9 @@ export type ServerOverview = {
   loader: string | null;
   /** Known version, or null (fall back to `status.version` while online). */
   mcVersion: string | null;
+  /** The modpack the container was created from (slug), or null. `loader`
+   *  is then "modrinth" or "auto_curseforge". */
+  modpack: string | null;
 };
 
 export const DEFAULT_SERVER_ID = "default";
@@ -280,7 +283,58 @@ export type CreateContainerArgs = {
   /** true: game port on every interface; false: 127.0.0.1 only. */
   exposeToNetwork: boolean;
   acceptEula: boolean;
+  /** Create from a modpack instead of a bare loader; `loader` is then
+   *  ignored and `mcVersion` must be a concrete version. */
+  modpack?: ModpackRef | null;
 };
+
+/** Result of delete_container (§3.13). */
+export type DeletedContainer = {
+  containerName: string;
+  /** The named volume deleted with it, or null. */
+  deletedVolume: string | null;
+  /** Why the data stayed although its deletion was asked for, or null. */
+  dataKept: string | null;
+};
+
+/**
+ * Deletes a server's container — and, only with `deleteData`, the volume
+ * holding its world. The server profile itself stays. Always for a named
+ * server: this is offered from lists as well as for the open server, and the
+ * caller must have shown the container's name and got a confirmation.
+ */
+export const deleteContainerFor = (serverId: string, deleteData: boolean) =>
+  call<DeletedContainer>("delete_container", { serverId, confirm: true, deleteData });
+
+export type ModpackSource = "modrinth" | "curseforge";
+
+export type ModpackRef = {
+  source: ModpackSource;
+  /** Slug, id, or the pack's page URL on that source. */
+  project: string;
+};
+
+/* ---------- modpack search (§3.14) ---------- */
+
+export type ModpackHit = {
+  source: "modrinth";
+  slug: string;
+  id: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** Minecraft versions the pack has builds for, oldest first. */
+  gameVersions: string[];
+  /** Any of forge, neoforge, fabric, quilt. */
+  loaders: string[];
+};
+
+/** Modrinth modpacks that can run on a server. Empty query = most
+ *  downloaded. CurseForge has no keyless search — name those by slug/URL. */
+export const searchModpacks = (query: string, limit?: number) =>
+  scoped<ModpackHit[]>("search_modpacks", { query, limit });
 
 /** Creates an itzg/minecraft-server container for the target server. Pulls
  *  the image when missing — the first call can take minutes. */
@@ -335,6 +389,27 @@ export const downloadMod = (url: string, target: ModTarget, filename?: string) =
   });
 export const deleteMod = (filename: string, target: ModTarget) =>
   scoped<void>("delete_mod", { filename, target });
+
+/** Result of unpacking a zip of mods (§3.5, §6.2a). */
+export type UnpackedMods = {
+  /** Filenames placed in the target folder, sorted. */
+  installed: string[];
+  /** Archive entries that were not installed. */
+  skipped: number;
+  /** Set when the archive came from a URL. */
+  downloadId: string | null;
+};
+
+/** Where a mod archive comes from: a file on this computer, or a link. */
+export type ModArchiveSource =
+  | { sourcePath: string }
+  | { url: string; filename?: string };
+
+/** Installs the .jar files inside a .zip (a zipped folder of mods, or a
+ *  server pack) — unlike uploadMod/downloadMod, which place a .zip as one
+ *  file. */
+export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
+  scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
 
 /* ---------- instance (simple mode) ---------- */
 

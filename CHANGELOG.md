@@ -3,6 +3,70 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.7.0] - 2026-10-02
+
+### Added
+
+- **Modpack servers**: when MineUI creates a container you can now choose
+  *A modpack* instead of a server type. Search Modrinth in the app (only
+  packs that can run on a server are listed, most downloaded first) or paste
+  a CurseForge pack's page address or slug, pick the Minecraft version, and
+  the server starts with the pack's loader and mods installed. No API key is
+  needed for either source. Memory defaults to 6144 MB for a pack. Servers
+  made from a pack are identified by it ("cobblemon-fabric 1.21.1 · Modrinth
+  pack · …"). A modpack is applied when the container is created; there is
+  no way to put one onto an existing server.
+- **Unpack a zip of mods** (Mods → Add mod or plugin): when the file you
+  pick or link to is a `.zip`, the dialog asks whether it is several mods or
+  one. For several, MineUI unpacks the `.jar` files inside and installs them
+  in one go — from a zipped folder of mods, or from the `mods` folder of a
+  server pack — and lists what went in and how many other files were left
+  out. This is how to put a set of mods onto a server that already exists.
+  Configs in the zip are not installed. A launcher modpack file (Modrinth
+  `.mrpack`-style or a CurseForge export) is recognized and pointed at
+  *create from a modpack* instead. Limits: 500 jars, 256 MiB each, 2 GiB in
+  total, counted on what the zip actually unpacks to.
+- **Install instructions for Podman and Docker**: wherever a container
+  runtime is needed and neither is installed — the create-container flow,
+  the dashboard of a container server, Server Settings — MineUI shows the
+  steps for Linux, Windows and macOS with copyable commands, opening on your
+  OS, and a *Check again* button. Previously the dashboard showed a generic
+  "Backend unavailable" error. The same steps are in the README.
+- **Delete a container from MineUI**: a failed or unwanted container server
+  no longer has to be cleaned up with the runtime CLI. *Delete container* in
+  Server Settings removes the container and keeps the server, so you can
+  create it again — the way to switch loader or modpack. *Remove server* in
+  App Settings can take the container along with a tick box. Both keep the
+  world unless you tick *Also delete its world data* and type the
+  container's name; then the data volume (world, configs, mods, backups) is
+  deleted too. A world stored in a folder on your computer is never
+  deleted. Everything is recorded in the activity log.
+- **Back out of an unfinished server**: the create forms (container and
+  managed vanilla) have a *Remove this server* button, so a server added by
+  mistake, or one you changed your mind about, can be dropped before
+  anything is created. The server you have open can now also be removed
+  from App Settings → Servers; MineUI then moves to the first server, which
+  is the only one that cannot be removed.
+- IPC: `search_modpacks`, `unpack_mod_archive`, `delete_container`; `create_container` takes an
+  optional `modpack`; the server overview reports `modpack`. Contract §3.5,
+  §3.12, §3.13, §3.14, §6.2a.
+
+### Fixed
+
+- **Header overlap at 1200–1280 px**: with a longer server name the nav
+  labels ran into the MineUI wordmark and the controls. Labels now appear
+  from 1280 px (was 1200), and the server name in the switcher truncates at
+  7rem (was 9rem). Checked in all four themes at every tier boundary.
+
+### Changed
+
+- MineUI's "never deletes a container" rule is replaced by "only on an
+  explicit, confirmed request". Removing a server still deletes nothing by
+  itself.
+- The app's content-security policy allows images from `cdn.modrinth.com`
+  (modpack icons in search results). Nothing else is loaded from it.
+- New dependency: the `zip` crate (reading mod archives).
+
 ## [2.6.0] - 2026-10-01
 
 ### Added

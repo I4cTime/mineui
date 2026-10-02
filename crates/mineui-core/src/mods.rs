@@ -26,7 +26,7 @@ const LIST_MODS_SCRIPT: &str =
 const LIST_PLUGINS_SCRIPT: &str =
     r#"for f in /data/plugins/*; do [ -f "$f" ] || continue; stat -c '%n|%s|%Y' "$f"; done"#;
 
-fn container_root(target: ModTarget) -> &'static str {
+pub(crate) fn container_root(target: ModTarget) -> &'static str {
     match target {
         ModTarget::Mods => "/data/mods",
         ModTarget::Plugins => "/data/plugins",
@@ -162,7 +162,7 @@ async fn place_file(
 /// size cap. Consequence for symlinks: a symlink is accepted only when its
 /// target is itself a regular `.jar`/`.zip` file — the copy reads the
 /// target's bytes anyway, so this is exactly the content that gets placed.
-async fn validate_upload_source(source: &Path) -> Result<PathBuf> {
+pub(crate) async fn validate_upload_source(source: &Path) -> Result<PathBuf> {
     let canonical = tokio::fs::canonicalize(source).await.map_err(|_| {
         Error::InvalidInput(format!(
             "source file does not exist or cannot be resolved: {}",
@@ -290,7 +290,7 @@ async fn delete_inner(core: &crate::Core, filename: &str, target: ModTarget) -> 
 
 /* ---------- audited entry points (§3.11) ---------- */
 
-fn target_label(target: ModTarget) -> &'static str {
+pub(crate) fn target_label(target: ModTarget) -> &'static str {
     match target {
         ModTarget::Mods => "mods",
         ModTarget::Plugins => "plugins",

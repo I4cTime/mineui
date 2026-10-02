@@ -11,10 +11,10 @@ use std::sync::Arc;
 
 use mineui_core::model::{
     AuditLog, BackupEntry, ConfigFileContent, ConfigFileList, CreateContainerArgs,
-    CreateInstanceArgs, DownloadedMod, InstanceStatus, JavaCheck, JobRunResult, LogsTail,
-    McVersion, Metrics, ModTarget, ModsList, PlayerHistory, PlayerNote, PlayerNotes, PlayersResult,
-    RconOutput, RuntimeProbe, SchedulerStatus, ServerList, ServerOverview, ServerState,
-    ServerStatus, UploadedMod,
+    CreateInstanceArgs, DeletedContainer, DownloadedMod, InstanceStatus, JavaCheck, JobRunResult,
+    LogsTail, McVersion, Metrics, ModTarget, ModpackHit, ModsList, PlayerHistory, PlayerNote,
+    PlayerNotes, PlayersResult, RconOutput, RuntimeProbe, SchedulerStatus, ServerList,
+    ServerOverview, ServerState, ServerStatus, UnpackedMods, UploadedMod,
 };
 use mineui_core::settings::Mode;
 use mineui_core::{Core, Error, Hub, Settings};
@@ -201,6 +201,26 @@ pub async fn delete_mod(
     mineui_core::mods::delete(&core, &filename, target).await
 }
 
+#[tauri::command]
+pub async fn unpack_mod_archive(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    source_path: Option<String>,
+    url: Option<String>,
+    filename: Option<String>,
+    target: ModTarget,
+) -> CmdResult<UnpackedMods> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::mod_archive::unpack(
+        &core,
+        source_path.as_deref(),
+        url.as_deref(),
+        filename.as_deref(),
+        target,
+    )
+    .await
+}
+
 /* ---------- §3.6 instance (simple mode only; WRONG_MODE enforced in core) ---------- */
 
 #[tauri::command]
@@ -382,6 +402,30 @@ pub async fn create_container(
 ) -> CmdResult<ServerState> {
     let core = core_for(&hub, server_id).await?;
     mineui_core::provision::create(&core, &args).await
+}
+
+#[tauri::command]
+pub async fn delete_container(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    confirm: bool,
+    delete_data: bool,
+) -> CmdResult<DeletedContainer> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::provision::delete(&core, confirm, delete_data).await
+}
+
+/* ---------- §3.14 modpack search ---------- */
+
+#[tauri::command]
+pub async fn search_modpacks(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    query: String,
+    limit: Option<u32>,
+) -> CmdResult<Vec<ModpackHit>> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modpacks::search(&core, &query, limit).await
 }
 
 /* ---------- §3.12 server profiles ---------- */

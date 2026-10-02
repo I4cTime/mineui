@@ -12,6 +12,8 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   isLoading?: boolean;
+  /** Keep the confirm button off until a condition in `footer` is met. */
+  isConfirmDisabled?: boolean;
   variant?: "default" | "danger";
   onConfirm: () => void;
   onCancel: () => void;
@@ -25,6 +27,7 @@ export default function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   isLoading = false,
+  isConfirmDisabled = false,
   variant = "default",
   onConfirm,
   onCancel,
@@ -85,7 +88,7 @@ export default function ConfirmDialog({
           </AlertDialog.Header>
           <AlertDialog.Body>
             {description && <p className="text-sm text-muted">{description}</p>}
-            {footer}
+            {footer && <div className="mt-4">{footer}</div>}
           </AlertDialog.Body>
           <AlertDialog.Footer>
             <Button
@@ -99,7 +102,7 @@ export default function ConfirmDialog({
             <Button
               variant={variant === "danger" ? "danger" : "primary"}
               onPress={handleConfirm}
-              isDisabled={isLoading}
+              isDisabled={isLoading || isConfirmDisabled}
               isPending={isLoading}
               onMouseEnter={() => play("hover")}
             >

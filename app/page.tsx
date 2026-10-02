@@ -24,6 +24,7 @@ import { useMode } from "@/app/components/ModeProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
+import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import ServerIdentity from "@/app/components/ServerIdentity";
 import ServersOverview from "@/app/components/ServersOverview";
 import { useServers } from "@/app/components/ServerProvider";
@@ -90,6 +91,9 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [backendError, setBackendError] = useState<string | null>(null);
+  // Advanced mode with neither Podman nor Docker installed is not a broken
+  // backend — it gets install instructions instead of the generic error.
+  const [runtimeMissing, setRuntimeMissing] = useState(false);
   const logsRef = useRef<HTMLDivElement>(null);
   const { play } = useUISound();
   // Shared app-wide mode (app/components/ModeProvider.tsx) — not derived from
@@ -129,7 +133,9 @@ export default function Home() {
         setInstance(null);
       }
       setBackendError(null);
+      setRuntimeMissing(false);
     } catch (error) {
+      setRuntimeMissing(error instanceof IpcError && error.code === "RUNTIME_NOT_FOUND");
       setBackendError(
         error instanceof IpcError ? error.message : String(error),
       );
@@ -261,6 +267,33 @@ export default function Home() {
             <SkeletonCard />
             <SkeletonCard />
           </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (backendError !== null && runtimeMissing) {
+    return (
+      <div className="min-h-screen bg-background">
+        <main className="page-main mx-auto flex max-w-3xl flex-col justify-center gap-6 px-4 py-10 md:px-6">
+          <Card className="p-6">
+            <Card.Header className="flex-col items-start gap-2">
+              <div className="flex items-center gap-3 text-sm text-accent">
+                <Server size={18} />
+                <span className="font-pixel text-xs tracking-wide">
+                  {activeServer.name} needs a container runtime
+                </span>
+              </div>
+              <Card.Description>
+                This server runs in a container, and MineUI found neither
+                Podman nor Docker on this computer. Your other servers are
+                unaffected — a managed vanilla server needs no containers.
+              </Card.Description>
+            </Card.Header>
+            <Card.Content className="mt-4">
+              <RuntimeInstallHelp onRecheck={() => bootstrap()} />
+            </Card.Content>
+          </Card>
         </main>
       </div>
     );

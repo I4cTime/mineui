@@ -11,7 +11,7 @@ contribution process; this file is conventions and constraints only.
 - `pnpm lint` — ESLint
 - `pnpm tauri dev` — full app (Next.js dev server + Tauri window)
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (151 tests, must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (173 tests, must stay green)
 - `cargo fmt` / `cargo clippy` — run before committing any Rust change
 
 pnpm only. Do not use npm/yarn/bun.
@@ -48,8 +48,13 @@ Do not change either contract as a side effect of unrelated work.
 - Scope split (theme contract §9.1): nav pages are per-server and use
   `<PageHeader>` (which names the server); anything app-wide goes on
   `/app-settings` with `<PageHeader scope="app">`, never into `/settings`.
-- `provision` (contract §3.13) only ever *creates* containers. Never add code
-  that removes a container or volume the user did not just fail to create.
+- Deleting containers (contract §3.13): only `provision::delete`, only on an
+  explicit confirmed request (`confirm: true`), a data volume only with
+  `deleteData`, and never a bind-mounted host folder. Never remove a
+  container or volume as a side effect of anything else — `remove_server`,
+  errors, cleanup — except the half-made container a failed create leaves.
+  The UI must show the container's name and require it typed before sending
+  `deleteData: true`.
 
 ## Design tokens
 

@@ -285,6 +285,8 @@ const LOADER_LABELS: Record<string, string> = {
   purpur: "Purpur",
   spigot: "Spigot",
   bukkit: "Bukkit",
+  modrinth: "Modrinth pack",
+  auto_curseforge: "CurseForge pack",
 };
 
 /**
@@ -302,8 +304,12 @@ export function identityLine(entry: ServerOverview | undefined): string {
     ? (LOADER_LABELS[entry.loader] ??
       entry.loader.charAt(0).toUpperCase() + entry.loader.slice(1))
     : null;
-  const kind = [loader, version].filter(Boolean).join(" ");
-  return [kind, entry.containerName ?? "Managed", entry.address]
+  // A modpack server is named by its pack: "cobblemon-fabric 1.21.1 ·
+  // Modrinth pack"; a plain one by its loader: "Forge 1.21.1".
+  const kind = entry.modpack
+    ? [[entry.modpack, version].filter(Boolean).join(" "), loader]
+    : [[loader, version].filter(Boolean).join(" ")];
+  return [...kind, entry.containerName ?? "Managed", entry.address]
     .filter(Boolean)
     .join(" · ");
 }
