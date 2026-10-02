@@ -4,6 +4,21 @@ use chrono::{Local, TimeZone};
 
 use crate::model::Tps;
 
+/// Prepare a child process for a GUI app (§3.1): on Windows every spawn
+/// would otherwise open a console window for its lifetime, and the status
+/// poll spawns several a second. No-op elsewhere.
+pub fn hide_console(cmd: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 /// Parse container-runtime human byte strings ("1.2GiB", "512MB", "0B").
 /// Decimal units use base 1000; binary (`*iB`) use 1024 (v1 parity).
 pub fn parse_bytes(value: &str) -> Option<u64> {

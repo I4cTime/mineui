@@ -3,6 +3,20 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.7.1] - 2026-10-02
+
+### Fixed
+
+- **Windows: no more flashing terminal windows.** Every `podman`/`docker`/
+  `java` call MineUI makes is now spawned without a console window; before,
+  the status poll opened and closed one several times a second.
+- **Creating a container on Podman machines without `pids` delegation**
+  (seen on WSL: `crun: controller pids is not available under
+  /sys/fs/cgroup/non-systemd/…`). Podman's default pids limit (2048) cannot
+  be applied there; when the runtime says so, MineUI removes the half-made
+  container and creates it once more with no pids limit, as Docker would.
+  Nothing else is retried.
+
 ## [2.7.0] - 2026-10-02
 
 ### Added
