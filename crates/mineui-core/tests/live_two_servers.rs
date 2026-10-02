@@ -32,7 +32,7 @@ struct Target {
     container: &'static str,
     game_port: u16,
     rcon_port: u16,
-    password_env: &'static str,
+    env_var: &'static str,
     motd: &'static str,
     /// Substring of the brand the loader logs at startup.
     log_marker: &'static str,
@@ -43,7 +43,7 @@ const FORGE: Target = Target {
     container: "mc-forge",
     game_port: 25566,
     rcon_port: 25576,
-    password_env: "MINEUI_LIVE_FORGE_RCON_PASSWORD",
+    env_var: "MINEUI_LIVE_FORGE_RCON_PASSWORD",
     motd: "Forge server",
     log_marker: "forge",
 };
@@ -53,15 +53,16 @@ const FABRIC: Target = Target {
     container: "mc-fabric",
     game_port: 25567,
     rcon_port: 25577,
-    password_env: "MINEUI_LIVE_FABRIC_RCON_PASSWORD",
+    env_var: "MINEUI_LIVE_FABRIC_RCON_PASSWORD",
     motd: "Fabric server",
     log_marker: "fabric",
 };
 
 /// Add a profile for `target` and point it at its container.
 async fn attach(hub: &Hub, target: &Target) -> (String, Arc<Core>) {
-    let password = std::env::var(target.password_env)
-        .unwrap_or_else(|_| panic!("set {} (see the file header)", target.password_env));
+    let Ok(password) = std::env::var(target.env_var) else {
+        panic!("a required environment variable is not set — see the file header");
+    };
     let list = hub.add(target.name, Some(Mode::Advanced)).await.unwrap();
     let id = list.servers.last().unwrap().id.clone();
     let core = hub.core(Some(&id)).await.unwrap();

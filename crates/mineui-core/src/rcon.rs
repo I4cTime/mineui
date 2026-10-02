@@ -323,7 +323,10 @@ mod tests {
 
     async fn exec_against(loader: Loader, output: &'static str) -> Result<String> {
         let port = fake_server(loader, output).await;
-        let mut client = RconClient::connect("127.0.0.1", port, "pw").await?;
+        // The fake server accepts anything; a generated value keeps a literal
+        // credential out of the source.
+        let password = crate::instance::generate_rcon_password();
+        let mut client = RconClient::connect("127.0.0.1", port, &password).await?;
         client.exec("say hi").await
     }
 
