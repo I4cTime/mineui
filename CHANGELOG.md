@@ -43,6 +43,9 @@ All notable changes to MineUI are documented here. Format follows
   frames every command with a terminator packet.
 - RCON output longer than 4096 bytes (large mod or player lists) was cut off
   after the first packet; multi-packet responses are now reassembled.
+- Activity log: an entry could still be in flight when the log was re-read
+  right after an action, so the newest entry was sometimes missing until the
+  next refresh. Appends are now flushed before the action returns.
 - A `PressResponder was rendered without a pressable child` console warning
   on every page that mounts a confirmation dialog.
 
