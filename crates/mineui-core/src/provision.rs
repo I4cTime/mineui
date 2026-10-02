@@ -242,8 +242,23 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
             (LOOPBACK.to_string(), args.rcon_port, CONTAINER_RCON_PORT),
         ],
         volume: (format!("{name}-data"), DATA_PATH.to_string()),
+        pids_limit: None,
     };
-    let outcome = runtime.run_detached(&spec).await;
+    let mut outcome = runtime.run_detached(&spec).await;
+    if let Ok(out) = &outcome {
+        if !out.success() && crate::runtime::is_pids_controller_unavailable(&out.stderr) {
+            // The runtime's default pids limit cannot be applied on this
+            // machine (§3.13; Podman on WSL without pids delegation). The
+            // container it half-made is ours to remove; then once more with
+            // no limit at all.
+            let _ = runtime.remove_force(name, false).await;
+            let retry = ContainerSpec {
+                pids_limit: Some(0),
+                ..spec
+            };
+            outcome = runtime.run_detached(&retry).await;
+        }
+    }
     let _ = tokio::fs::remove_file(&env_file).await;
 
     let out = outcome?;

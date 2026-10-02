@@ -106,7 +106,9 @@ impl Supervisor {
             return Err(Error::ServerRunning("server is already running".into()));
         }
 
-        let mut child = tokio::process::Command::new(java)
+        let mut cmd = tokio::process::Command::new(java);
+        crate::util::hide_console(&mut cmd);
+        let mut child = cmd
             .arg(format!("-Xms{memory_mb}M"))
             .arg(format!("-Xmx{memory_mb}M"))
             .arg("-jar")

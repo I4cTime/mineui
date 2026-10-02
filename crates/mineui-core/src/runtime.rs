@@ -38,6 +38,10 @@ pub struct ContainerSpec {
     pub ports: Vec<(String, u16, u16)>,
     /// (named volume, container path).
     pub volume: (String, String),
+    /// `None` leaves the runtime's own default; `Some(0)` asks for no pids
+    /// limit at all — the one retry of §3.13, where the default cannot be
+    /// applied.
+    pub pids_limit: Option<i64>,
 }
 
 impl ContainerSpec {
@@ -57,9 +61,21 @@ impl ContainerSpec {
         }
         args.push("-v".into());
         args.push(format!("{}:{}", self.volume.0, self.volume.1));
+        if let Some(limit) = self.pids_limit {
+            args.push(format!("--pids-limit={limit}"));
+        }
         args.push(self.image.clone());
         args
     }
+}
+
+/// Did `run` fail because the runtime could not apply a pids limit? The
+/// text is crun's ("controller `pids` is not available under …"); runc has
+/// no equivalent because it does not check first. Matched loosely since
+/// podman wraps it and users paste it without the backticks.
+pub fn is_pids_controller_unavailable(stderr: &str) -> bool {
+    let text = stderr.to_ascii_lowercase();
+    text.contains("controller") && text.contains("pids") && text.contains("is not available")
 }
 
 /// One mount of a container, from `inspect`.
@@ -156,6 +172,7 @@ pub struct CliBackend {
 impl CliBackend {
     fn command(&self, args: &[&str]) -> tokio::process::Command {
         let mut cmd = tokio::process::Command::new(&self.binary);
+        crate::util::hide_console(&mut cmd);
         cmd.args(args);
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::piped());
@@ -583,7 +600,9 @@ fn parse_version_line(line: &str) -> Option<String> {
 }
 
 async fn probe_binary(binary: &str) -> Option<RuntimeHit> {
-    let output = tokio::process::Command::new(binary)
+    let mut cmd = tokio::process::Command::new(binary);
+    crate::util::hide_console(&mut cmd);
+    let output = cmd
         .arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -838,6 +857,7 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
                 ("127.0.0.1".into(), 25576, 25575),
             ],
             volume: ("mc-forge-data".into(), "/data".into()),
+            pids_limit: None,
         };
         assert_eq!(
             spec.run_args(),
@@ -857,6 +877,42 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
                 "docker.io/itzg/minecraft-server:java21",
             ]
         );
+    }
+
+    #[test]
+    fn no_pids_limit_goes_before_the_image() {
+        let spec = ContainerSpec {
+            name: "mc".into(),
+            image: "docker.io/itzg/minecraft-server:java21".into(),
+            env_file: "/tmp/x.env".into(),
+            ports: vec![],
+            volume: ("mc-data".into(), "/data".into()),
+            pids_limit: Some(0),
+        };
+        let args = spec.run_args();
+        assert_eq!(
+            &args[args.len() - 2..],
+            ["--pids-limit=0", "docker.io/itzg/minecraft-server:java21"]
+        );
+    }
+
+    #[test]
+    fn recognises_the_missing_pids_controller() {
+        // crun through podman, as the runtime prints it
+        assert!(is_pids_controller_unavailable(
+            "Error: crun: controller `pids` is not available under /sys/fs/cgroup/non-systemd/machine.slice/libpod-c362.scope/container/cgroup.controllers: OCI runtime error"
+        ));
+        // as a user pasted it, backticks lost
+        assert!(is_pids_controller_unavailable(
+            "Error: crun: controller pids is not available under /sys/fs/cgroup/x/cgroup.controllers: OCI runtime error"
+        ));
+        assert!(!is_pids_controller_unavailable(
+            "Error: crun: the requested cgroup controller `cpu` is not available"
+        ));
+        assert!(!is_pids_controller_unavailable(
+            "Error: rootlessport listen tcp 127.0.0.1:25566: bind: address already in use"
+        ));
+        assert!(!is_pids_controller_unavailable(""));
     }
 
     #[test]

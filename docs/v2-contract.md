@@ -399,6 +399,9 @@ Notes:
 - `set_settings` validates (§2.3), persists atomically (write temp + rename), re-chmods
   0600, and returns the normalized result. Changing `activeMode` takes effect
   immediately for subsequent commands; it does not stop a running managed server.
+- Every subprocess the core spawns (runtime CLI, `java`) is created without a
+  console window on Windows (`CREATE_NO_WINDOW`, 2.7.1): a GUI app otherwise
+  flashes one terminal per call, and the status poll makes several a second.
 - `detect_runtimes` probes `podman --version` and `docker --version` (argv arrays).
 - `java_check` resolves `simple.javaPath` override → `JAVA_HOME/bin/java` → `java` on
   PATH; parses `java -version` stderr. `requiredMajor` comes from the current instance
@@ -1106,6 +1109,15 @@ Sequence (first failure wins; nothing is created before step 7):
        -v <containerName>-data:/data
        docker.io/itzg/minecraft-server:<tag>
    ```
+
+   If that call fails because the runtime cannot apply its default pids limit —
+   crun: ``controller `pids` is not available under …/cgroup.controllers``, seen
+   with Podman machines on WSL whose cgroup tree has no `pids` delegation — the
+   half-made container is removed and the same call is made once more with
+   `--pids-limit=0` before the image (2.7.1): `0` makes the runtime write no pids
+   limit at all, so the server runs without one, as it does under Docker. No
+   other failure is retried, and a container that started on the first call is
+   never touched.
 
    The env file (`<app-data-dir>/tmp/`, `0o600`, deleted right after the call) holds
    `EULA=TRUE`, `TYPE=<LOADER>`, `VERSION=<mcVersion>`, `MEMORY=<memoryMb>M`,
