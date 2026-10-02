@@ -37,6 +37,7 @@ import {
   type JavaCheck,
   type McVersion,
 } from "@/app/lib/ipc";
+import DiscardServerButton from "@/app/components/DiscardServerButton";
 import { useUISound } from "@/app/hooks/useUISound";
 
 const MEMORY_MIN = 512;
@@ -163,12 +164,17 @@ export default function CreateServerFlow({
   return (
     <motion.section initial="hidden" animate="show" variants={fadeUp("base")}>
       <Card className="mx-auto max-w-2xl p-6">
-        <Card.Header className="flex-col items-start gap-2">
-          <div className="flex items-center gap-3 text-sm text-accent">
-            <Rocket size={18} />
-            <span className="font-display text-xs tracking-wide">
-              Create your server
-            </span>
+        <Card.Header className="flex-col items-stretch gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3 text-sm text-accent">
+              <Rocket size={18} />
+              <span className="font-display text-xs tracking-wide">
+                Create your server
+              </span>
+            </div>
+            {/* An extra server added by mistake can be dropped from here;
+                renders nothing for the first server. */}
+            <DiscardServerButton isDisabled={creating} />
           </div>
           <Card.Description>
             MineUI downloads the official server for the version you pick and

@@ -72,6 +72,10 @@ The following areas are in scope for security reports:
   injection into the runtime `run` call, the generated RCON password
   reaching an argv or a log, or the create flow touching a container or
   volume it did not just create.
+- **Container deletion (Advanced mode)** — a container or data volume
+  removed without the explicit confirmed request, a volume removed although
+  only the container was to go, a host folder deleted, or deletion reaching
+  a container other than the one the server points at.
 - **Server profiles** — one profile's commands, events or files reaching
   another profile (a `serverId` resolving outside `servers/<id>/`, or
   events delivered under the wrong server).

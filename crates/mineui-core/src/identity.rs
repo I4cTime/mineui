@@ -16,6 +16,7 @@ pub struct Identity {
     pub address: String,
     pub loader: Option<String>,
     pub mc_version: Option<String>,
+    pub modpack: Option<String>,
 }
 
 /// `TYPE` / `VERSION` of one container, keyed by the container id so a
@@ -25,20 +26,31 @@ pub(crate) struct ContainerKind {
     container_id: String,
     loader: Option<String>,
     mc_version: Option<String>,
+    modpack: Option<String>,
 }
 
-/// (loader, mcVersion) from a container's env. `VERSION=LATEST` is not a
-/// version anyone can read, so it maps to `None`.
-pub fn kind_from_env(env: &[(String, String)]) -> (Option<String>, Option<String>) {
+/// What a container's env says it runs (itzg conventions).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EnvKind {
+    pub loader: Option<String>,
+    pub mc_version: Option<String>,
+    pub modpack: Option<String>,
+}
+
+/// Loader, version and modpack from a container's env. `VERSION=LATEST` is
+/// not a version anyone can read, so it maps to `None`.
+pub fn kind_from_env(env: &[(String, String)]) -> EnvKind {
     let get = |key: &str| {
         env.iter()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.trim().to_string())
             .filter(|v| !v.is_empty())
     };
-    let loader = get("TYPE").map(|t| t.to_lowercase());
-    let mc_version = get("VERSION").filter(|v| !v.eq_ignore_ascii_case("latest"));
-    (loader, mc_version)
+    EnvKind {
+        loader: get("TYPE").map(|t| t.to_lowercase()),
+        mc_version: get("VERSION").filter(|v| !v.eq_ignore_ascii_case("latest")),
+        modpack: get("MODRINTH_MODPACK").or_else(|| get("CF_SLUG")),
+    }
 }
 
 fn simple_identity(settings: &Settings) -> Identity {
@@ -47,6 +59,7 @@ fn simple_identity(settings: &Settings) -> Identity {
         address: format!("127.0.0.1:{}", settings.simple.server_port),
         loader: Some("vanilla".into()),
         mc_version: Some(settings.simple.mc_version.clone()).filter(|v| !v.is_empty()),
+        modpack: None,
     }
 }
 
@@ -71,6 +84,7 @@ pub async fn probe(core: &crate::Core) -> (Result<ServerPhase>, Identity) {
         ),
         loader: None,
         mc_version: None,
+        modpack: None,
     };
     let runtime = match crate::runtime::resolve(&settings.advanced).await {
         Ok(runtime) => runtime,
@@ -96,11 +110,12 @@ pub async fn probe(core: &crate::Core) -> (Result<ServerPhase>, Identity) {
         Some(kind) => kind,
         None => {
             let env = runtime.inspect_env(name).await.unwrap_or_default();
-            let (loader, mc_version) = kind_from_env(&env);
+            let from_env = kind_from_env(&env);
             let kind = ContainerKind {
                 container_id,
-                loader,
-                mc_version,
+                loader: from_env.loader,
+                mc_version: from_env.mc_version,
+                modpack: from_env.modpack,
             };
             *core.container_kind.lock().unwrap() = Some(kind.clone());
             kind
@@ -108,6 +123,7 @@ pub async fn probe(core: &crate::Core) -> (Result<ServerPhase>, Identity) {
     };
     identity.loader = kind.loader;
     identity.mc_version = kind.mc_version;
+    identity.modpack = kind.modpack;
     (Ok(phase), identity)
 }
 
@@ -125,18 +141,38 @@ mod tests {
     #[test]
     fn kind_reads_itzg_type_and_version() {
         let e = env(&[("EULA", "TRUE"), ("TYPE", "FORGE"), ("VERSION", "1.21.1")]);
-        assert_eq!(
-            kind_from_env(&e),
-            (Some("forge".into()), Some("1.21.1".into()))
-        );
+        let kind = kind_from_env(&e);
+        assert_eq!(kind.loader.as_deref(), Some("forge"));
+        assert_eq!(kind.mc_version.as_deref(), Some("1.21.1"));
+        assert_eq!(kind.modpack, None);
+    }
+
+    #[test]
+    fn kind_reads_the_modpack_a_container_was_created_from() {
+        let modrinth = env(&[
+            ("TYPE", "MODRINTH"),
+            ("MODRINTH_MODPACK", "cobblemon-fabric"),
+            ("VERSION", "1.21.1"),
+        ]);
+        let kind = kind_from_env(&modrinth);
+        assert_eq!(kind.loader.as_deref(), Some("modrinth"));
+        assert_eq!(kind.modpack.as_deref(), Some("cobblemon-fabric"));
+        assert_eq!(kind.mc_version.as_deref(), Some("1.21.1"));
+
+        let curseforge = env(&[("TYPE", "AUTO_CURSEFORGE"), ("CF_SLUG", "all-the-mods-10")]);
+        let kind = kind_from_env(&curseforge);
+        assert_eq!(kind.loader.as_deref(), Some("auto_curseforge"));
+        assert_eq!(kind.modpack.as_deref(), Some("all-the-mods-10"));
+        assert_eq!(kind.mc_version, None, "the pack fixes the version");
     }
 
     #[test]
     fn kind_treats_latest_and_missing_as_unknown() {
-        let e = env(&[("TYPE", "Fabric"), ("VERSION", "latest")]);
-        assert_eq!(kind_from_env(&e), (Some("fabric".into()), None));
-        assert_eq!(kind_from_env(&env(&[("PATH", "/bin")])), (None, None));
-        assert_eq!(kind_from_env(&env(&[("TYPE", "  ")])), (None, None));
+        let kind = kind_from_env(&env(&[("TYPE", "Fabric"), ("VERSION", "latest")]));
+        assert_eq!(kind.loader.as_deref(), Some("fabric"));
+        assert_eq!(kind.mc_version, None);
+        assert_eq!(kind_from_env(&env(&[("PATH", "/bin")])), EnvKind::default());
+        assert_eq!(kind_from_env(&env(&[("TYPE", "  ")])), EnvKind::default());
     }
 
     #[tokio::test]
@@ -154,6 +190,7 @@ mod tests {
                 address: "127.0.0.1:25565".into(),
                 loader: Some("vanilla".into()),
                 mc_version: None,
+                modpack: None,
             }
         );
 

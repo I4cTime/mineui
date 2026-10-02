@@ -561,6 +561,7 @@ impl Hub {
                 address: identity.address,
                 loader: identity.loader,
                 mc_version: identity.mc_version,
+                modpack: identity.modpack,
             });
         }
         out

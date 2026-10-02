@@ -126,6 +126,7 @@ pub fn run() {
             commands::upload_mod,
             commands::download_mod,
             commands::delete_mod,
+            commands::unpack_mod_archive,
             // §3.6 instance
             commands::list_mc_versions,
             commands::create_instance,
@@ -151,6 +152,9 @@ pub fn run() {
             commands::get_audit_log,
             // §3.13 container creation
             commands::create_container,
+            commands::delete_container,
+            // §3.14 modpack search
+            commands::search_modpacks,
             // §3.12 server profiles
             commands::list_servers,
             commands::add_server,

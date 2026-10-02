@@ -74,7 +74,7 @@ function NavTooltip({ label, description }: { label: string; description: string
 // unfocusable and warn on every mount, so the Ko-fi popover (T1 only) and
 // the More overflow (below header-mid only) are rendered conditionally.
 // Nav tooltips are likewise disabled at T1, where the label is visible.
-const LABELS_VISIBLE_QUERY = "(min-width: 75rem)";
+const LABELS_VISIBLE_QUERY = "(min-width: 80rem)";
 const OVERFLOW_QUERY = "(max-width: 56.24rem)";
 
 const PRIORITY_COUNT = 4;
@@ -155,7 +155,7 @@ function NavIndicator({ activeKey }: { activeKey: string }) {
   );
 }
 
-/** Label span shown in full at T1 (header-full, >=1200px) and hidden
+/** Label span shown in full at T1 (header-full, >=1280px) and hidden
  * (icon-only) at every narrower tier. */
 function NavLabel({ children }: { children: ReactNode }) {
   return <span className="relative z-10 hidden header-full:inline">{children}</span>;

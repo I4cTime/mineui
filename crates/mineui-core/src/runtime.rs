@@ -62,6 +62,28 @@ impl ContainerSpec {
     }
 }
 
+/// One mount of a container, from `inspect`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mount {
+    /// "volume" or "bind" (as the runtime reports it).
+    pub kind: String,
+    /// Volume name; empty for a bind mount.
+    pub name: String,
+    /// Host path backing the mount.
+    pub source: String,
+    /// Path inside the container.
+    pub destination: String,
+}
+
+impl Mount {
+    /// Runtimes name an anonymous volume with a 64-character hex id.
+    pub fn is_anonymous_volume(&self) -> bool {
+        self.kind == "volume"
+            && self.name.len() == 64
+            && self.name.chars().all(|c| c.is_ascii_hexdigit())
+    }
+}
+
 /// Raw (pre-normalization) container stats parsed from `stats --no-stream`.
 #[derive(Debug, Clone, Default)]
 pub struct RawStats {
@@ -112,9 +134,14 @@ pub trait Runtime: Send + Sync {
     /// `run -d …` per `spec` (§3.13). Pulls the image when missing, so this
     /// can take minutes. The raw outcome is returned for the caller to map.
     async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput>;
-    /// `rm -f <name>` — only ever used to clean up a container this app
-    /// failed to finish creating.
-    async fn remove_force(&self, name: &str) -> Result<()>;
+    /// `rm -f <name>` (`rm -f -v` with `anonymous_volumes`). Callers: the
+    /// cleanup of a container this app failed to finish creating, and the
+    /// explicitly confirmed `delete_container` (§3.13). Nothing else.
+    async fn remove_force(&self, name: &str, anonymous_volumes: bool) -> Result<()>;
+    /// The container's mounts; empty when it cannot be inspected.
+    async fn inspect_mounts(&self, name: &str) -> Result<Vec<Mount>>;
+    /// `volume rm <volume>` — `delete_container` with `deleteData` only.
+    async fn remove_volume(&self, volume: &str) -> Result<()>;
 }
 
 /// Shared CLI backend. Podman and docker take identical argv for everything we
@@ -418,9 +445,50 @@ impl Runtime for CliBackend {
         self.run(&args).await
     }
 
-    async fn remove_force(&self, name: &str) -> Result<()> {
-        self.run_ok(&["rm", "-f", name]).await.map(|_| ())
+    async fn remove_force(&self, name: &str, anonymous_volumes: bool) -> Result<()> {
+        let args: &[&str] = if anonymous_volumes {
+            &["rm", "-f", "-v", name]
+        } else {
+            &["rm", "-f", name]
+        };
+        self.run_ok(args).await.map(|_| ())
     }
+
+    async fn inspect_mounts(&self, name: &str) -> Result<Vec<Mount>> {
+        let out = self
+            .run(&[
+                "inspect",
+                "-f",
+                "{{range .Mounts}}{{.Type}}|{{.Name}}|{{.Source}}|{{.Destination}}{{println}}{{end}}",
+                name,
+            ])
+            .await?;
+        if !out.success() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_mount_lines(&out.stdout))
+    }
+
+    async fn remove_volume(&self, volume: &str) -> Result<()> {
+        self.run_ok(&["volume", "rm", volume]).await.map(|_| ())
+    }
+}
+
+/// `Type|Name|Source|Destination` per line → mounts; malformed lines skipped.
+fn parse_mount_lines(stdout: &str) -> Vec<Mount> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.trim().splitn(4, '|');
+            let mount = Mount {
+                kind: parts.next()?.to_string(),
+                name: parts.next()?.to_string(),
+                source: parts.next()?.to_string(),
+                destination: parts.next()?.to_string(),
+            };
+            (!mount.kind.is_empty() && !mount.destination.is_empty()).then_some(mount)
+        })
+        .collect()
 }
 
 /// `KEY=VALUE` per line → pairs; lines without `=` are skipped.
@@ -484,8 +552,14 @@ macro_rules! delegate_runtime {
             async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput> {
                 self.0.run_detached(spec).await
             }
-            async fn remove_force(&self, name: &str) -> Result<()> {
-                self.0.remove_force(name).await
+            async fn remove_force(&self, name: &str, anonymous_volumes: bool) -> Result<()> {
+                self.0.remove_force(name, anonymous_volumes).await
+            }
+            async fn inspect_mounts(&self, name: &str) -> Result<Vec<Mount>> {
+                self.0.inspect_mounts(name).await
+            }
+            async fn remove_volume(&self, volume: &str) -> Result<()> {
+                self.0.remove_volume(volume).await
             }
         }
     };
@@ -733,6 +807,24 @@ mod tests {
                 ("MOTD".to_string(), "a=b c".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn parses_mounts_and_tells_anonymous_volumes_apart() {
+        // Verbatim shapes from rootless podman 6.1 (paths shortened).
+        let stdout = "volume|mc-forge-data|/var/volumes/mc-forge-data/_data|/data\n\
+volume|e93e7a2a6ce31d191e8d4c0d35ef47ae26215748b07eeeda035fc171ed1c27ef|/var/volumes/e93e/_data|/anon\n\
+bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
+        let mounts = parse_mount_lines(stdout);
+        assert_eq!(mounts.len(), 3);
+        assert_eq!(mounts[0].name, "mc-forge-data");
+        assert_eq!(mounts[0].destination, "/data");
+        assert!(!mounts[0].is_anonymous_volume());
+        assert!(mounts[1].is_anonymous_volume());
+        assert_eq!(mounts[2].kind, "bind");
+        assert_eq!(mounts[2].name, "");
+        assert_eq!(mounts[2].source, "/home/me/minecraft");
+        assert!(!mounts[2].is_anonymous_volume());
     }
 
     #[test]

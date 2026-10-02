@@ -572,6 +572,7 @@ Semantics:
 | `upload_mod` | `{ sourcePath: string; target: ModTarget }` | `{ filename: string }` | both | `mods::upload` | POST /api/mods/upload |
 | `download_mod` | `{ url: string; filename?: string; target: ModTarget }` | `{ filename: string; downloadId: string }` | both | `mods::download` | POST /api/mods/download |
 | `delete_mod` | `{ filename: string; target: ModTarget }` | `void` | both | `mods::delete` | POST /api/mods/delete |
+| `unpack_mod_archive` | `{ sourcePath?: string; url?: string; filename?: string; target: ModTarget }` | `UnpackedMods` | both | `mod_archive::unpack` | — (new, 2.7.0) |
 
 ```ts
 type ModTarget = "mods" | "plugins";
@@ -586,6 +587,16 @@ type ModEntry = {
 };
 
 type ModsList = { mods: ModEntry[]; plugins: ModEntry[] };
+
+/** 2.7.0 — result of unpacking a zip of mods. */
+type UnpackedMods = {
+  /** Filenames placed in the target folder, sorted. */
+  installed: string[];
+  /** Archive entries that were not installed (not a mod for this target). */
+  skipped: number;
+  /** Set when the archive came from a URL (progress events use it). */
+  downloadId: string | null;
+};
 ```
 
 Semantics:
@@ -617,6 +628,22 @@ Semantics:
   256 MB (`FILE_TOO_LARGE`).
 - `delete_mod`: filename per §6.2; advanced →
   `runtime exec <name> rm -f -- <root>/<filename>`; simple → `std::fs::remove_file`.
+- `unpack_mod_archive` (2.7.0): installs the `.jar` files **inside** a `.zip` — a
+  folder of mods zipped up, or a "server pack". `upload_mod`/`download_mod` place a
+  `.zip` as one file, which is right for a mod shipped as a zip and useless for a
+  bundle; this is the bundle case. Exactly one of `sourcePath` / `url`
+  (`INVALID_INPUT` otherwise). The archive is acquired exactly like an upload (same
+  source hardening, must resolve to a `.zip`, 512 MiB cap) or like a download (§6.3
+  in full, progress events with `kind: "mod"`, name from `filename` or the URL, must
+  end `.zip`, 512 MiB cap). It is unpacked **host-side** into a private temp dir —
+  never inside the container — and the jars are then placed like uploads
+  (advanced: one `runtime cp <tmp>/. <name>:<root>`; simple: file copies). Which
+  entries count, and the limits, are §6.2a. Existing files with the same name are
+  replaced. No jar selected → `INVALID_INPUT`, with a specific message when the zip
+  is a launcher modpack (`modrinth.index.json`, or a CurseForge `manifest.json`):
+  those list mods to download instead of containing them, and belong in §3.13.
+  Config files and anything else in the archive are not installed. Audited as
+  `mod.unpack` (target = archive name, detail = `<target>: N installed, M skipped`).
 
 ### 3.6 Simple-mode instance management (`WRONG_MODE` outside simple, except `list_mc_versions`)
 
@@ -910,10 +937,11 @@ type AuditEntry = {
   token, detail = full command), `player.<verb>` for `kick`/`ban`/`pardon`/`op`/
   `deop`/`whitelist` issued through `run_rcon_command` (target = username),
   `backup.create`, `backup.restore`, `backup.delete`, `backup.prune`, `backup.copy`,
-  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `settings.update`,
+  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `mod.unpack`, `settings.update`,
   `instance.create`, `instance.delete`, `note.set`, `note.clear`,
   `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
-  `server.add`, `server.rename`, `server.remove` (§3.12), `container.create` (§3.13).
+  `server.add`, `server.rename`, `server.remove` (§3.12), `container.create`,
+  `container.delete` (§3.13).
 
 ### 3.12 Server profiles (2.6.0)
 
@@ -957,6 +985,10 @@ type ServerOverview = {
    *  container's `VERSION` env, null when absent or `LATEST` (the frontend
    *  then falls back to `status.version` while the server is online). */
   mcVersion: string | null;
+  /** 2.7.0. The modpack the container was created from: its
+   *  `MODRINTH_MODPACK` or `CF_SLUG` env, else null. `loader` is then
+   *  "modrinth" or "auto_curseforge" (the image's `TYPE`). */
+  modpack: string | null;
 };
 ```
 
@@ -978,7 +1010,8 @@ Semantics:
   `<app-config-dir>/servers/<id>/` (its settings). The state dir
   `<app-data-dir>/servers/<id>/` — which holds a simple-mode world by default — is
   **left on disk**; removing a profile never deletes a world, a container or a
-  backup. If the removed profile was active, `default` becomes active.
+  backup (deleting the container is a separate, separately confirmed command,
+  §3.13). If the removed profile was active, `default` becomes active.
 - `set_active_server`: persists `activeServerId`; unknown id → `SERVER_NOT_FOUND`.
 - `get_servers_overview`: one entry per profile, in list order, probed
   concurrently. `phase` is the §3.2 phase (advanced: runtime `ps`; simple:
@@ -1002,6 +1035,7 @@ for the targeted profile, with the loader the user picks.
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
 | `create_container` | `{ args: CreateContainerArgs }` | `ServerState` | advanced | `provision::create` | — (new) |
+| `delete_container` | `{ confirm: true; deleteData: boolean }` | `DeletedContainer` | advanced | `provision::delete` | — (new, 2.7.0) |
 
 ```ts
 type ContainerLoader =
@@ -1024,6 +1058,20 @@ type CreateContainerArgs = {
   exposeToNetwork: boolean;
   /** Must be true — the image refuses to start without EULA=TRUE. */
   acceptEula: boolean;
+  /** 2.7.0. Create the server from a modpack instead of a bare loader; null
+   *  or absent = no modpack. `loader` is ignored when set (the pack decides). */
+  modpack?: ModpackRef | null;
+};
+
+type ModpackSource = "modrinth" | "curseforge";
+
+type ModpackRef = {
+  source: ModpackSource;
+  /** The pack's slug or id, or its page URL
+   *  (`https://modrinth.com/modpack/<slug>`,
+   *  `https://www.curseforge.com/minecraft/modpacks/<slug>`) — core reduces a
+   *  URL to the slug. */
+  project: string;
 };
 ```
 
@@ -1033,7 +1081,12 @@ Sequence (first failure wins; nothing is created before step 7):
 2. `acceptEula !== true` → `EULA_NOT_ACCEPTED`.
 3. Validation (`INVALID_INPUT`): `containerName` per §2.3; `mcVersion` trimmed, empty
    or any-case "latest" → `LATEST`, otherwise `^[0-9A-Za-z][0-9A-Za-z._-]{0,31}$`;
-   `memoryMb` in 512–65536; ports 1–65535 and different from each other.
+   `memoryMb` in 512–65536; ports 1–65535 and different from each other. With a
+   `modpack` (2.7.0): `project`, after reducing a page URL of that source to its
+   slug, must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`; and `mcVersion` must be a
+   concrete version, not `LATEST` — it is what selects the Java image tag in step 7
+   (for CurseForge it is used for nothing else), and a modpack on the wrong Java
+   does not start.
 4. Resolve the runtime (`RUNTIME_NOT_FOUND`).
 5. A container with that name already exists → `CONTAINER_EXISTS` (attach to it in
    settings instead — this command never touches an existing container).
@@ -1057,7 +1110,12 @@ Sequence (first failure wins; nothing is created before step 7):
    The env file (`<app-data-dir>/tmp/`, `0o600`, deleted right after the call) holds
    `EULA=TRUE`, `TYPE=<LOADER>`, `VERSION=<mcVersion>`, `MEMORY=<memoryMb>M`,
    `ENABLE_RCON=true` and `RCON_PASSWORD=<generated>` (24-char alphanumeric, CSPRNG,
-   same generator as §3.6) — the password never appears in an argv. The runtime
+   same generator as §3.6) — the password never appears in an argv. With a
+   `modpack` (2.7.0) the `TYPE`/`VERSION` pair is replaced:
+   Modrinth → `TYPE=MODRINTH`, `MODRINTH_MODPACK=<slug>`, `VERSION=<mcVersion>` (the
+   image installs the pack's newest release build for that Minecraft version);
+   CurseForge → `TYPE=AUTO_CURSEFORGE`, `CF_SLUG=<slug>` and no `VERSION` (the pack
+   file fixes it; the image carries its own CurseForge API key). The runtime
    pulls the image if it is missing, so the first call can take minutes; the
    command resolves when the container has *started*, not when the server inside
    is ready (the image installs the loader on first boot — watch the log stream).
@@ -1071,8 +1129,93 @@ Sequence (first failure wins; nothing is created before step 7):
    §4.2 poll.
 
 Audited as `container.create` (target = container name, detail =
-`<LOADER> <mcVersion> <image>:<tag>`). There is deliberately no `delete_container`:
-removing a container and its world stays a deliberate act outside the app.
+`<LOADER> <mcVersion> <image>:<tag>`, where `<LOADER>` is `MODRINTH:<slug>` or
+`AUTO_CURSEFORGE:<slug>` for a modpack).
+
+A modpack is applied by the image when the container is **created**. There is no
+command to put a modpack onto an existing server: to switch packs, delete the
+container (below) and create it again.
+
+#### `delete_container` (2.7.0)
+
+Until 2.7.0 MineUI never deleted a container. A half-built or failed server then
+had to be cleaned up by hand with the runtime CLI, so deletion is now offered —
+only ever on an explicit, confirmed request, never as a side effect.
+
+```ts
+type DeletedContainer = {
+  containerName: string;
+  /** The named volume that was deleted with it, or null. */
+  deletedVolume: string | null;
+  /** Why the data was left in place although deletion was asked for, or null. */
+  dataKept: string | null;
+};
+```
+
+Sequence:
+
+1. Profile not in advanced mode → `WRONG_MODE`.
+2. `confirm !== true` → `INVALID_INPUT`.
+3. Resolve the runtime (`RUNTIME_NOT_FOUND`); the profile's container does not exist
+   → `CONTAINER_NOT_FOUND`.
+4. If `deleteData`: read the container's mounts (`runtime inspect`) and find what is
+   mounted at `/data`. Only a **named volume** there is ever deleted. A bind mount
+   (a folder on the host) is never deleted — `dataKept` says so and names the folder.
+5. Stop the profile's log stream, then `runtime rm -f <name>` (stops it if running).
+   With `deleteData` the call is `rm -f -v`, which also drops the container's
+   anonymous volumes.
+6. If step 4 found a named volume: `runtime volume rm <volume>`. A failure here
+   (typically: another container still uses the volume) does not fail the command —
+   the container is already gone — it is reported in `dataKept`.
+7. The profile's settings are **left as they are** (container name, ports, RCON
+   password), so the create flow reappears prefilled; `phase` becomes `not-created`.
+
+`deleteData: false` keeps the world: a container created again under the same name
+reuses its `<containerName>-data` volume. `deleteData: true` destroys the world and
+every backup stored in `/data/backups`; the frontend requires the container name to
+be typed before it sends that. This command applies to whatever container the
+profile points at, including one MineUI only attached to — the confirmation is the
+guard, so the frontend must always show the container's name. Audited as
+`container.delete` (target = container name, detail = `data deleted: <volume>` or
+`data kept`).
+
+`remove_server` (§3.12) still never deletes anything by itself; the frontend offers
+"also delete its container" by calling `delete_container` first.
+
+### 3.14 Modpack search (2.7.0)
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `search_modpacks` | `{ query: string; limit?: number }` | `ModpackHit[]` | both | `modpacks::search` | — (new) |
+
+```ts
+type ModpackHit = {
+  source: "modrinth";
+  slug: string;
+  id: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** Minecraft versions the pack has builds for, in Modrinth's order
+   *  (oldest first). */
+  gameVersions: string[];
+  /** Mod loaders it is built for: any of forge, neoforge, fabric, quilt. */
+  loaders: string[];
+};
+```
+
+- One GET to `https://api.modrinth.com/v2/search` (fixed host; the only thing the
+  caller controls is the query text, sent as a URL-encoded parameter) with facets
+  `project_type:modpack` AND (`server_side:required` OR `server_side:optional`) —
+  packs that cannot run on a server are not offered. An empty `query` returns the
+  most downloaded. `limit` default 12, clamped to 1–30; `query` trimmed, ≤ 100
+  chars (`INVALID_INPUT` beyond). 10 s timeout, a `User-Agent` naming MineUI and its
+  version (Modrinth's API rules). Network or non-2xx → `DOWNLOAD_FAILED`.
+- Modrinth only: CurseForge's search API needs a personal API key, so a CurseForge
+  pack is named by slug or page URL in `create_container` instead.
+- Read-only and not audited.
 
 ---
 
@@ -1178,7 +1321,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | TPS | RCON `tps` (vanilla: null) | RCON `tps` or server-utils |
 | Instance commands (§3.6) | full | `WRONG_MODE` |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
-| Container create/pull | — | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; never deletes one |
+| Container create/pull | — | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
 
 ---
 
@@ -1215,6 +1358,26 @@ Applied to the basename in `upload_mod`, `download_mod`, `delete_mod`:
 3. Post-sanitization: non-empty, ≤ 255 bytes, does not start with `.` or `-`, not
    `..`, ends with `.jar` or `.zip` (case-insensitive).
 4. `target` must be exactly `"mods"` or `"plugins"`.
+
+### 6.2a Mod archives (`unpack_mod_archive`, 2.7.0)
+
+Entry names are never used as paths: only a selected entry's **basename**, after
+§6.2 sanitization, names the file written, so traversal (`../`, absolute paths,
+drive letters) cannot escape the temp dir. Selection, on names with `\` read as `/`,
+directories and `__MACOSX/` dropped:
+
+1. If every file sits under one top-level folder that is not itself `mods`/`plugins`,
+   that wrapper is ignored (`MyPack/mods/x.jar` ≡ `mods/x.jar`).
+2. If the archive has a `mods/` (target `mods`) or `plugins/` (target `plugins`)
+   folder, exactly the `.jar` files directly inside it are selected — root-level
+   jars are then server/installer jars and `libraries/**` are loader internals.
+3. Otherwise the root-level `.jar` files are selected (a flat zip of mods).
+4. A selected entry whose sanitized name fails §6.2 rule 3, or repeats an earlier
+   one, is skipped.
+
+Limits (`FILE_TOO_LARGE`), enforced on bytes actually written, not on the sizes the
+archive declares (zip-bomb defense): ≤ 20 000 entries, ≤ 500 jars, ≤ 256 MiB per
+jar, ≤ 2 GiB in total. Encrypted or unreadable archives → `INVALID_INPUT`.
 
 ### 6.3 URL downloads (`INVALID_INPUT` / `DOWNLOAD_FAILED`)
 
@@ -1504,6 +1667,9 @@ export type ServerOverview = {
   loader: string | null;
   /** Known version, or null (fall back to `status.version` while online). */
   mcVersion: string | null;
+  /** The modpack the container was created from (slug), or null. `loader`
+   *  is then "modrinth" or "auto_curseforge". */
+  modpack: string | null;
 };
 
 export const DEFAULT_SERVER_ID = "default";
@@ -1538,7 +1704,58 @@ export type CreateContainerArgs = {
   /** true: game port on every interface; false: 127.0.0.1 only. */
   exposeToNetwork: boolean;
   acceptEula: boolean;
+  /** Create from a modpack instead of a bare loader; `loader` is then
+   *  ignored and `mcVersion` must be a concrete version. */
+  modpack?: ModpackRef | null;
 };
+
+/** Result of delete_container (§3.13). */
+export type DeletedContainer = {
+  containerName: string;
+  /** The named volume deleted with it, or null. */
+  deletedVolume: string | null;
+  /** Why the data stayed although its deletion was asked for, or null. */
+  dataKept: string | null;
+};
+
+/**
+ * Deletes a server's container — and, only with `deleteData`, the volume
+ * holding its world. The server profile itself stays. Always for a named
+ * server: this is offered from lists as well as for the open server, and the
+ * caller must have shown the container's name and got a confirmation.
+ */
+export const deleteContainerFor = (serverId: string, deleteData: boolean) =>
+  call<DeletedContainer>("delete_container", { serverId, confirm: true, deleteData });
+
+export type ModpackSource = "modrinth" | "curseforge";
+
+export type ModpackRef = {
+  source: ModpackSource;
+  /** Slug, id, or the pack's page URL on that source. */
+  project: string;
+};
+
+/* ---------- modpack search (§3.14) ---------- */
+
+export type ModpackHit = {
+  source: "modrinth";
+  slug: string;
+  id: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** Minecraft versions the pack has builds for, oldest first. */
+  gameVersions: string[];
+  /** Any of forge, neoforge, fabric, quilt. */
+  loaders: string[];
+};
+
+/** Modrinth modpacks that can run on a server. Empty query = most
+ *  downloaded. CurseForge has no keyless search — name those by slug/URL. */
+export const searchModpacks = (query: string, limit?: number) =>
+  scoped<ModpackHit[]>("search_modpacks", { query, limit });
 
 /** Creates an itzg/minecraft-server container for the target server. Pulls
  *  the image when missing — the first call can take minutes. */
@@ -1593,6 +1810,27 @@ export const downloadMod = (url: string, target: ModTarget, filename?: string) =
   });
 export const deleteMod = (filename: string, target: ModTarget) =>
   scoped<void>("delete_mod", { filename, target });
+
+/** Result of unpacking a zip of mods (§3.5, §6.2a). */
+export type UnpackedMods = {
+  /** Filenames placed in the target folder, sorted. */
+  installed: string[];
+  /** Archive entries that were not installed. */
+  skipped: number;
+  /** Set when the archive came from a URL. */
+  downloadId: string | null;
+};
+
+/** Where a mod archive comes from: a file on this computer, or a link. */
+export type ModArchiveSource =
+  | { sourcePath: string }
+  | { url: string; filename?: string };
+
+/** Installs the .jar files inside a .zip (a zipped folder of mods, or a
+ *  server pack) — unlike uploadMod/downloadMod, which place a .zip as one
+ *  file. */
+export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
+  scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
 
 /* ---------- instance (simple mode) ---------- */
 
@@ -1810,7 +2048,7 @@ Frontend rules:
 | --- | --- |
 | `error` | `Error` enum + serde serialization to `{code,message}` (§1) |
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
-| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, run_detached, remove_force) + `PodmanCli`/`DockerCli` impls + `detect`. All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
+| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`. All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
@@ -1818,6 +2056,7 @@ Frontend rules:
 | `java` | java discovery + `-version` parsing |
 | `instance` | create/delete/status, `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
 | `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3) |
+| `mod_archive` | `unpack_mod_archive`: entry selection, bounded host-side extraction, placement (§3.5, §6.2a) |
 | `config_files` | list/read/write over `Runtime` or host fs (§3.7, §6.1) |
 | `backups` | create/list/restore/delete (§3.8) |
 | `metrics` | container/process metrics + tps fallback (§3.9) |
@@ -1828,7 +2067,8 @@ Frontend rules:
 | `scheduler` | job engine: due-time math, 30 s tick, run state file, `status`/`run_now` (§3.10) |
 | `audit` | append-only JSONL audit log + rotation, `recent` (§3.11) |
 | `notes` | per-player notes store (§3.11) |
-| `provision` | `create_container` (§3.13): validation, Java → image tag, env file, run, settings write-back |
+| `provision` | `create_container` (§3.13): validation, Java → image tag, env file (loader or modpack), run, settings write-back; `delete_container`: confirmed removal, data volume only on request |
+| `modpacks` | `search_modpacks` (§3.14): Modrinth search for server-capable modpacks; modpack reference normalization |
 | `identity` | per-profile identity for the overview (§3.12): one `ps` for the phase + cached container `TYPE`/`VERSION` |
 | `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview` |
 

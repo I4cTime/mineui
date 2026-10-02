@@ -318,7 +318,7 @@ every server with its dot, name and a one-line state ("Running · 2/20 players �
 Advanced"), marks the open one, and ends with "Manage servers…" (App Settings →
 Servers). It sits first, with the mode toggle right after it — that toggle is
 the *open server's* mode. Tiers: the name shows at T1–T2
-(`header-mid:` and up, truncated at 9rem) and is CSS-hidden at T3–T4, leaving
+(`header-mid:` and up, truncated at 7rem) and is CSS-hidden at T3–T4, leaving
 dot + chevron; the trigger itself is rendered at every tier, so no
 `matchMedia` gate is needed. Tooltip + `aria-label` per §9.6.
 
@@ -384,7 +384,11 @@ lives in `--header-shadow`/`--header-edge-bottom` where it belongs.
 
 Structural breakpoints are Tailwind screens defined in `globals.css`
 (`@theme`, static — media queries can't read per-theme vars):
-`header-full` = 1200px, `header-mid` = 900px, `header-min` = 700px.
+`header-full` = 1280px, `header-mid` = 900px, `header-min` = 700px.
+(`header-full` was 1200px until 2.7.0. The 2.6.0 controls — server name and
+app-settings button — made the labelled bar need up to 1283px in the widest
+theme, phosphor, with a full-length server name, so labels crowded into the
+wordmark between 1200 and 1280px. Measured per theme, not assumed.)
 CSS-only visibility (responsive variants), **no ResizeObserver / JS
 measurement**. Minimum supported window width: 640px. One amendment (2.5.0):
 the Ko-fi `Popover` (T1 only) and the More overflow `Menu` (T3–T4 only) are
@@ -396,8 +400,8 @@ measurement; everything else stays CSS-only.
 
 | Tier | Range | nav | controls |
 |---|---|---|---|
-| T1 | ≥ 1200px | 8 items, icon + label (nav Tooltips disabled — the label is visible) | server (dot + name) · mode · sound · app settings · Ko-fi |
-| T2 | 900–1199px | 8 items, **icon-only** (Tooltip required, §9.6) | same minus Ko-fi |
+| T1 | ≥ 1280px | 8 items, icon + label (nav Tooltips disabled — the label is visible) | server (dot + name) · mode · sound · app settings · Ko-fi |
+| T2 | 900–1279px | 8 items, **icon-only** (Tooltip required, §9.6) | same minus Ko-fi |
 | T3 | 700–899px | first 4 items (Dashboard, Status, Mods, Players) icon-only + **"More" overflow `Menu`** (Ellipsis trigger) holding RCON, Config, Backups, Settings as icon+label items | wordmark hidden (logo only) · server (dot only) · mode · sound · app settings |
 | T4 | 640–699px | "More" `Menu` holds **all 8** items | logo only · server (dot only) · mode · sound · app settings |
 
@@ -478,7 +482,7 @@ A11y:
 - Nav tooltips carry the label **plus a one-line purpose** (`navItems[].
   description`, e.g. "Players — Who's on, history and notes"), never the bare
   label alone, and are `isDisabled` at T1 where the label is already visible
-  (`useMediaQuery("(min-width: 75rem)")`, the `header-full` screen). The
+  (`useMediaQuery("(min-width: 80rem)")`, the `header-full` screen). The
   `aria-label` remains the accessible name at every tier.
 - Focus ring: `--focus` (= accent) at 2px offset 2 on all header
   interactives, including the active item (ring must remain visible over

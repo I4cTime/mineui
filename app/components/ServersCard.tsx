@@ -28,6 +28,9 @@ import {
   toast,
 } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import ContainerDeleteFields, {
+  canDeleteContainer,
+} from "@/app/components/ContainerDeleteFields";
 import { useUISound } from "@/app/hooks/useUISound";
 import {
   identityLine,
@@ -37,6 +40,7 @@ import {
 } from "@/app/components/ServerProvider";
 import {
   DEFAULT_SERVER_ID,
+  deleteContainerFor,
   IpcError,
   MAX_SERVERS,
   MAX_SERVER_NAME_CHARS,
@@ -99,8 +103,31 @@ export default function ServersCard() {
   const [newKind, setNewKind] = useState<AddKind>("new-container");
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ServerProfile | null>(null);
+  // Removing a server can take its container along (contract §3.13) — off
+  // by default, and the world only goes with a second tick and its name typed.
+  const [alsoContainer, setAlsoContainer] = useState(false);
+  const [deleteData, setDeleteData] = useState(false);
+  const [typedName, setTypedName] = useState("");
 
   const atLimit = servers.length >= MAX_SERVERS;
+
+  // What removing costs depends on whether anything exists behind the profile.
+  const removeDescription = (server: ServerProfile) => {
+    const state = overview.find((entry) => entry.id === server.id);
+    const consequence =
+      state?.phase === "not-created"
+        ? "Nothing has been created for it yet, so nothing is lost."
+        : state?.containerName
+          ? "Unless you tick the box below, the server itself is untouched: its container, world and backups stay where they are."
+          : "The server itself is untouched: its world and backups stay where they are.";
+    const leaving =
+      server.id === activeId
+        ? ` It is the server you have open; MineUI will move to ${
+            servers.find((item) => item.id === DEFAULT_SERVER_ID)?.name ?? "the first server"
+          }.`
+        : "";
+    return `MineUI will forget "${server.name}" and its settings. ${consequence}${leaving}`;
+  };
 
   const openAdd = () => {
     play("click_confirm");
@@ -149,19 +176,49 @@ export default function ServersCard() {
     }
   };
 
+  const closeRemove = () => {
+    setRemoveTarget(null);
+    setAlsoContainer(false);
+    setDeleteData(false);
+    setTypedName("");
+  };
+
+  // The container behind the server being removed, when there is one.
+  const removeState = removeTarget
+    ? overview.find((entry) => entry.id === removeTarget.id)
+    : undefined;
+  const removeContainer =
+    removeState?.containerName &&
+    removeState.phase !== null &&
+    removeState.phase !== "not-created"
+      ? removeState.containerName
+      : null;
+
   const confirmRemove = async () => {
     if (!removeTarget) return;
     setBusy(true);
     try {
+      let outcome = `${removeTarget.name} removed from MineUI`;
+      if (alsoContainer && removeContainer) {
+        // First the container: if that fails, the server stays listed so it
+        // can be tried again.
+        const done = await deleteContainerFor(removeTarget.id, deleteData);
+        if (done.dataKept) {
+          toast.warning(`${done.containerName} deleted. The data stayed: ${done.dataKept}`);
+        }
+        outcome += done.deletedVolume
+          ? `; its container and world data were deleted`
+          : `; its container was deleted, the world is kept`;
+      }
       await remove(removeTarget.id);
       play("success");
-      toast.success(`${removeTarget.name} removed from MineUI`);
+      toast.success(outcome);
     } catch (error) {
       play("error");
       toast.danger(messageOf(error, "Remove failed"));
     } finally {
       setBusy(false);
-      setRemoveTarget(null);
+      closeRemove();
     }
   };
 
@@ -184,7 +241,9 @@ export default function ServersCard() {
           const state = overview.find((entry) => entry.id === server.id);
           const isOpen = server.id === activeId;
           const isEditing = editing?.id === server.id;
-          const removeBlocked = server.id === DEFAULT_SERVER_ID || isOpen;
+          // The open server can be removed too: MineUI then moves to the
+          // first server. Only that first server is permanent.
+          const removeBlocked = server.id === DEFAULT_SERVER_ID;
           return (
             <div
               key={server.id}
@@ -291,9 +350,7 @@ export default function ServersCard() {
                       aria-label={
                         server.id === DEFAULT_SERVER_ID
                           ? "The first server cannot be removed"
-                          : isOpen
-                            ? `Open another server to remove ${server.name}`
-                            : `Remove ${server.name}`
+                          : `Remove ${server.name}`
                       }
                       isDisabled={removeBlocked || busy}
                       onPress={() => {
@@ -431,16 +488,67 @@ export default function ServersCard() {
       <ConfirmDialog
         isOpen={removeTarget !== null}
         title="Remove server"
-        description={
-          removeTarget
-            ? `MineUI will forget "${removeTarget.name}" and its settings. The server itself is untouched: its container, world and backups stay where they are.`
-            : undefined
+        description={removeTarget ? removeDescription(removeTarget) : undefined}
+        confirmLabel={
+          alsoContainer && removeContainer
+            ? deleteData
+              ? "Remove and delete everything"
+              : "Remove and delete container"
+            : "Remove"
         }
-        confirmLabel="Remove"
         variant="danger"
         isLoading={busy}
+        isConfirmDisabled={
+          alsoContainer &&
+          removeContainer !== null &&
+          !canDeleteContainer(deleteData, typedName, removeContainer)
+        }
         onConfirm={confirmRemove}
-        onCancel={() => setRemoveTarget(null)}
+        onCancel={closeRemove}
+        footer={
+          removeContainer ? (
+            <div className="flex flex-col gap-3">
+              <label className="flex items-start gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={alsoContainer}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setAlsoContainer(event.target.checked);
+                    if (!event.target.checked) {
+                      setDeleteData(false);
+                      setTypedName("");
+                    }
+                  }}
+                />
+                <span>
+                  Also delete its container{" "}
+                  <span className="font-mono">{removeContainer}</span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    Left unticked, the container keeps running and can be
+                    attached again later.
+                  </span>
+                </span>
+              </label>
+              {alsoContainer && (
+                <div className="pl-7">
+                  <ContainerDeleteFields
+                    containerName={removeContainer}
+                    deleteData={deleteData}
+                    onDeleteDataChange={(value) => {
+                      setDeleteData(value);
+                      setTypedName("");
+                    }}
+                    typed={typedName}
+                    onTypedChange={setTypedName}
+                    isDisabled={busy}
+                  />
+                </div>
+              )}
+            </div>
+          ) : undefined
+        }
       />
     </Card>
   );

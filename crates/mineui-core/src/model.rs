@@ -205,6 +205,15 @@ pub struct DownloadedMod {
     pub download_id: String,
 }
 
+/// Result of `unpack_mod_archive` (§3.5).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnpackedMods {
+    pub installed: Vec<String>,
+    pub skipped: usize,
+    pub download_id: Option<String>,
+}
+
 /* ---------- §3.6 instance ---------- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -544,6 +553,7 @@ pub struct ServerOverview {
     pub address: String,
     pub loader: Option<String>,
     pub mc_version: Option<String>,
+    pub modpack: Option<String>,
 }
 
 /* ---------- §3.13 container creation ---------- */
@@ -586,6 +596,51 @@ pub struct CreateContainerArgs {
     pub rcon_port: u16,
     pub expose_to_network: bool,
     pub accept_eula: bool,
+    /// Create from a modpack instead of a bare loader (2.7.0).
+    #[serde(default)]
+    pub modpack: Option<ModpackRef>,
+}
+
+/// Result of `delete_container` (§3.13).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedContainer {
+    pub container_name: String,
+    /// The named volume deleted with it, if any.
+    pub deleted_volume: Option<String>,
+    /// Why the data was left in place although deletion was asked for.
+    pub data_kept: Option<String>,
+}
+
+/* ---------- §3.13 / §3.14 modpacks ---------- */
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModpackSource {
+    Modrinth,
+    Curseforge,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackRef {
+    pub source: ModpackSource,
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackHit {
+    pub source: ModpackSource,
+    pub slug: String,
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub author: String,
+    pub icon_url: Option<String>,
+    pub downloads: u64,
+    pub game_versions: Vec<String>,
+    pub loaders: Vec<String>,
 }
 
 /// Core-side event bus payload; the Tauri layer forwards each variant to its
