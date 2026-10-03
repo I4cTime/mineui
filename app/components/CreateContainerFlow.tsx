@@ -162,8 +162,9 @@ export default function CreateContainerFlow({
     setModpack(choice);
     if (choice === null) {
       setVersion("");
-    } else if (choice.source === "modrinth") {
-      // The pack says which versions it has builds for; start on the newest.
+    } else if (choice.source === "modrinth" || choice.source === "curseforge-zip") {
+      // The pack says which versions it has builds for (a zip: exactly one,
+      // from its manifest); start on the newest.
       setVersion(choice.gameVersions[0] ?? "");
     } else if (modpack?.source !== "curseforge") {
       setVersion("");
@@ -171,7 +172,10 @@ export default function CreateContainerFlow({
   };
 
   // Which Minecraft versions can be chosen, and whether "latest" is one.
-  const packVersions = modpack?.source === "modrinth" ? modpack.gameVersions : null;
+  const packVersions =
+    modpack?.source === "modrinth" || modpack?.source === "curseforge-zip"
+      ? modpack.gameVersions
+      : null;
   const versionIds = packVersions ?? versions.map((item) => item.id);
   const versionHint =
     kind === "type"
@@ -180,7 +184,9 @@ export default function CreateContainerFlow({
         ? "Choose the modpack first."
         : modpack.source === "modrinth"
           ? "The versions this pack has builds for. MineUI installs its newest release for the one you pick."
-          : "The Minecraft version the pack is made for — it decides which Java the server gets, and a pack on the wrong Java does not start.";
+          : modpack.source === "curseforge-zip"
+            ? "From the pack's manifest."
+            : "The Minecraft version the pack is made for — it decides which Java the server gets, and a pack on the wrong Java does not start.";
 
   const loaderMeta = LOADERS.find((item) => item.id === loader);
   const workloadReady =

@@ -8,6 +8,7 @@
 
 pub mod audit;
 pub mod backups;
+pub mod cfpack;
 pub mod config_files;
 pub mod download;
 pub mod error;

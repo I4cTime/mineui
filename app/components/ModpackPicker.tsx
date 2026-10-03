@@ -2,16 +2,20 @@
 
 // Choosing a modpack for a new container (contract §3.13, §3.14).
 // Modrinth: search in place and pick. CurseForge: its search needs a
-// personal API key, so the pack is named by its page address or slug.
+// personal API key, so the pack is named by its page address or slug — or
+// handed over as the zip the CurseForge app exports (2.8.0).
 import { useEffect, useRef, useState } from "react";
-import { Download, Loader2, Search, X } from "lucide-react";
+import { Download, FileArchive, Loader2, Search, X } from "lucide-react";
 import { Button, Chip, Description, Input, Label, ScrollShadow, Tabs, TextField } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
+import { pickModpackZip } from "@/app/lib/dialog";
 import {
+  inspectModpackZip,
   searchModpacks,
   IpcError,
   type ModpackHit,
   type ModpackSource,
+  type ModpackZipInfo,
 } from "@/app/lib/ipc";
 
 const SEARCH_DEBOUNCE_MS = 350;
@@ -28,7 +32,8 @@ const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFracti
 /** What the picker hands back: enough to create the container. */
 export type ModpackChoice = {
   source: ModpackSource;
-  /** Slug (Modrinth pick) or whatever the user typed (CurseForge). */
+  /** Slug (Modrinth pick), whatever the user typed (CurseForge), or the
+   *  zip's host path (CurseForge export). */
   project: string;
   /** Versions the pack is known to support, newest first; empty = unknown. */
   gameVersions: string[];
@@ -68,6 +73,12 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cfInput, setCfInput] = useState(value?.source === "curseforge" ? value.project : "");
+  const [zipPath, setZipPath] = useState<string | null>(
+    value?.source === "curseforge-zip" ? value.project : null,
+  );
+  const [zipInfo, setZipInfo] = useState<ModpackZipInfo | null>(null);
+  const [zipError, setZipError] = useState<string | null>(null);
+  const [inspecting, setInspecting] = useState(false);
   // Only the newest search may land — typing fast must not show stale hits.
   const searchId = useRef(0);
 
@@ -120,6 +131,41 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
     );
   };
 
+  const chooseZip = async () => {
+    play("click_confirm");
+    let path: string | null = null;
+    try {
+      path = await pickModpackZip();
+    } catch (err: unknown) {
+      play("error");
+      setZipError(err instanceof IpcError ? err.message : "Could not open the file picker.");
+      return;
+    }
+    if (path === null) return;
+    setInspecting(true);
+    setZipError(null);
+    try {
+      const info = await inspectModpackZip(path);
+      setZipPath(path);
+      setZipInfo(info);
+      play("success");
+      onChange({
+        source: "curseforge-zip",
+        project: path,
+        gameVersions: [info.mcVersion],
+        title: info.name,
+      });
+    } catch (err: unknown) {
+      play("error");
+      setZipPath(null);
+      setZipInfo(null);
+      setZipError(err instanceof IpcError ? err.message : "Could not read the zip.");
+      onChange(null);
+    } finally {
+      setInspecting(false);
+    }
+  };
+
   const picked = value?.source === "modrinth" ? value : null;
 
   return (
@@ -130,6 +176,9 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
         setSource(key as ModpackSource);
         onChange(null);
         setCfInput("");
+        setZipPath(null);
+        setZipInfo(null);
+        setZipError(null);
       }}
     >
       <Tabs.ListContainer>
@@ -140,6 +189,10 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
           </Tabs.Tab>
           <Tabs.Tab id="curseforge" isDisabled={isDisabled}>
             CurseForge
+            <Tabs.Indicator />
+          </Tabs.Tab>
+          <Tabs.Tab id="curseforge-zip" isDisabled={isDisabled}>
+            CurseForge zip
             <Tabs.Indicator />
           </Tabs.Tab>
         </Tabs.List>
@@ -277,6 +330,76 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
             server log names one, that file has to be added by hand.
           </Description>
         </TextField>
+      </Tabs.Panel>
+
+      <Tabs.Panel id="curseforge-zip" className="grid gap-3 pt-4">
+        {zipInfo && zipPath ? (
+          <div
+            className="flex items-center justify-between gap-3 rounded-lg border border-accent p-3"
+            style={{ background: "color-mix(in oklab, var(--accent) 8%, transparent)" }}
+          >
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="truncate text-sm font-semibold">{zipInfo.name}</span>
+              <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                {zipInfo.loader && (
+                  <Chip size="sm" variant="soft">
+                    {LOADER_NAMES[zipInfo.loader] ?? zipInfo.loader}
+                    {zipInfo.loaderVersion ? ` ${zipInfo.loaderVersion}` : ""}
+                  </Chip>
+                )}
+                <span>
+                  Minecraft <span className="font-pixel-num">{zipInfo.mcVersion}</span>
+                </span>
+                <span>
+                  · <span className="font-pixel-num">{zipInfo.files}</span> mods to download
+                </span>
+                {zipInfo.hasOverrides && <span>· configs included</span>}
+              </span>
+              <span className="truncate font-mono text-xs text-muted" title={zipPath}>
+                {zipPath}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              isDisabled={isDisabled}
+              onPress={() => {
+                play("click_back");
+                setZipPath(null);
+                setZipInfo(null);
+                onChange(null);
+              }}
+              onMouseEnter={() => play("hover")}
+            >
+              <X size={14} />
+              Change
+            </Button>
+          </div>
+        ) : (
+          <div className="grid gap-2">
+            <Button
+              variant="secondary"
+              isDisabled={isDisabled || inspecting}
+              onPress={chooseZip}
+              onMouseEnter={() => play("hover")}
+            >
+              {inspecting ? <Loader2 size={14} className="animate-spin" /> : <FileArchive size={14} />}
+              Choose the exported zip…
+            </Button>
+            <span className="text-xs text-muted">
+              The zip the CurseForge app makes with <em>Export profile</em>: a
+              manifest.json next to an overrides folder. MineUI reads the pack&apos;s
+              name and Minecraft version from it; the server downloads the listed
+              mods on first start. Packs for Minecraft 1.16 and older cannot be used
+              this way.
+            </span>
+            {zipError && (
+              <p role="alert" className="text-xs text-danger">
+                {zipError}
+              </p>
+            )}
+          </div>
+        )}
       </Tabs.Panel>
     </Tabs>
   );

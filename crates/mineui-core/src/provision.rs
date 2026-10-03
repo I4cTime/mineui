@@ -56,6 +56,12 @@ pub enum Workload {
     Loader(&'static str),
     Modrinth(String),
     Curseforge(String),
+    /// A CurseForge app export on the host (2.8.0); `slug` names it in the
+    /// container, from the manifest once `create` has read it.
+    CurseforgeZip {
+        host_path: std::path::PathBuf,
+        slug: String,
+    },
 }
 
 impl Workload {
@@ -65,6 +71,7 @@ impl Workload {
             Workload::Loader(itzg_type) => (*itzg_type).to_string(),
             Workload::Modrinth(slug) => format!("MODRINTH:{slug}"),
             Workload::Curseforge(slug) => format!("AUTO_CURSEFORGE:{slug}"),
+            Workload::CurseforgeZip { slug, .. } => format!("AUTO_CURSEFORGE:zip:{slug}"),
         }
     }
 }
@@ -83,7 +90,17 @@ pub fn validate(args: &CreateContainerArgs) -> Result<Plan> {
             "container name must match ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$".into(),
         ));
     }
-    let version = normalize_version(&args.mc_version)?;
+    // A zip pack's manifest fixes the version (read in `create`); the
+    // argument may be empty then.
+    let from_zip = matches!(
+        args.modpack.as_ref().map(|m| m.source),
+        Some(ModpackSource::CurseforgeZip)
+    );
+    let version = if from_zip && args.mc_version.trim().is_empty() {
+        String::new()
+    } else {
+        normalize_version(&args.mc_version)?
+    };
     if !(MIN_MEMORY_MB..=MAX_MEMORY_MB).contains(&args.memory_mb) {
         return Err(Error::InvalidInput(format!(
             "memory must be {MIN_MEMORY_MB}-{MAX_MEMORY_MB} MB"
@@ -99,6 +116,16 @@ pub fn validate(args: &CreateContainerArgs) -> Result<Plan> {
     }
     let workload = match &args.modpack {
         None => Workload::Loader(args.loader.itzg_type()),
+        Some(modpack) if modpack.source == ModpackSource::CurseforgeZip => {
+            let host_path = modpack.project.trim();
+            if host_path.is_empty() {
+                return Err(Error::InvalidInput("choose the modpack zip".into()));
+            }
+            Workload::CurseforgeZip {
+                host_path: host_path.into(),
+                slug: crate::cfpack::DEFAULT_SLUG.into(),
+            }
+        }
         Some(modpack) => {
             let slug = crate::modpacks::normalize_project(modpack)?;
             // The version picks the Java image; a modpack on the wrong Java
@@ -110,7 +137,9 @@ pub fn validate(args: &CreateContainerArgs) -> Result<Plan> {
             }
             match modpack.source {
                 ModpackSource::Modrinth => Workload::Modrinth(slug),
-                ModpackSource::Curseforge => Workload::Curseforge(slug),
+                ModpackSource::Curseforge | ModpackSource::CurseforgeZip => {
+                    Workload::Curseforge(slug)
+                }
             }
         }
     };
@@ -157,10 +186,52 @@ pub fn env_file_body(plan: &Plan, memory_mb: u32, rcon_password: &str) -> String
         }
         // The pack file fixes the Minecraft version; no VERSION.
         Workload::Curseforge(slug) => format!("TYPE=AUTO_CURSEFORGE\nCF_SLUG={slug}\n"),
+        // The zip is copied to CONTAINER_PATH before the first start (§3.13).
+        Workload::CurseforgeZip { slug, .. } => format!(
+            "TYPE=AUTO_CURSEFORGE\nCF_SLUG={slug}\nCF_MODPACK_ZIP={}\n",
+            crate::cfpack::CONTAINER_PATH
+        ),
     };
     format!(
         "EULA=TRUE\n{what}MEMORY={memory_mb}M\nENABLE_RCON=true\nRCON_PASSWORD={rcon_password}\n"
     )
+}
+
+/// `run -d` — or, with a pack zip that must be inside before the first
+/// start, `create` + `cp` + `start` (§3.13). A `cp`/`start` failure is
+/// reported like a failed `run`: the caller removes the half-made container
+/// and the pids-limit retry can still read the runtime's words.
+async fn launch(
+    runtime: &dyn crate::runtime::Runtime,
+    spec: &ContainerSpec,
+    zip: Option<&std::path::Path>,
+) -> Result<crate::runtime::ExecOutput> {
+    let Some(zip) = zip else {
+        return runtime.run_detached(spec).await;
+    };
+    let created = runtime.create(spec).await?;
+    if !created.success() {
+        return Ok(created);
+    }
+    let failed = |e: Error| crate::runtime::ExecOutput {
+        stdout: String::new(),
+        stderr: e.to_string(),
+        exit_code: Some(1),
+    };
+    if let Err(e) = runtime
+        .cp_to(&spec.name, zip, crate::cfpack::CONTAINER_PATH)
+        .await
+    {
+        return Ok(failed(e));
+    }
+    Ok(match runtime.start(&spec.name).await {
+        Ok(()) => crate::runtime::ExecOutput {
+            stdout: String::new(),
+            stderr: String::new(),
+            exit_code: Some(0),
+        },
+        Err(e) => failed(e),
+    })
 }
 
 /// §3.13 step 6: can the host port be bound right now?
@@ -198,8 +269,23 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
             "you must accept the Minecraft EULA to create a server".into(),
         ));
     }
-    let plan = validate(args)?;
+    let mut plan = validate(args)?;
     let name = args.container_name.as_str();
+
+    // A zip pack: its manifest says what it is (§3.13).
+    let zip = match &plan.workload {
+        Workload::CurseforgeZip { host_path, .. } => {
+            let info = crate::cfpack::inspect(&host_path.to_string_lossy()).await?;
+            let host_path = crate::mods::validate_upload_source(host_path).await?;
+            plan.version = info.mc_version.clone();
+            plan.workload = Workload::CurseforgeZip {
+                host_path: host_path.clone(),
+                slug: crate::cfpack::slug_for(&info.name),
+            };
+            Some(host_path)
+        }
+        _ => None,
+    };
 
     let runtime = crate::runtime::resolve(&settings.advanced).await?;
     if runtime.ps_state(name).await?.exists {
@@ -216,7 +302,16 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
     ensure_port_free(game_bind, args.game_port)?;
     ensure_port_free(Ipv4Addr::LOCALHOST, args.rcon_port)?;
 
-    let tag = image_tag_for_java(required_java_major(core, &plan.version).await);
+    let java_major = required_java_major(core, &plan.version).await;
+    if zip.is_some() && matches!(java_major, Some(0..=8)) {
+        // The java8 image carries no CurseForge API key (image docs), and
+        // MineUI does not take one.
+        return Err(Error::InvalidInput(format!(
+            "this pack is for Minecraft {}, which runs on Java 8; the java8 image cannot download CurseForge files",
+            plan.version
+        )));
+    }
+    let tag = image_tag_for_java(java_major);
     let image = format!("{ITZG_IMAGE}:{tag}");
     let rcon_password = crate::instance::generate_rcon_password();
 
@@ -250,7 +345,7 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
         volume: (format!("{name}-data"), DATA_PATH.to_string()),
         pids_limit: None,
     };
-    let mut outcome = runtime.run_detached(&spec).await;
+    let mut outcome = launch(runtime.as_ref(), &spec, zip.as_deref()).await;
     if let Ok(out) = &outcome {
         if !out.success() && crate::runtime::is_pids_controller_unavailable(&out.stderr) {
             // The runtime's default pids limit cannot be applied on this
@@ -262,7 +357,7 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
                 pids_limit: Some(0),
                 ..spec
             };
-            outcome = runtime.run_detached(&retry).await;
+            outcome = launch(runtime.as_ref(), &retry, zip.as_deref()).await;
         }
     }
     let _ = tokio::fs::remove_file(&env_file).await;

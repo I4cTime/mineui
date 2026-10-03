@@ -23,3 +23,23 @@ export async function pickModFile(): Promise<string | null> {
   });
   return typeof selected === "string" ? selected : null;
 }
+
+/**
+ * Opens a native file picker for a CurseForge app export (profile → Export),
+ * a .zip with manifest.json and overrides/ (contract §3.13, 2.8.0).
+ */
+export async function pickModpackZip(): Promise<string | null> {
+  if (!isTauri()) {
+    throw new IpcError(
+      "INTERNAL",
+      "File picker requires the Tauri runtime. Run the app via `pnpm tauri dev`.",
+    );
+  }
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: "Select a CurseForge modpack export (.zip)",
+    filters: [{ name: "CurseForge modpack export", extensions: ["zip"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}

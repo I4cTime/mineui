@@ -12,8 +12,8 @@ use std::sync::Arc;
 use mineui_core::model::{
     AuditLog, BackupEntry, ConfigFileContent, ConfigFileList, CreateContainerArgs,
     CreateInstanceArgs, DeletedContainer, DownloadedMod, InstanceStatus, JavaCheck, JobRunResult,
-    LogsTail, McVersion, Metrics, ModTarget, ModpackHit, ModsList, PlayerHistory, PlayerNote,
-    PlayerNotes, PlayersResult, RconOutput, RuntimeProbe, SchedulerStatus, ServerList,
+    LogsTail, McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory,
+    PlayerNote, PlayerNotes, PlayersResult, RconOutput, RuntimeProbe, SchedulerStatus, ServerList,
     ServerOverview, ServerState, ServerStatus, UnpackedMods, UploadedMod,
 };
 use mineui_core::settings::Mode;
@@ -426,6 +426,17 @@ pub async fn search_modpacks(
 ) -> CmdResult<Vec<ModpackHit>> {
     let core = core_for(&hub, server_id).await?;
     mineui_core::modpacks::search(&core, &query, limit).await
+}
+
+#[tauri::command]
+pub async fn inspect_modpack_zip(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    source_path: String,
+) -> CmdResult<ModpackZipInfo> {
+    // Read-only and host-side; the profile only has to exist.
+    let _ = core_for(&hub, server_id).await?;
+    mineui_core::cfpack::inspect(&source_path).await
 }
 
 /* ---------- §3.12 server profiles ---------- */

@@ -46,16 +46,24 @@ pub struct ContainerSpec {
 }
 
 impl ContainerSpec {
-    /// The `run` argv (without the binary).
+    /// The `run -d` argv (without the binary).
     pub fn run_args(&self) -> Vec<String> {
-        let mut args: Vec<String> = vec![
-            "run".into(),
-            "-d".into(),
+        self.argv(&["run", "-d"])
+    }
+
+    /// The `create` argv: the same container, not started (§3.13 zip packs).
+    pub fn create_args(&self) -> Vec<String> {
+        self.argv(&["create"])
+    }
+
+    fn argv(&self, verb: &[&str]) -> Vec<String> {
+        let mut args: Vec<String> = verb.iter().map(|s| (*s).to_string()).collect();
+        args.extend([
             "--name".into(),
             self.name.clone(),
             "--env-file".into(),
             self.env_file.to_string_lossy().to_string(),
-        ];
+        ]);
         for (bind, host, container) in &self.ports {
             args.push("-p".into());
             args.push(match bind {
@@ -154,6 +162,9 @@ pub trait Runtime: Send + Sync {
     /// `run -d …` per `spec` (§3.13). Pulls the image when missing, so this
     /// can take minutes. The raw outcome is returned for the caller to map.
     async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput>;
+    /// `create …` — the same container as `run_detached`, not started; for a
+    /// pack zip that `cp` must put in place first (§3.13).
+    async fn create(&self, spec: &ContainerSpec) -> Result<ExecOutput>;
     /// `rm -f <name>` (`rm -f -v` with `anonymous_volumes`). Callers: the
     /// cleanup of a container this app failed to finish creating, and the
     /// explicitly confirmed `delete_container` (§3.13). Nothing else.
@@ -475,6 +486,12 @@ impl Runtime for CliBackend {
         self.run(&args).await
     }
 
+    async fn create(&self, spec: &ContainerSpec) -> Result<ExecOutput> {
+        let args = spec.create_args();
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.run(&args).await
+    }
+
     async fn remove_force(&self, name: &str, anonymous_volumes: bool) -> Result<()> {
         let args: &[&str] = if anonymous_volumes {
             &["rm", "-f", "-v", name]
@@ -620,6 +637,9 @@ macro_rules! delegate_runtime {
             }
             async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput> {
                 self.0.run_detached(spec).await
+            }
+            async fn create(&self, spec: &ContainerSpec) -> Result<ExecOutput> {
+                self.0.create(spec).await
             }
             async fn remove_force(&self, name: &str, anonymous_volumes: bool) -> Result<()> {
                 self.0.remove_force(name, anonymous_volumes).await
@@ -955,6 +975,23 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             &args[args.len() - 2..],
             ["--pids-limit=0", "docker.io/itzg/minecraft-server:java21"]
         );
+    }
+
+    #[test]
+    fn create_args_are_run_args_without_the_detach() {
+        let spec = ContainerSpec {
+            name: "mc".into(),
+            image: "docker.io/itzg/minecraft-server:java21".into(),
+            env_file: "/tmp/x.env".into(),
+            ports: vec![(Some("127.0.0.1".into()), 25566, 25565)],
+            volume: ("mc-data".into(), "/data".into()),
+            pids_limit: None,
+        };
+        let run = spec.run_args();
+        let create = spec.create_args();
+        assert_eq!(&run[..2], ["run", "-d"]);
+        assert_eq!(create[0], "create");
+        assert_eq!(&run[2..], &create[1..]);
     }
 
     #[test]

@@ -221,6 +221,114 @@ async fn live_curseforge_modpack_starts_installing() {
     cleanup(NAME);
 }
 
+/// A CurseForge app export (manifest-only here: no files to download, one
+/// override) becomes a Forge server: create + cp + start, the zip in /data,
+/// the override applied, the loader installed.
+#[tokio::test]
+#[ignore]
+async fn live_curseforge_zip_modpack_boots() {
+    const NAME: &str = "mineui-live-cfzip";
+    cleanup(NAME);
+    let tmp = tempfile::tempdir().unwrap();
+    let zip = tmp.path().join("My Test Pack.zip");
+    {
+        use std::io::Write;
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        writer.start_file("manifest.json", options).unwrap();
+        writer
+            .write_all(
+                br#"{"minecraft":{"version":"1.21.1","modLoaders":[{"id":"forge-52.1.0","primary":true}]},
+                "manifestType":"minecraftModpack","manifestVersion":1,"name":"My Test Pack","author":"mineui",
+                "files":[],"overrides":"overrides"}"#,
+            )
+            .unwrap();
+        writer
+            .start_file("overrides/config/mineui-live.txt", options)
+            .unwrap();
+        writer.write_all(b"from the zip\n").unwrap();
+        writer.finish().unwrap();
+    }
+    let info = mineui_core::cfpack::inspect(&zip.to_string_lossy())
+        .await
+        .unwrap();
+    assert_eq!(info.name, "My Test Pack");
+    assert_eq!(info.loader.as_deref(), Some("forge"));
+
+    let hub = Hub::init(tmp.path().join("config"), tmp.path().join("data"))
+        .await
+        .unwrap();
+    let id = hub
+        .add("CF zip", Some(Mode::Advanced))
+        .await
+        .unwrap()
+        .servers
+        .last()
+        .unwrap()
+        .id
+        .clone();
+    let core = hub.core(Some(&id)).await.unwrap();
+
+    let mut create = args(
+        NAME,
+        25596,
+        ModpackSource::CurseforgeZip,
+        &zip.to_string_lossy(),
+    );
+    create.mc_version = String::new(); // the manifest decides
+    mineui_core::provision::create(&core, &create)
+        .await
+        .unwrap();
+
+    let env = runtime(&[
+        "inspect",
+        "-f",
+        "{{range .Config.Env}}{{println .}}{{end}}",
+        NAME,
+    ]);
+    assert!(env.contains("TYPE=AUTO_CURSEFORGE"), "{env}");
+    assert!(env.contains("CF_SLUG=my-test-pack"), "{env}");
+    assert!(
+        env.contains("CF_MODPACK_ZIP=/data/curseforge-modpack.zip"),
+        "{env}"
+    );
+    let image = runtime(&["inspect", "-f", "{{.ImageName}}", NAME]);
+    assert!(image.contains(":java21"), "{image}");
+
+    let entry = hub
+        .overview()
+        .await
+        .into_iter()
+        .find(|o| o.id == id)
+        .unwrap();
+    assert_eq!(entry.modpack.as_deref(), Some("my-test-pack"));
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+    loop {
+        let logs = runtime(&["logs", "--tail", "300", NAME]);
+        if logs.contains("Running Forge") || logs.contains("Done (") {
+            break;
+        }
+        assert!(
+            !logs.contains("[init] Exiting") && !logs.contains("Could not find"),
+            "the image gave up on the pack:\n{logs}"
+        );
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the image never installed the pack:\n{logs}"
+        );
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+    let listing = runtime(&["exec", NAME, "cat", "/data/config/mineui-live.txt"]);
+    assert!(
+        listing.contains("from the zip"),
+        "override not applied:\n{listing}"
+    );
+    let zip_there = runtime(&["exec", NAME, "ls", "-l", "/data/curseforge-modpack.zip"]);
+    assert!(zip_there.contains("curseforge-modpack.zip"), "{zip_there}");
+    cleanup(NAME);
+}
+
 /// `unpack_mod_archive` into a real container: the jars of a zip land in
 /// /data/mods through one runtime `cp`, and the listing sees them.
 #[tokio::test]

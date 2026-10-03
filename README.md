@@ -63,11 +63,11 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.7.3_amd64.AppImage` — `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.7.3_amd64.deb` — `sudo apt install ./MineUI_2.7.3_amd64.deb` |
-| Windows x64 | `MineUI_2.7.3_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.7.3_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.7.3_x64.dmg` |
+| Linux x86_64 | `MineUI_2.8.0_amd64.AppImage` — `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.8.0_amd64.deb` — `sudo apt install ./MineUI_2.8.0_amd64.deb` |
+| Windows x64 | `MineUI_2.8.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.8.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.8.0_x64.dmg` |
 
 Simple mode needs Java installed (MineUI version-checks it against the
 Minecraft release you pick). Advanced mode needs Docker or Podman.
@@ -131,11 +131,12 @@ with a different loader or modpack.
 
 **Or start from a modpack.** Choose *A modpack* instead of a server type:
 search [Modrinth](https://modrinth.com/modpacks) right in the app (only packs
-that can run on a server are listed) or paste a CurseForge pack's page
-address, pick the Minecraft version, and the server comes up with the pack's
-loader and mods installed. No API key needed for either. A modpack is applied
-when the container is created — to switch packs, delete the container in
-Server Settings and create it again.
+that can run on a server are listed), paste a CurseForge pack's page
+address, or hand over the zip the CurseForge app makes with *Export profile*
+(MineUI reads the pack's name and Minecraft version from its manifest), and
+the server comes up with the pack's loader and mods installed. No API key
+needed for any of them. A modpack is applied when the container is created —
+to switch packs, delete the container in Server Settings and create it again.
 
 **No Podman or Docker yet?** Wherever a container is needed and neither is
 installed, MineUI shows the install steps for your OS (Linux, Windows, macOS)
@@ -218,8 +219,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 179 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (46 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 184 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (47 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -247,7 +248,7 @@ Other commands:
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (179 tests; must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (184 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

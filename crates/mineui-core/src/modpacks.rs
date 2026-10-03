@@ -140,6 +140,12 @@ pub fn normalize_project(modpack: &ModpackRef) -> Result<String> {
     let page = match modpack.source {
         ModpackSource::Modrinth => MODRINTH_PAGE,
         ModpackSource::Curseforge => CURSEFORGE_PAGE,
+        // A zip's `project` is a host path; the slug comes from its manifest.
+        ModpackSource::CurseforgeZip => {
+            return Err(Error::InvalidInput(
+                "a zip pack has no slug — its manifest names it".into(),
+            ))
+        }
     };
     let slug = match input.strip_prefix(page) {
         // First path segment after the page prefix; drops /version/…, ?query, #hash.

@@ -155,6 +155,7 @@ pub fn run() {
             commands::delete_container,
             // §3.14 modpack search
             commands::search_modpacks,
+            commands::inspect_modpack_zip,
             // §3.12 server profiles
             commands::list_servers,
             commands::add_server,
