@@ -183,7 +183,7 @@ function AddModForm({
   const loads = loader !== null && loader in LOADS ? LOADS[loader] : undefined;
 
   const [target, setTarget] = useState<ModTarget>(loads ?? "mods");
-  const [source, setSource] = useState<Source>("link");
+  const [source, setSource] = useState<Source>("file");
   const [link, setLink] = useState("");
   const [saveAs, setSaveAs] = useState("");
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
@@ -419,16 +419,16 @@ function AddModForm({
           >
             <Tabs.ListContainer>
               <Tabs.List aria-label="Where the file comes from">
-                <Tabs.Tab id="link" isDisabled={busy}>
-                  <span className="flex items-center gap-1.5">
-                    <Link2 size={14} />A link
-                  </span>
-                  <Tabs.Indicator />
-                </Tabs.Tab>
                 <Tabs.Tab id="file" isDisabled={busy}>
                   <span className="flex items-center gap-1.5">
                     <FolderOpen size={14} />
                     This computer
+                  </span>
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+                <Tabs.Tab id="link" isDisabled={busy}>
+                  <span className="flex items-center gap-1.5">
+                    <Link2 size={14} />A link
                   </span>
                   <Tabs.Indicator />
                 </Tabs.Tab>
@@ -523,9 +523,11 @@ function AddModForm({
                             outlineColor: "var(--focus)",
                           }}
                         >
-                          <span className="block text-sm font-semibold">{choice.title}</span>
+                          <span className="block text-sm font-semibold">
+                            {target === "plugins" ? choice.title.replace("mod", "plugin") : choice.title}
+                          </span>
                           <span className="mt-0.5 block text-xs text-muted">
-                            {choice.description}
+                            {target === "plugins" ? choice.description.replace(/mods?/g, (m) => (m === "mod" ? "plugin" : "plugins")) : choice.description}
                           </span>
                         </button>
                       );
@@ -564,7 +566,7 @@ function AddModForm({
                       onPress={() => handlePendingZip("bundle")}
                       onMouseEnter={() => play("hover")}
                     >
-                      Several mods — unpack them
+                      Several {target === "mods" ? "mods" : "plugins"} — unpack them
                     </Button>
                     <Button
                       variant="secondary"
@@ -572,7 +574,7 @@ function AddModForm({
                       onPress={() => handlePendingZip("single")}
                       onMouseEnter={() => play("hover")}
                     >
-                      One mod — add as it is
+                      One {target === "mods" ? "mod" : "plugin"} — add as it is
                     </Button>
                   </div>
                   <p className="text-xs text-muted">
