@@ -307,7 +307,7 @@ centering — this is an app chrome bar, not a web page), `padding-inline: 1rem`
 |---|---|---|
 | brand | `Logo` (28px) + wordmark (`font-display`, `text-accent`) linking `/` | fixed, `shrink-0` |
 | nav | 8 nav items + (at narrow tiers) the "More" overflow `Menu` | center, `min-w-0`, the only zone that adapts |
-| controls | server switcher · mode `ToggleButtonGroup` (icon-only, as today) · sound mute · app settings · Ko-fi `Popover` | fixed, `shrink-0` |
+| controls | server switcher · sound mute · app settings · Ko-fi `Popover` | fixed, `shrink-0` |
 
 Amendment (2.5.0): the theme `Select` left the header. Theme choice lives in
 Settings → Appearance next to the accent override (`app/hooks/useTheme.ts`
@@ -322,8 +322,11 @@ starting/stopping · `bg-danger` crashed · `bg-muted` otherwise — semantic
 tokens, no literals), the open server's name, and a chevron. The menu lists
 every server with its dot, name and a one-line state ("Running · 2/20 players ·
 Advanced"), marks the open one, and ends with "Manage servers…" (App Settings →
-Servers). It sits first, with the mode toggle right after it — that toggle is
-the *open server's* mode. Tiers: the name shows at T1–T2
+Servers). It sits first. **There is no mode toggle in the header (2.9.0):** a
+one-click Simple/Advanced flip re-pointed the open server at the other kind,
+which looked like the server had been deleted; how a server is run is changed
+in Server Settings → Advanced only, never while it runs, and asks first.
+Tiers: the name shows at T1–T2
 (`header-mid:` and up, truncated at 7rem) and is CSS-hidden at T3–T4, leaving
 dot + chevron; the trigger itself is rendered at every tier, so no
 `matchMedia` gate is needed. Tooltip + `aria-label` per §9.6.
@@ -333,8 +336,8 @@ pages. Everything that is not about one server — the server list, theme and
 accent — lives on `/app-settings` ("App Settings"), reached from an icon
 button in the controls zone (`SlidersHorizontal`, Tooltip + `aria-label`,
 `aria-current="page"` and `--nav-active-fg` on that route), never from the
-nav. The controls zone therefore reads as two groups: *this server* (switcher,
-mode toggle) then *the app* (sound, app settings, Ko-fi). The nav's "Settings"
+nav. The controls zone therefore reads as two groups: *this server* (switcher)
+then *the app* (sound, app settings, Ko-fi). The nav's "Settings"
 item is the open server's settings; its page title is "Server Settings".
 
 Page header (`app/components/PageHeader.tsx`, every page but the dashboard):
@@ -463,7 +466,7 @@ exactly what the owner banned), their own surface styling, and a
 marketing-page structure. The four-character surface treatment (edge strips,
 detached glass, glow rail) needs a bespoke shell, and every control already
 exists as a primitive. Build: plain `<header>` shell (§9.1) + HeroUI
-`Button` (nav items + icon buttons), `ToggleButtonGroup` (mode), `Select`
+`Button` (nav items + icon buttons), `Select`
 (theme), `Menu` (More overflow), `Tooltip` (icon-only tiers), `Popover`
 (Ko-fi), `Separator` (optional, between nav and controls zones in phosphor
 only if implemented via `--separator` — do not hardcode).

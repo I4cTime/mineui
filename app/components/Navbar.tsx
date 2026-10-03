@@ -47,10 +47,10 @@ const navItems = [
   { href: "/status", label: "Status", icon: Gauge, description: "TPS, resources and the activity log" },
   { href: "/mods", label: "Mods", icon: Boxes, description: "Installed mods and plugins" },
   { href: "/players", label: "Players", icon: Users, description: "Who's on, history and notes" },
-  { href: "/rcon", label: "RCON", icon: Shield, description: "Run allowlisted server commands" },
+  { href: "/rcon", label: "Console", icon: Shield, description: "Send commands to the running server" },
   { href: "/config", label: "Config", icon: ScrollText, description: "Edit server.properties and configs" },
-  { href: "/backups", label: "Backups", icon: Archive, description: "World snapshots and restore" },
-  { href: "/settings", label: "Settings", icon: Settings, description: "This server: mode, connection, schedule" },
+  { href: "/backups", label: "Backups", icon: Archive, description: "World backups and restore" },
+  { href: "/settings", label: "Settings", icon: Settings, description: "This server: name, schedule, backups, advanced" },
 ];
 
 /** Tooltip body for a nav item: label + what the page is for. */

@@ -14,8 +14,10 @@ import {
 } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
+import { useServers } from "@/app/components/ServerProvider";
 import { Skeleton } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
+import { setLeaveGuard } from "@/app/lib/leaveGuard";
 import { usePageMotion } from "@/app/lib/motion";
 import {
   listConfigFiles,
@@ -41,6 +43,7 @@ export default function ConfigPage() {
   const [loaded, setLoaded] = useState<{ file: string; content: string } | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [pendingFile, setPendingFile] = useState<string | null>(null);
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   // Only the newest read may land (fast clicking through the list).
   const readId = useRef(0);
   const [query, setQuery] = useState("");
@@ -48,6 +51,9 @@ export default function ConfigPage() {
   const [restarting, setRestarting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { play } = useUISound();
+  const { activeId, overview } = useServers();
+  // Restarting only means something for a running server.
+  const running = overview.find((item) => item.id === activeId)?.phase === "running";
 
   const openFile = useCallback((file: string) => {
     const myRead = ++readId.current;
@@ -86,6 +92,16 @@ export default function ConfigPage() {
   const ready = loaded !== null && loaded.file === selected;
   const dirty = ready && content !== loaded.content;
 
+  // Leaving the page or switching server with unsaved edits asks first.
+  useEffect(() => {
+    if (!dirty) {
+      setLeaveGuard(null);
+      return;
+    }
+    setLeaveGuard((proceed) => setPendingLeave(() => proceed));
+    return () => setLeaveGuard(null);
+  }, [dirty]);
+
   const filteredFiles = useMemo(() => {
     const needle = query.toLowerCase().trim();
     if (!needle) return files;
@@ -100,7 +116,11 @@ export default function ConfigPage() {
       await writeConfigFile(selected, content);
       setLoaded({ file: selected, content });
       play("success");
-      toast.success(`Saved ${selected}. Restart the server for it to take effect.`);
+      toast.success(
+        running
+          ? `Saved ${selected}. Restart the server for it to take effect.`
+          : `Saved ${selected}. It applies the next time the server starts.`,
+      );
     } catch (error) {
       play("error");
       toast.danger(error instanceof IpcError ? error.message : "Save failed.");
@@ -198,6 +218,10 @@ export default function ConfigPage() {
                   </span>
                 )}
               </div>
+              <span className="text-xs text-muted">
+                Shows server.properties and the text files in the server&apos;s config
+                folder. Other files are not editable here.
+              </span>
             </Card>
           </motion.div>
 
@@ -225,11 +249,11 @@ export default function ConfigPage() {
                       play("click_confirm");
                       setConfirmOpen(true);
                     }}
-                    isDisabled={restarting}
+                    isDisabled={restarting || !running}
                     onMouseEnter={() => play("hover")}
                   >
                     <RefreshCcw size={16} />
-                    Restart server
+                    Restart to apply
                   </Button>
                 </div>
               </Card.Header>
@@ -281,9 +305,25 @@ export default function ConfigPage() {
         />
 
         <ConfirmDialog
+          isOpen={pendingLeave !== null}
+          title={`Discard changes to ${selected ?? "this file"}?`}
+          description={`You edited ${selected ?? "this file"} and have not saved. Leaving throws those edits away.`}
+          confirmLabel="Discard changes"
+          cancelLabel="Keep editing"
+          variant="danger"
+          onCancel={() => setPendingLeave(null)}
+          onConfirm={() => {
+            const proceed = pendingLeave;
+            setPendingLeave(null);
+            setLeaveGuard(null);
+            proceed?.();
+          }}
+        />
+
+        <ConfirmDialog
           isOpen={confirmOpen}
-          title="Restart Minecraft server?"
-          description="This will disconnect players and restart the server."
+          title="Restart the server"
+          description="Everyone playing is disconnected for a moment while the server restarts with the saved settings."
           confirmLabel="Restart"
           cancelLabel="Cancel"
           variant="danger"
