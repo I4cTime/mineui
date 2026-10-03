@@ -46,6 +46,7 @@ import {
   type ServerPhase,
   type ServerProfile,
 } from "@/app/lib/ipc";
+import { leaveOr } from "@/app/lib/leaveGuard";
 
 const FALLBACK_SERVER: ServerProfile = { id: DEFAULT_SERVER_ID, name: "Default" };
 const OVERVIEW_POLL_MS = 6000;
@@ -126,7 +127,8 @@ export default function ServerProvider({
     (id: string) => {
       if (id === activeId || pendingId !== null) return;
       if (!servers.some((server) => server.id === id)) return;
-      setPendingId(id);
+      // A page with unsaved edits gets to ask first (app/lib/leaveGuard.ts).
+      leaveOr(() => setPendingId(id));
     },
     [activeId, pendingId, servers],
   );
