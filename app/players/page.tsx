@@ -2,22 +2,34 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Check, Filter, Pencil, Search, Users, X } from "lucide-react";
+import {
+  Check,
+  Ellipsis,
+  Filter,
+  Pencil,
+  RefreshCw,
+  Search,
+  Users,
+  X,
+} from "lucide-react";
 import {
   Button,
   Card,
   Chip,
+  Dropdown,
+  Input,
   Label,
   ListBox,
   Select,
   Table,
   TextField,
-  Input,
   toast,
 } from "@heroui/react";
 import { EmptyState } from "@heroui-pro/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
+import ServerStateNotice from "@/app/components/ServerStateNotice";
+import { useServers } from "@/app/components/ServerProvider";
 import { formatDateTime } from "@/app/lib/format";
 import { SkeletonTable } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -25,67 +37,152 @@ import { usePageMotion } from "@/app/lib/motion";
 import {
   getPlayerHistory,
   getPlayerNotes,
-  getServerStatus,
   runRconCommand,
   setPlayerNote,
   IpcError,
   type PlayerHistoryRow,
   type PlayerNote,
-  type ServerStatus,
 } from "@/app/lib/ipc";
+
+type ActionId = "whitelist" | "op" | "deop" | "ban" | "pardon" | "kick";
+
+type ActionSpec = {
+  label: string;
+  command: string;
+  /** Present = ask first. */
+  confirm?: {
+    title: (name: string) => string;
+    description: (name: string) => string;
+    label: (name: string) => string;
+    danger: boolean;
+  };
+};
+
+const ACTIONS: Record<ActionId, ActionSpec> = {
+  whitelist: { label: "Whitelist", command: "whitelist add" },
+  op: {
+    label: "Make admin",
+    command: "op",
+    confirm: {
+      title: () => "Make admin",
+      description: (name) =>
+        `Make ${name} an admin? Admins can run any command, including stopping the server and changing the world.`,
+      label: () => "Make admin",
+      danger: true,
+    },
+  },
+  deop: { label: "Remove admin", command: "deop" },
+  ban: {
+    label: "Ban",
+    command: "ban",
+    confirm: {
+      title: (name) => `Ban ${name}`,
+      description: (name) =>
+        `Ban ${name}? They are disconnected and cannot rejoin until you unban them.`,
+      label: (name) => `Ban ${name}`,
+      danger: true,
+    },
+  },
+  pardon: { label: "Unban", command: "pardon" },
+  kick: {
+    label: "Kick",
+    command: "kick",
+    confirm: {
+      title: (name) => `Kick ${name}`,
+      description: (name) =>
+        `Kick ${name}? They are disconnected now and can rejoin straight away.`,
+      label: () => "Kick",
+      danger: false,
+    },
+  },
+};
+
+// Vanilla replies that mean the change happened ("Added X to the whitelist",
+// "Banned X: ...", "Kicked X: ..."). Anything else is shown neutrally, e.g.
+// "Nothing changed. The player is already whitelisted".
+const SUCCESS_REPLY = /^(added|removed|made|de-opped|banned|unbanned|kicked)\b/i;
+
+const NOT_RUNNING_REASON = "Start the server to use this";
 
 export default function PlayersPage() {
   const { containerMotion, cardMotion } = usePageMotion();
-  const [status, setStatus] = useState<ServerStatus | null>(null);
+  const { activeId, overview } = useServers();
+  const phase = overview.find((entry) => entry.id === activeId)?.phase ?? null;
+  const running = phase === "running";
+  const { play } = useUISound();
+
   const [users, setUsers] = useState<PlayerHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [presence, setPresence] = useState<"all" | "online" | "offline">("all");
   const [sort, setSort] = useState<"name-asc" | "last-seen-desc">("name-asc");
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{
-    command: string;
-    username: string;
-  } | null>(null);
+  const [pending, setPending] = useState<{ action: ActionId; username: string } | null>(null);
   // Operator notes (contract §3.11), keyed by lowercase username.
   const [notes, setNotes] = useState<Record<string, PlayerNote>>({});
   const [editingNote, setEditingNote] = useState<{ username: string; text: string } | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
-  const { play } = useUISound();
+  const [reloadTick, setReloadTick] = useState(0);
 
+  // Load on mount, when the server changes, when its phase changes, and when
+  // a refresh is requested (reloadTick).
   useEffect(() => {
-    Promise.allSettled([getServerStatus(), getPlayerHistory(), getPlayerNotes()]).then(
-      ([statusRes, usersRes, notesRes]) => {
-        if (statusRes.status === "fulfilled") setStatus(statusRes.value);
-        if (usersRes.status === "fulfilled") setUsers(usersRes.value.users);
-        if (notesRes.status === "fulfilled") {
-          setNotes(
-            Object.fromEntries(
+    let cancelled = false;
+    Promise.allSettled([getPlayerHistory(), getPlayerNotes()]).then(([usersRes, notesRes]) => {
+      if (cancelled) return;
+      const noteMap =
+        notesRes.status === "fulfilled"
+          ? Object.fromEntries(
               notesRes.value.notes.map((note) => [note.username.toLowerCase(), note]),
-            ),
-          );
+            )
+          : null;
+      if (noteMap) setNotes(noteMap);
+      if (usersRes.status === "fulfilled") {
+        setUsers(usersRes.value.users);
+      } else {
+        // Server unreachable (RCON_UNAVAILABLE): still show everyone we hold
+        // a note for so notes stay readable and editable.
+        const reason = usersRes.reason;
+        if (!(reason instanceof IpcError && reason.code === "RCON_UNAVAILABLE")) {
+          toast.danger(reason instanceof IpcError ? reason.message : "Could not load players.");
         }
-        setLoading(false);
-      },
-    );
-  }, []);
+        setUsers(
+          Object.values(noteMap ?? {}).map((note) => ({
+            username: note.username,
+            lastSeenEpochMs: null,
+            ipAddress: null,
+            isOnline: false,
+          })),
+        );
+      }
+      setLoading(false);
+      setRefreshing(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, phase, reloadTick]);
+
+  const reload = () => setReloadTick((tick) => tick + 1);
+
+  const refresh = () => {
+    play("click_confirm");
+    setRefreshing(true);
+    reload();
+  };
 
   const noteFor = (username: string) => notes[username.toLowerCase()];
 
-  const startEditingNote = (username: string) => {
-    play("click_confirm");
-    setEditingNote({ username, text: noteFor(username)?.note ?? "" });
-  };
-
-  const saveNote = async () => {
-    if (!editingNote) return;
+  const saveNote = async (): Promise<boolean> => {
+    if (!editingNote) return true;
+    const { username, text } = editingNote;
     setNoteSaving(true);
     try {
-      const saved = await setPlayerNote(editingNote.username, editingNote.text);
+      const saved = await setPlayerNote(username, text);
       setNotes((prev) => {
         const next = { ...prev };
-        const key = editingNote.username.toLowerCase();
+        const key = username.toLowerCase();
         if (saved) next[key] = saved;
         else delete next[key];
         return next;
@@ -93,23 +190,71 @@ export default function PlayersPage() {
       play("success");
       toast.success(saved ? "Note saved" : "Note cleared");
       setEditingNote(null);
+      return true;
     } catch (error) {
       play("error");
       toast.danger(error instanceof IpcError ? error.message : "Could not save note");
+      return false;
     } finally {
       setNoteSaving(false);
     }
   };
 
-  const playerList = useMemo(() => {
-    const sample = status?.players.sample ?? [];
-    return sample.map((player) => player.name);
-  }, [status]);
+  const startEditingNote = async (username: string) => {
+    play("click_confirm");
+    if (editingNote && editingNote.username !== username) {
+      // Never silently drop an unsaved edit: save it first, and stay on it if
+      // that fails.
+      const dirty = editingNote.text.trim() !== (noteFor(editingNote.username)?.note ?? "").trim();
+      if (dirty && !(await saveNote())) return;
+    }
+    setEditingNote({ username, text: noteFor(username)?.note ?? "" });
+  };
 
-  const normalize = (value: string) => value.toLowerCase().trim();
+  const runAction = async (action: ActionId, username: string) => {
+    const spec = ACTIONS[action];
+    setActionBusy(true);
+    try {
+      const { output } = await runRconCommand(`${spec.command} ${username}`);
+      const reply = output.trim();
+      if (reply && SUCCESS_REPLY.test(reply)) {
+        play("success");
+        toast.success(reply);
+      } else {
+        play("click_confirm");
+        toast(reply || "Done");
+      }
+    } catch (error) {
+      play("error");
+      toast.danger(
+        error instanceof IpcError && error.code === "RCON_UNAVAILABLE"
+          ? "The server isn't reachable — is it running?"
+          : error instanceof Error
+            ? error.message
+            : "Command failed.",
+      );
+    } finally {
+      setActionBusy(false);
+      reload();
+    }
+  };
+
+  const requestAction = (action: ActionId, username: string) => {
+    if (ACTIONS[action].confirm) setPending({ action, username });
+    else void runAction(action, username);
+  };
+
+  const onlineNames = useMemo(
+    () =>
+      users
+        .filter((row) => row.isOnline)
+        .map((row) => row.username)
+        .sort((a, b) => a.localeCompare(b)),
+    [users],
+  );
 
   const filteredUsers = useMemo(() => {
-    const needle = normalize(query);
+    const needle = query.toLowerCase().trim();
     return users
       .filter((row) => {
         if (presence === "online") return row.isOnline;
@@ -119,8 +264,8 @@ export default function PlayersPage() {
       .filter((row) => {
         if (!needle) return true;
         return (
-          normalize(row.username).includes(needle) ||
-          normalize(row.ipAddress ?? "").includes(needle)
+          row.username.toLowerCase().includes(needle) ||
+          (row.ipAddress ?? "").toLowerCase().includes(needle)
         );
       })
       .sort((a, b) => {
@@ -130,29 +275,6 @@ export default function PlayersPage() {
         return a.username.localeCompare(b.username);
       });
   }, [users, query, presence, sort]);
-
-  const runUserCommand = async (command: string, username: string) => {
-    setActionBusy(`${command}:${username}`);
-    try {
-      await runRconCommand(`${command} ${username}`);
-      play("success");
-      toast.success(`${command} ${username} completed`);
-      const updated = await getPlayerHistory();
-      setUsers(updated.users);
-    } catch (error) {
-      play("error");
-      toast.danger(
-        error instanceof IpcError ? error.message : "Command failed.",
-      );
-    } finally {
-      setActionBusy(null);
-    }
-  };
-
-  const confirmAction = (command: string, username: string) => {
-    setPendingAction({ command, username });
-    setConfirmOpen(true);
-  };
 
   if (loading) {
     return (
@@ -164,6 +286,9 @@ export default function PlayersPage() {
       </div>
     );
   }
+
+  const actionsDisabled = !running || actionBusy;
+  const disabledHint = running ? undefined : NOT_RUNNING_REASON;
 
   return (
     <div
@@ -179,77 +304,58 @@ export default function PlayersPage() {
         variants={containerMotion}
       >
         <PageHeader
-          title="Player Management"
+          title="Players"
           icon={Users}
-          actions={null}
+          actions={
+            <Button size="sm" variant="secondary" onPress={refresh} isDisabled={refreshing}>
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : undefined} />
+              Refresh
+            </Button>
+          }
         />
+
+        <ServerStateNotice need="running" what="to see who is online and manage players" />
 
         <motion.section variants={cardMotion}>
           <Card className="p-5">
-            <Card.Content className="flex sm:flex-col md:flex-row justify-center gap-3 text-sm">
-              <Chip
-                variant="soft"
-                color={status?.online ? "success" : "warning"}
-              >
-                {status?.online ? "Online" : "Offline"}
-              </Chip>
-              <Chip variant="soft">
-                Players: {status?.players.online ?? playerList.length}
-              </Chip>
-              <Chip variant="soft">Version: {status?.version ?? "unknown"}</Chip>
-            </Card.Content>
-          </Card>
-        </motion.section>
-
-        <motion.section className="grid gap-6 md:grid-cols-2" variants={containerMotion}>
-          <motion.div variants={cardMotion}>
-            <Card className="p-5 h-full">
-              <Card.Header className="font-pixel text-xs tracking-wide text-accent">
-                Online Players
-              </Card.Header>
-              <Card.Content className="mt-4 flex flex-wrap gap-2">
-                {playerList.length ? (
-                  playerList.map((player) => (
-                    <Chip key={player} variant="soft">
-                      {player}
+            <Card.Header className="font-pixel text-xs tracking-wide text-accent">
+              Online now
+            </Card.Header>
+            <Card.Content className="mt-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {onlineNames.length ? (
+                  onlineNames.map((name) => (
+                    <Chip key={name} variant="soft">
+                      {name}
                     </Chip>
                   ))
                 ) : (
-                  <span className="text-sm text-muted">No players online</span>
+                  <span className="text-sm text-muted">
+                    {running ? "Nobody is online" : "The server isn't running"}
+                  </span>
                 )}
-              </Card.Content>
-            </Card>
-          </motion.div>
-
-          <motion.div variants={cardMotion}>
-            <Card className="p-5">
-              <Card.Header className="font-pixel text-xs tracking-wide text-accent">
-                Server Details
-              </Card.Header>
-              <Card.Content className="mt-4 grid gap-2 text-sm text-muted">
-                <span>MOTD: {status?.motd ?? "—"}</span>
-                <span>
-                  Players: {status?.players.online ?? 0}/{status?.players.max ?? "?"}
-                </span>
-                <span>Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}</span>
-              </Card.Content>
-            </Card>
-          </motion.div>
+              </div>
+            </Card.Content>
+          </Card>
         </motion.section>
 
         <motion.section variants={cardMotion}>
           <Card className="overflow-hidden">
             <Card.Header className="border-b border-border p-5">
-              <div className="font-pixel text-xs tracking-wide text-accent">
-                User Management
-              </div>
+              <div className="font-pixel text-xs tracking-wide text-accent">Players</div>
+              <p className="mt-2 text-xs text-muted">
+                <strong className="font-semibold text-foreground">Whitelist</strong>: only
+                whitelisted players can join when the whitelist is on.{" "}
+                <strong className="font-semibold text-foreground">Admin (op)</strong>: can run any
+                command, including stopping the server.
+              </p>
               <div className="mt-4 flex flex-wrap gap-3 text-sm">
                 <div className="flex items-center gap-2">
                   <Search size={16} className="text-muted" />
                   <TextField className="w-56">
                     <Label className="sr-only">Search</Label>
                     <Input
-                      placeholder="Search username or IP"
+                      placeholder="Search name or IP"
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                     />
@@ -300,20 +406,28 @@ export default function PlayersPage() {
             <Card.Content className="p-0">
               <Table>
                 <Table.ScrollContainer>
-                  <Table.Content aria-label="Player history" className="min-w-180">
+                  <Table.Content aria-label="Players" className="min-w-180">
                     <Table.Header>
-                      <Table.Column isRowHeader>Username</Table.Column>
+                      <Table.Column isRowHeader>Player</Table.Column>
                       <Table.Column>Last Seen</Table.Column>
                       <Table.Column>IP Address</Table.Column>
                       <Table.Column>Note</Table.Column>
                       <Table.Column>Actions</Table.Column>
                     </Table.Header>
+                    {/* `dependencies`: react-aria caches the rows the render
+                        function returns and only re-runs it when `items` or
+                        these change. The cells read page state (note being
+                        edited, notes, busy flags), so they must be listed or
+                        the rows never update. */}
                     <Table.Body
                       items={filteredUsers}
+                      dependencies={[editingNote, notes, noteSaving, actionsDisabled]}
                       renderEmptyState={() => (
                         <EmptyState size="sm">
                           <EmptyState.Description>
-                            No player data available.
+                            {users.length
+                              ? "No players match your filters."
+                              : "No players recorded yet. They appear here after they join."}
                           </EmptyState.Description>
                         </EmptyState>
                       )}
@@ -326,19 +440,20 @@ export default function PlayersPage() {
                               {row.isOnline && (
                                 // Static, not animate-pulse: the dashboard's
                                 // online-status dot is the one ambient loop
-                                // this app budgets (docs/theme-contract.md §6);
-                                // a pulsing dot per online player here would
-                                // multiply that on a single screen.
-                                <span className="inline-block h-2 w-2 rounded-full bg-accent" />
+                                // this app budgets (docs/theme-contract.md §6).
+                                <span
+                                  role="img"
+                                  aria-label="Online"
+                                  title="Online"
+                                  className="inline-block h-2 w-2 rounded-full bg-accent"
+                                />
                               )}
                             </div>
                           </Table.Cell>
                           <Table.Cell className="text-muted">
                             {formatDateTime(row.lastSeenEpochMs)}
                           </Table.Cell>
-                          <Table.Cell className="text-muted">
-                            {row.ipAddress ?? "—"}
-                          </Table.Cell>
+                          <Table.Cell className="text-muted">{row.ipAddress ?? "—"}</Table.Cell>
                           <Table.Cell>
                             {editingNote?.username === row.username ? (
                               <div className="flex items-center gap-1">
@@ -350,10 +465,13 @@ export default function PlayersPage() {
                                     placeholder="Add a note"
                                     value={editingNote.text}
                                     onChange={(event) =>
-                                      setEditingNote({ username: row.username, text: event.target.value })
+                                      setEditingNote({
+                                        username: row.username,
+                                        text: event.target.value,
+                                      })
                                     }
                                     onKeyDown={(event) => {
-                                      if (event.key === "Enter") saveNote();
+                                      if (event.key === "Enter") void saveNote();
                                       if (event.key === "Escape") setEditingNote(null);
                                     }}
                                   />
@@ -363,7 +481,7 @@ export default function PlayersPage() {
                                   variant="ghost"
                                   isIconOnly
                                   aria-label="Save note"
-                                  onPress={saveNote}
+                                  onPress={() => void saveNote()}
                                   isDisabled={noteSaving}
                                   isPending={noteSaving}
                                 >
@@ -384,31 +502,80 @@ export default function PlayersPage() {
                               <button
                                 type="button"
                                 className="group flex max-w-64 items-center gap-2 text-left text-sm"
-                                onClick={() => startEditingNote(row.username)}
+                                onClick={() => void startEditingNote(row.username)}
                                 onMouseEnter={() => play("hover")}
                                 aria-label={`Edit note for ${row.username}`}
                               >
-                                <span className={noteFor(row.username) ? "truncate" : "text-muted"}>
+                                <span
+                                  className={noteFor(row.username) ? "truncate" : "text-muted"}
+                                >
                                   {noteFor(row.username)?.note ?? "Add note"}
                                 </span>
-                                <Pencil size={12} className="shrink-0 text-muted opacity-60 group-hover:opacity-100" />
+                                <Pencil
+                                  size={12}
+                                  className="shrink-0 text-muted opacity-60 group-hover:opacity-100"
+                                />
                               </button>
                             )}
                           </Table.Cell>
                           <Table.Cell>
-                            <div className="flex flex-wrap gap-1">
-                              {["whitelist add", "op", "deop", "ban", "pardon", "kick"].map((cmd) => (
+                            <div className="flex items-center gap-1" title={disabledHint}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                isDisabled={actionsDisabled}
+                                onPress={() => requestAction("whitelist", row.username)}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                Whitelist
+                              </Button>
+                              {row.isOnline && (
                                 <Button
-                                  key={cmd}
                                   size="sm"
                                   variant="ghost"
-                                  onPress={() => confirmAction(cmd, row.username)}
-                                  isDisabled={actionBusy === `${cmd}:${row.username}`}
+                                  isDisabled={actionsDisabled}
+                                  onPress={() => requestAction("kick", row.username)}
                                   onMouseEnter={() => play("hover")}
                                 >
-                                  {cmd.split(" ").pop()}
+                                  Kick
                                 </Button>
-                              ))}
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                isDisabled={actionsDisabled}
+                                onPress={() => requestAction("ban", row.username)}
+                                onMouseEnter={() => play("hover")}
+                              >
+                                Ban
+                              </Button>
+                              <Dropdown>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  isIconOnly
+                                  isDisabled={actionsDisabled}
+                                  aria-label={`More actions for ${row.username}`}
+                                >
+                                  <Ellipsis size={16} />
+                                </Button>
+                                <Dropdown.Popover>
+                                  <Dropdown.Menu
+                                    aria-label={`More actions for ${row.username}`}
+                                    onAction={(key) => requestAction(key as ActionId, row.username)}
+                                  >
+                                    <Dropdown.Item id="op" textValue="Make admin">
+                                      <Label>Make admin</Label>
+                                    </Dropdown.Item>
+                                    <Dropdown.Item id="deop" textValue="Remove admin">
+                                      <Label>Remove admin</Label>
+                                    </Dropdown.Item>
+                                    <Dropdown.Item id="pardon" textValue="Unban">
+                                      <Label>Unban</Label>
+                                    </Dropdown.Item>
+                                  </Dropdown.Menu>
+                                </Dropdown.Popover>
+                              </Dropdown>
                             </div>
                           </Table.Cell>
                         </Table.Row>
@@ -422,25 +589,21 @@ export default function PlayersPage() {
         </motion.section>
 
         <ConfirmDialog
-          isOpen={confirmOpen}
-          title="Confirm player action"
+          isOpen={pending !== null}
+          title={pending ? (ACTIONS[pending.action].confirm?.title(pending.username) ?? "") : ""}
           description={
-            pendingAction
-              ? `Run "${pendingAction.command}" on ${pendingAction.username}?`
-              : "Run this command?"
+            pending ? ACTIONS[pending.action].confirm?.description(pending.username) : undefined
           }
-          confirmLabel="Run command"
+          confirmLabel={
+            pending ? ACTIONS[pending.action].confirm?.label(pending.username) : "Confirm"
+          }
           cancelLabel="Cancel"
-          variant="danger"
-          isLoading={Boolean(actionBusy)}
-          onCancel={() => setConfirmOpen(false)}
-          onConfirm={async () => {
-            if (!pendingAction) {
-              setConfirmOpen(false);
-              return;
-            }
-            setConfirmOpen(false);
-            await runUserCommand(pendingAction.command, pendingAction.username);
+          variant={pending && ACTIONS[pending.action].confirm?.danger ? "danger" : "default"}
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            const current = pending;
+            setPending(null);
+            if (current) void runAction(current.action, current.username);
           }}
         />
       </motion.main>
