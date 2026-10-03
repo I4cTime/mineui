@@ -196,7 +196,7 @@ pub struct CliBackend {
 impl CliBackend {
     fn command(&self, args: &[&str]) -> tokio::process::Command {
         let mut cmd = tokio::process::Command::new(&self.binary);
-        crate::util::hide_console(&mut cmd);
+        crate::util::prepare_child(&mut cmd);
         cmd.args(args);
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::piped());
@@ -682,7 +682,7 @@ fn parse_version_line(line: &str) -> Option<String> {
 
 async fn probe_binary(binary: &str) -> Option<RuntimeHit> {
     let mut cmd = tokio::process::Command::new(binary);
-    crate::util::hide_console(&mut cmd);
+    crate::util::prepare_child(&mut cmd);
     let output = cmd
         .arg("--version")
         .stdin(Stdio::null())

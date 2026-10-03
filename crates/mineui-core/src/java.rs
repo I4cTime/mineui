@@ -153,7 +153,7 @@ fn java_exe_name() -> &'static str {
 /// Run `<java> -version` and parse the reported version.
 pub async fn probe(binary: &Path) -> Option<(String, u32)> {
     let mut cmd = tokio::process::Command::new(binary);
-    crate::util::hide_console(&mut cmd);
+    crate::util::prepare_child(&mut cmd);
     let output = cmd
         .arg("-version")
         .stdin(std::process::Stdio::null())

@@ -399,9 +399,14 @@ Notes:
 - `set_settings` validates (§2.3), persists atomically (write temp + rename), re-chmods
   0600, and returns the normalized result. Changing `activeMode` takes effect
   immediately for subsequent commands; it does not stop a running managed server.
-- Every subprocess the core spawns (runtime CLI, `java`) is created without a
-  console window on Windows (`CREATE_NO_WINDOW`, 2.7.1): a GUI app otherwise
-  flashes one terminal per call, and the status poll makes several a second.
+- Every subprocess the core spawns (runtime CLI, `java`, `wsl.exe`) goes
+  through `util::prepare_child`: on Windows it is created without a console
+  window (`CREATE_NO_WINDOW`, 2.7.1 — a GUI app otherwise flashes one terminal
+  per call, and the status poll makes several a second); inside an AppImage
+  (`APPIMAGE`/`APPDIR` set) the launcher's `LD_LIBRARY_PATH`, `LD_PRELOAD` and
+  GTK/GIO/GStreamer overrides are removed from the child's environment (2.8.1:
+  the bundled `libseccomp.so.2` made `podman --version` fail with an undefined
+  symbol, so the AppImage found no runtime on a machine that had one).
 - `detect_runtimes` probes `podman --version` and `docker --version` (argv arrays).
 - `java_check` resolves `simple.javaPath` override → `JAVA_HOME/bin/java` → `java` on
   PATH; parses `java -version` stderr. `requiredMajor` comes from the current instance

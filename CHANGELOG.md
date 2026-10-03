@@ -3,6 +3,17 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Linux AppImage: "Podman or Docker is needed, and neither was found" on a
+  machine that has Podman.** The AppImage launcher points `LD_LIBRARY_PATH`
+  at its bundled libraries, and its `libseccomp.so.2` is older than the
+  system's, so every `podman` call died with `undefined symbol:
+  seccomp_export_bpf_mem`. Child processes (podman, docker, java) now get a
+  clean environment inside an AppImage. The .deb was not affected.
+
 ## [2.8.0] - 2026-10-03
 
 ### Added

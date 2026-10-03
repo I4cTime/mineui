@@ -64,7 +64,7 @@ pub async fn facts(core: &crate::Core, runtime: &dyn Runtime) -> MachineFacts {
 /// only by luck, hence the short cache above.
 async fn wsl_address(machine: &str) -> Option<String> {
     let mut cmd = tokio::process::Command::new("wsl.exe");
-    crate::util::hide_console(&mut cmd);
+    crate::util::prepare_child(&mut cmd);
     let out = cmd
         .args(["-d", machine, "hostname", "-I"])
         .stdin(Stdio::null())

@@ -107,7 +107,7 @@ impl Supervisor {
         }
 
         let mut cmd = tokio::process::Command::new(java);
-        crate::util::hide_console(&mut cmd);
+        crate::util::prepare_child(&mut cmd);
         let mut child = cmd
             .arg(format!("-Xms{memory_mb}M"))
             .arg(format!("-Xmx{memory_mb}M"))
