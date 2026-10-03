@@ -202,11 +202,13 @@ on the Status page, with the outcome and the error if it failed.
 
 CPU, memory, and disk, plus network/block IO when attached to a container.
 
-### Four themes
+### Four styles, dark and light
 
-Deepslate & Emerald (default), Phosphor Amber, Quantum Fluidity, and Soft
-Glass — switchable in App Settings, persisted locally. The token contract behind
-them is in [`docs/theme-contract.md`](docs/theme-contract.md).
+Deepslate & Emerald (default), Phosphor Amber, Quantum Fluidity and Soft
+Glass — each with a dark and a light palette. Pick **Dark, Light or Match
+system** and a style in App Settings → Appearance, and optionally override
+the accent color. The token system behind them is in
+[`docs/theme-contract.md`](docs/theme-contract.md).
 
 ### Enriched metrics via a companion mod (Advanced mode, optional)
 
@@ -219,7 +221,7 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 184 unit tests);
+`crates/mineui-core` is pure Rust (no Tauri dependency, 198 unit tests);
 `src-tauri` is a thin `#[tauri::command]` shell (47 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
@@ -248,7 +250,7 @@ Other commands:
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (184 tests; must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (198 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every
