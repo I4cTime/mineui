@@ -1121,6 +1121,26 @@ Sequence (first failure wins; nothing is created before step 7):
        docker.io/itzg/minecraft-server:<tag>
    ```
 
+   **A CurseForge pack from a zip** (2.8.0): `modpack.source = "curseforge-zip"`
+   with `project` = the host path of a zip exported by the CurseForge app
+   (`manifest.json` with `manifestType: "minecraftModpack"` at its root, or
+   under one wrapper folder, plus an `overrides/` folder). The manifest decides:
+   `minecraft.version` is the Minecraft version (the `mcVersion` argument is
+   ignored, the UI prefills it from `inspect_modpack_zip`) and picks the Java
+   image as above; `minecraft.modLoaders` is informational. The env becomes
+   `TYPE=AUTO_CURSEFORGE`, `CF_SLUG=<slug of the manifest name, or custom>` and
+   `CF_MODPACK_ZIP=/data/curseforge-modpack.zip` — the image installs the
+   listed files through its own CurseForge API key and extracts the overrides
+   into `/data`. The zip must be in the container before its first start, so
+   this path does `create` (same argv as `run -d` minus `-d`), `cp <zip>
+   <name>:/data/curseforge-modpack.zip`, then `start`; a failure in any of the
+   three removes the half-made container like a failed `run`. Refused with
+   `INVALID_INPUT`: no `manifest.json`, a manifest that is not a CurseForge pack,
+   a zip over 512 MB, and a pack whose Minecraft version needs Java 8 (the
+   `java8` image carries no CurseForge API key, and MineUI does not take one).
+   The host path is validated like an upload (`mods::validate_upload_source`:
+   canonical, regular file, `.zip`).
+
    The `127.0.0.1:` host address is omitted (both ports) when the loopback the
    runtime would bind is a VM's, not the user's: Podman on Windows with the WSL
    provider (`podman machine info --format {{.Host.VMType}}` = `wsl`, 2.7.2)
@@ -1222,6 +1242,7 @@ guard, so the frontend must always show the container's name. Audited as
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
 | `search_modpacks` | `{ query: string; limit?: number }` | `ModpackHit[]` | both | `modpacks::search` | — (new) |
+| `inspect_modpack_zip` | `{ sourcePath: string }` | `ModpackZipInfo` | both | `cfpack::inspect` | — (new, 2.8.0) |
 
 ```ts
 type ModpackHit = {
@@ -1250,7 +1271,16 @@ type ModpackHit = {
   version (Modrinth's API rules). Network or non-2xx → `DOWNLOAD_FAILED`.
 - Modrinth only: CurseForge's search API needs a personal API key, so a CurseForge
   pack is named by slug or page URL in `create_container` instead.
-- Read-only and not audited.
+- `inspect_modpack_zip` (2.8.0): reads `manifest.json` out of a CurseForge app
+  export (host path from the dialog plugin, validated like an upload) without
+  extracting anything else — the manifest entry is capped at 4 MB. Returns the
+  pack name, `minecraft.version`, the primary (else first) mod loader split into
+  id and version (`forge-52.1.0` → `forge`, `52.1.0`), the number of listed
+  files, and whether the zip has an overrides folder. `INVALID_INPUT` when there
+  is no manifest, the manifest is not `manifestType: minecraftModpack`, or the
+  version is missing. The create form uses it to show what the zip is and to
+  fix the Minecraft version before `create_container`.
+- Both read-only and not audited.
 
 ---
 
@@ -1762,12 +1792,25 @@ export type DeletedContainer = {
 export const deleteContainerFor = (serverId: string, deleteData: boolean) =>
   call<DeletedContainer>("delete_container", { serverId, confirm: true, deleteData });
 
-export type ModpackSource = "modrinth" | "curseforge";
+export type ModpackSource = "modrinth" | "curseforge" | "curseforge-zip";
 
 export type ModpackRef = {
   source: ModpackSource;
-  /** Slug, id, or the pack's page URL on that source. */
+  /** Slug, id, or the pack's page URL on that source; for "curseforge-zip"
+   *  the host path of the exported zip (2.8.0). */
   project: string;
+};
+
+/** What inspect_modpack_zip reads from a CurseForge app export (§3.14). */
+export type ModpackZipInfo = {
+  name: string;
+  mcVersion: string;
+  /** forge, neoforge, fabric, quilt — from the primary mod loader, or null. */
+  loader: string | null;
+  loaderVersion: string | null;
+  /** Files the manifest lists (the image downloads them). */
+  files: number;
+  hasOverrides: boolean;
 };
 
 /* ---------- modpack search (§3.14) ---------- */
@@ -1791,6 +1834,11 @@ export type ModpackHit = {
  *  downloaded. CurseForge has no keyless search — name those by slug/URL. */
 export const searchModpacks = (query: string, limit?: number) =>
   scoped<ModpackHit[]>("search_modpacks", { query, limit });
+
+/** Reads the manifest of a CurseForge app export (host path from the dialog
+ *  plugin) so the create form can show what it is and fix the version. */
+export const inspectModpackZip = (sourcePath: string) =>
+  scoped<ModpackZipInfo>("inspect_modpack_zip", { sourcePath });
 
 /** Creates an itzg/minecraft-server container for the target server. Pulls
  *  the image when missing — the first call can take minutes. */
@@ -2105,6 +2153,7 @@ Frontend rules:
 | `notes` | per-player notes store (§3.11) |
 | `provision` | `create_container` (§3.13): validation, Java → image tag, env file (loader or modpack), run, settings write-back; `delete_container`: confirmed removal, data volume only on request |
 | `modpacks` | `search_modpacks` (§3.14): Modrinth search for server-capable modpacks; modpack reference normalization |
+| `cfpack` | CurseForge pack zips (§3.13, §3.14): manifest reading (`inspect_modpack_zip`), name → slug, the in-container path |
 | `identity` | per-profile identity for the overview (§3.12): one `ps` for the phase + cached container `TYPE`/`VERSION` |
 | `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview` |
 

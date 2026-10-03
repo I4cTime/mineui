@@ -619,6 +619,9 @@ pub struct DeletedContainer {
 pub enum ModpackSource {
     Modrinth,
     Curseforge,
+    /// A CurseForge app export on the host; `project` is its path (2.8.0).
+    #[serde(rename = "curseforge-zip")]
+    CurseforgeZip,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -626,6 +629,20 @@ pub enum ModpackSource {
 pub struct ModpackRef {
     pub source: ModpackSource,
     pub project: String,
+}
+
+/// What `inspect_modpack_zip` reads from a CurseForge export (§3.14).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackZipInfo {
+    pub name: String,
+    pub mc_version: String,
+    /// "forge", "neoforge", "fabric", "quilt" — from the primary mod loader.
+    pub loader: Option<String>,
+    pub loader_version: Option<String>,
+    /// Files the manifest lists (the image downloads them).
+    pub files: u32,
+    pub has_overrides: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

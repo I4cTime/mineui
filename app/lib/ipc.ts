@@ -306,12 +306,25 @@ export type DeletedContainer = {
 export const deleteContainerFor = (serverId: string, deleteData: boolean) =>
   call<DeletedContainer>("delete_container", { serverId, confirm: true, deleteData });
 
-export type ModpackSource = "modrinth" | "curseforge";
+export type ModpackSource = "modrinth" | "curseforge" | "curseforge-zip";
 
 export type ModpackRef = {
   source: ModpackSource;
-  /** Slug, id, or the pack's page URL on that source. */
+  /** Slug, id, or the pack's page URL on that source; for "curseforge-zip"
+   *  the host path of the exported zip (2.8.0). */
   project: string;
+};
+
+/** What inspect_modpack_zip reads from a CurseForge app export (§3.14). */
+export type ModpackZipInfo = {
+  name: string;
+  mcVersion: string;
+  /** forge, neoforge, fabric, quilt — from the primary mod loader, or null. */
+  loader: string | null;
+  loaderVersion: string | null;
+  /** Files the manifest lists (the image downloads them). */
+  files: number;
+  hasOverrides: boolean;
 };
 
 /* ---------- modpack search (§3.14) ---------- */
@@ -335,6 +348,11 @@ export type ModpackHit = {
  *  downloaded. CurseForge has no keyless search — name those by slug/URL. */
 export const searchModpacks = (query: string, limit?: number) =>
   scoped<ModpackHit[]>("search_modpacks", { query, limit });
+
+/** Reads the manifest of a CurseForge app export (host path from the dialog
+ *  plugin) so the create form can show what it is and fix the version. */
+export const inspectModpackZip = (sourcePath: string) =>
+  scoped<ModpackZipInfo>("inspect_modpack_zip", { sourcePath });
 
 /** Creates an itzg/minecraft-server container for the target server. Pulls
  *  the image when missing — the first call can take minutes. */

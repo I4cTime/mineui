@@ -3,6 +3,19 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.8.0] - 2026-10-03
+
+### Added
+
+- **CurseForge modpacks from a zip**: the create-container flow's *A modpack*
+  step has a third source, *CurseForge zip* — the file the CurseForge app
+  makes with *Export profile* (`manifest.json` + `overrides/`). MineUI reads
+  the pack's name, Minecraft version and loader from the manifest
+  (`inspect_modpack_zip`), copies the zip into the container before its first
+  start, and the image downloads the listed mods and applies the overrides.
+  Packs for Minecraft 1.16 and older are refused: the Java 8 image has no
+  CurseForge API key.
+
 ## [2.7.3] - 2026-10-02
 
 ### Fixed
