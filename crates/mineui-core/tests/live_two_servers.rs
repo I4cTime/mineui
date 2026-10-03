@@ -239,7 +239,7 @@ async fn live_feature_surface_on_both_loaders() {
         assert_eq!(metrics.base, "container", "{name}");
         assert!(metrics.mem.used_bytes.unwrap_or(0) > 0, "{name}");
 
-        let backup = mineui_core::backups::create(core).await.unwrap();
+        let backup = mineui_core::backups::create(core).await.unwrap().entry;
         assert!(backup.size_bytes > 0, "{name}");
         let listed = mineui_core::backups::list(core).await.unwrap();
         assert!(

@@ -10,6 +10,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("{0}")]
     RuntimeNotFound(String),
+    /// The CLI works but its engine/machine does not answer (§1, §3.1, 2.9.0).
+    #[error("{0}")]
+    RuntimeUnavailable(String),
     #[error("{0}")]
     ContainerNotFound(String),
     #[error("{0}")]
@@ -64,6 +67,7 @@ impl Error {
     pub fn code(&self) -> &'static str {
         match self {
             Error::RuntimeNotFound(_) => "RUNTIME_NOT_FOUND",
+            Error::RuntimeUnavailable(_) => "RUNTIME_UNAVAILABLE",
             Error::ContainerNotFound(_) => "CONTAINER_NOT_FOUND",
             Error::ContainerExists(_) => "CONTAINER_EXISTS",
             Error::ContainerCreateFailed(_) => "CONTAINER_CREATE_FAILED",
@@ -123,6 +127,13 @@ mod tests {
             json,
             serde_json::json!({ "code": "RCON_COMMAND_BLOCKED", "message": "command not allowed" })
         );
+    }
+
+    #[test]
+    fn runtime_unavailable_has_its_own_code() {
+        let e = Error::RuntimeUnavailable("docker is installed but not responding".into());
+        assert_eq!(e.code(), "RUNTIME_UNAVAILABLE");
+        assert_ne!(e.code(), Error::RuntimeNotFound(String::new()).code());
     }
 
     #[test]

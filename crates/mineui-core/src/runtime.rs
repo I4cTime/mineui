@@ -238,9 +238,17 @@ impl CliBackend {
         })
     }
 
+    /// `RUNTIME_UNAVAILABLE` for this backend (§3.1, 2.9.0).
+    fn unavailable(&self, stderr: &str) -> Error {
+        unavailable_error(self.kind(), std::env::consts::OS, stderr)
+    }
+
     async fn run_ok(&self, args: &[&str]) -> Result<ExecOutput> {
         let out = self.run(args).await?;
         if !out.success() {
+            if engine_unreachable(&out.stderr) {
+                return Err(self.unavailable(&out.stderr));
+            }
             return Err(Error::Internal(format!(
                 "{} {} failed: {}",
                 self.binary,
@@ -253,6 +261,130 @@ impl CliBackend {
             )));
         }
         Ok(out)
+    }
+}
+
+/// Does this stderr say the CLI could not reach its engine (§3.1, 2.9.0)?
+/// Docker Desktop not started, the daemon/service down, a stopped
+/// `podman machine`, a dead remote socket. Matched on the runtimes' own
+/// wording, lower-cased.
+pub fn engine_unreachable(stderr: &str) -> bool {
+    let text = stderr.to_ascii_lowercase();
+    const NEEDLES: &[&str] = &[
+        "cannot connect to the docker daemon",
+        "is the docker daemon running",
+        "error during connect",
+        "failed to connect to the docker api",
+        "dockerdesktoplinuxengine",
+        "cannot connect to podman",
+        "unable to connect to podman",
+        "podman machine start",
+    ];
+    if NEEDLES.iter().any(|n| text.contains(n)) {
+        return true;
+    }
+    // A socket that is configured but not served.
+    (text.contains("dial unix") || text.contains("dial tcp"))
+        && (text.contains("connection refused") || text.contains("no such file or directory"))
+}
+
+/// The usual fix for an unresponsive engine, per runtime and host OS.
+/// `podman machine` exists only where podman runs in a VM (Windows, macOS).
+pub fn unavailable_hint(kind: &str, os: &str) -> &'static str {
+    let vm_host = os == "windows" || os == "macos";
+    match (kind, vm_host) {
+        ("docker", true) => "start Docker Desktop and try again",
+        ("docker", false) => "start the Docker service (e.g. `sudo systemctl start docker`) and try again",
+        (_, true) => "run `podman machine start` (or start the machine in Podman Desktop) and try again",
+        (_, false) => "check that `podman info` works in a terminal; if you use a remote socket, start that service",
+    }
+}
+
+/// `RUNTIME_UNAVAILABLE` with the runtime's name, the hint, and the first
+/// line of what the CLI said (trimmed; never contains secrets — it is the
+/// runtime's own connection error).
+pub fn unavailable_error(kind: &str, os: &str, stderr: &str) -> Error {
+    // podman prints a generic "Cannot connect to Podman … try `podman
+    // machine start`" banner (on Linux too) before the real `Error:` line;
+    // quote the `Error:` line when there is one.
+    let mut lines = stderr.lines().map(str::trim).filter(|l| !l.is_empty());
+    let first = lines.clone().next().unwrap_or("");
+    let detail: String = lines
+        .find(|l| l.starts_with("Error:"))
+        .unwrap_or(first)
+        .chars()
+        .take(300)
+        .collect();
+    let mut message = format!(
+        "{kind} is installed but not responding — {}.",
+        unavailable_hint(kind, os)
+    );
+    if !detail.is_empty() {
+        message.push_str(&format!(" ({kind} said: {detail})"));
+    }
+    Error::RuntimeUnavailable(message)
+}
+
+/// The argv (without the binary) of the stopped-container helper (§3.8):
+/// `run --rm --volumes-from <name> --entrypoint <argv0> <image> <argv1..>`.
+/// `None` for an empty argv.
+pub fn helper_run_args<'a>(
+    name: &'a str,
+    image: &'a str,
+    argv: &[&'a str],
+) -> Option<Vec<&'a str>> {
+    let (entrypoint, rest) = argv.split_first()?;
+    let mut args: Vec<&str> = vec![
+        "run",
+        "--rm",
+        "--volumes-from",
+        name,
+        "--entrypoint",
+        entrypoint,
+        image,
+    ];
+    args.extend_from_slice(rest);
+    Some(args)
+}
+
+/// How to run a command against a container's files (§3.5, §3.8, 2.9.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContainerAccess {
+    /// Running: `exec` in it.
+    Exec,
+    /// Exists but not running: the stopped-container helper.
+    Helper,
+    /// No such container.
+    Missing,
+}
+
+impl ContainerAccess {
+    pub fn for_detail(detail: &ContainerDetail) -> Self {
+        match crate::lifecycle::phase_from_container(detail) {
+            crate::model::ServerPhase::NotCreated => ContainerAccess::Missing,
+            crate::model::ServerPhase::Running => ContainerAccess::Exec,
+            _ => ContainerAccess::Helper,
+        }
+    }
+}
+
+/// Run `argv` against `name`'s files whether or not it is running: `exec`
+/// while it runs, the `run --rm --volumes-from` helper otherwise (2.9.0).
+/// Missing container → `CONTAINER_NOT_FOUND`; an unreachable engine →
+/// `RUNTIME_UNAVAILABLE` (from `ps`). The raw outcome is returned for the
+/// caller to judge.
+pub async fn run_in_container(
+    runtime: &dyn Runtime,
+    name: &str,
+    argv: &[&str],
+) -> Result<ExecOutput> {
+    let detail = runtime.ps_state(name).await?;
+    match ContainerAccess::for_detail(&detail) {
+        ContainerAccess::Missing => Err(Error::ContainerNotFound(format!(
+            "container '{name}' does not exist"
+        ))),
+        ContainerAccess::Exec => runtime.exec(name, argv).await,
+        ContainerAccess::Helper => runtime.run_with_volumes_from(name, argv).await,
     }
 }
 
@@ -332,10 +464,9 @@ impl Runtime for CliBackend {
             .run(&["ps", "--all", "--filter", &filter, "--format", "json"])
             .await?;
         if !out.success() {
-            return Err(Error::RuntimeNotFound(format!(
-                "{} ps failed: {}",
-                self.binary, out.stderr
-            )));
+            // The binary ran (resolve probed `--version`), so a failing `ps`
+            // is the engine, not a missing install (§3.1, 2.9.0).
+            return Err(self.unavailable(&out.stderr));
         }
         let Some(container) = parse_ps_json(&out.stdout) else {
             return Ok(ContainerDetail {
@@ -404,6 +535,9 @@ impl Runtime for CliBackend {
     async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput> {
         let image_out = self.run(&["inspect", "-f", "{{.Image}}", name]).await?;
         if !image_out.success() {
+            if engine_unreachable(&image_out.stderr) {
+                return Err(self.unavailable(&image_out.stderr));
+            }
             return Err(Error::ContainerNotFound(format!(
                 "cannot inspect container '{name}': {}",
                 image_out.stderr
@@ -415,19 +549,9 @@ impl Runtime for CliBackend {
                 "container '{name}' has no image"
             )));
         }
-        let Some((entrypoint, rest)) = argv.split_first() else {
+        let Some(args) = helper_run_args(name, &image, argv) else {
             return Err(Error::Internal("helper run needs a non-empty argv".into()));
         };
-        let mut args: Vec<&str> = vec![
-            "run",
-            "--rm",
-            "--volumes-from",
-            name,
-            "--entrypoint",
-            entrypoint,
-            &image,
-        ];
-        args.extend_from_slice(rest);
         self.run(&args).await
     }
 
@@ -680,7 +804,42 @@ fn parse_version_line(line: &str) -> Option<String> {
     }
 }
 
-async fn probe_binary(binary: &str) -> Option<RuntimeHit> {
+/// Which runtime a `--version` line belongs to (2.9.0): "podman version …"
+/// → podman, "Docker version …" → docker.
+pub fn kind_from_version_line(line: &str) -> Option<RuntimeKind> {
+    let lower = line.trim().to_ascii_lowercase();
+    if lower.starts_with("podman version") {
+        Some(RuntimeKind::Podman)
+    } else if lower.starts_with("docker version") {
+        Some(RuntimeKind::Docker)
+    } else {
+        None
+    }
+}
+
+/// Fallback when the version line names neither: the binary's file name.
+fn kind_from_binary_name(binary: &str) -> Option<RuntimeKind> {
+    let name = Path::new(binary)
+        .file_name()?
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    if name.contains("podman") {
+        Some(RuntimeKind::Podman)
+    } else if name.contains("docker") {
+        Some(RuntimeKind::Docker)
+    } else {
+        None
+    }
+}
+
+/// The kind of an override binary (§3.1, 2.9.0): version line first, then
+/// file name; `None` = ignore the override.
+pub fn infer_override_kind(binary: &str, version_line: &str) -> Option<RuntimeKind> {
+    kind_from_version_line(version_line).or_else(|| kind_from_binary_name(binary))
+}
+
+/// `<binary> --version` → its first stdout line, when it runs and exits 0.
+async fn probe_line(binary: &str) -> Option<String> {
     let mut cmd = tokio::process::Command::new(binary);
     crate::util::prepare_child(&mut cmd);
     let output = cmd
@@ -695,20 +854,59 @@ async fn probe_binary(binary: &str) -> Option<RuntimeHit> {
         return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let line = stdout.lines().next()?;
-    Some(RuntimeHit {
+    stdout.lines().next().map(str::to_string)
+}
+
+fn hit_from_line(binary: &str, line: &str) -> RuntimeHit {
+    RuntimeHit {
         binary: binary.to_string(),
         version: parse_version_line(line).unwrap_or_else(|| line.trim().to_string()),
-    })
+    }
+}
+
+async fn probe_binary(binary: &str) -> Option<RuntimeHit> {
+    let line = probe_line(binary).await?;
+    Some(hit_from_line(binary, &line))
+}
+
+fn override_binary(advanced: &AdvancedModeSettings) -> Option<String> {
+    advanced
+        .runtime_binary
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// Auto with an override set (2.9.0): probe it first and infer its kind.
+async fn probe_auto_override(advanced: &AdvancedModeSettings) -> Option<(RuntimeKind, RuntimeHit)> {
+    if advanced.runtime != RuntimeKind::Auto {
+        return None;
+    }
+    let binary = override_binary(advanced)?;
+    let line = probe_line(&binary).await?;
+    let kind = infer_override_kind(&binary, &line)?;
+    Some((kind, hit_from_line(&binary, &line)))
 }
 
 /// `detect_runtimes`: probe `podman --version` and `docker --version`
-/// (argv arrays), honoring the configured binary override.
+/// (argv arrays), honoring the configured binary override — on Auto too,
+/// where a working override takes its kind's slot and wins `resolved`.
 pub async fn detect(advanced: &AdvancedModeSettings) -> RuntimeProbe {
-    let override_bin = advanced
-        .runtime_binary
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string());
+    if let Some((kind, hit)) = probe_auto_override(advanced).await {
+        return match kind {
+            RuntimeKind::Docker => RuntimeProbe {
+                podman: probe_binary("podman").await,
+                docker: Some(hit),
+                resolved: Some("docker".into()),
+            },
+            _ => RuntimeProbe {
+                podman: Some(hit),
+                docker: probe_binary("docker").await,
+                resolved: Some("podman".into()),
+            },
+        };
+    }
+    let override_bin = override_binary(advanced);
     let (podman_bin, docker_bin) = match advanced.runtime {
         RuntimeKind::Podman => (
             override_bin.clone().unwrap_or_else(|| "podman".into()),
@@ -736,12 +934,10 @@ pub async fn detect(advanced: &AdvancedModeSettings) -> RuntimeProbe {
 }
 
 /// Resolve the runtime to use per settings: explicit setting is respected,
-/// "auto" tries podman then docker. RUNTIME_NOT_FOUND when nothing usable.
+/// "auto" tries a working override first (2.9.0), then podman, then docker.
+/// RUNTIME_NOT_FOUND when nothing usable.
 pub async fn resolve(advanced: &AdvancedModeSettings) -> Result<Box<dyn Runtime>> {
-    let override_bin = advanced
-        .runtime_binary
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string());
+    let override_bin = override_binary(advanced);
     let backend = |binary: String, kind: RuntimeKind| CliBackend {
         binary,
         kind,
@@ -767,6 +963,14 @@ pub async fn resolve(advanced: &AdvancedModeSettings) -> Result<Box<dyn Runtime>
             Ok(Box::new(DockerCli(backend(bin, RuntimeKind::Docker))))
         }
         RuntimeKind::Auto => {
+            if let Some((kind, hit)) = probe_auto_override(advanced).await {
+                return Ok(match kind {
+                    RuntimeKind::Docker => {
+                        Box::new(DockerCli(backend(hit.binary, RuntimeKind::Docker)))
+                    }
+                    _ => Box::new(PodmanCli(backend(hit.binary, RuntimeKind::Podman))),
+                });
+            }
             if probe_binary("podman").await.is_some() {
                 Ok(Box::new(PodmanCli(backend(
                     "podman".into(),
@@ -778,9 +982,12 @@ pub async fn resolve(advanced: &AdvancedModeSettings) -> Result<Box<dyn Runtime>
                     RuntimeKind::Docker,
                 ))))
             } else {
-                Err(Error::RuntimeNotFound(
-                    "no usable podman or docker CLI found on PATH".into(),
-                ))
+                Err(Error::RuntimeNotFound(match override_bin {
+                    Some(bin) => format!(
+                        "no usable podman or docker CLI found (override {bin} is not a usable podman/docker, nor is either on PATH)"
+                    ),
+                    None => "no usable podman or docker CLI found on PATH".into(),
+                }))
             }
         }
     }
@@ -1036,5 +1243,144 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             "27.5.1"
         );
         assert!(parse_version_line("gibberish").is_none());
+    }
+
+    #[test]
+    fn version_line_tells_the_kind() {
+        assert_eq!(
+            kind_from_version_line("podman version 6.1.0"),
+            Some(RuntimeKind::Podman)
+        );
+        assert_eq!(
+            kind_from_version_line("Docker version 27.5.1, build a187fa5"),
+            Some(RuntimeKind::Docker)
+        );
+        assert_eq!(kind_from_version_line("nerdctl version 2.0"), None);
+        // podman-docker's `docker` shim reports podman: the line wins.
+        assert_eq!(
+            infer_override_kind("/usr/bin/docker", "podman version 5.2.2"),
+            Some(RuntimeKind::Podman)
+        );
+        // An unhelpful line falls back to the file name.
+        assert_eq!(
+            infer_override_kind("C:\\Tools\\docker.exe", "v27"),
+            Some(RuntimeKind::Docker)
+        );
+        assert_eq!(
+            infer_override_kind("/opt/podman/bin/podman-remote", "4.9"),
+            Some(RuntimeKind::Podman)
+        );
+        assert_eq!(
+            infer_override_kind("/usr/local/bin/nerdctl", "nerdctl 2"),
+            None
+        );
+    }
+
+    #[test]
+    fn recognises_an_unreachable_engine() {
+        // Docker Desktop not started (Windows)
+        assert!(engine_unreachable(
+            "error during connect: Get \"http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.47/containers/json\": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified."
+        ));
+        // Docker daemon down (Linux)
+        assert!(engine_unreachable(
+            "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
+        ));
+        // podman machine stopped (Windows/macOS)
+        assert!(engine_unreachable(
+            "Cannot connect to Podman. Please verify your connection to the Linux system using `podman system connection list`, or try `podman machine init` and `podman machine start` to manage a new Linux VM\nError: unable to connect to Podman socket: failed to connect: dial tcp 127.0.0.1:53717: connectex: No connection could be made because the target machine actively refused it."
+        ));
+        // CONTAINER_HOST pointing at a dead socket
+        assert!(engine_unreachable(
+            "Error: unable to connect to Podman socket: Get \"http://d/v5.0.0/libpod/_ping\": dial unix /run/user/1000/podman/podman.sock: connect: no such file or directory"
+        ));
+        assert!(!engine_unreachable(
+            "Error: no container with name or ID \"mc\" found: no such container"
+        ));
+        assert!(!engine_unreachable(
+            "Error: crun: controller `pids` is not available"
+        ));
+        assert!(!engine_unreachable(""));
+    }
+
+    #[test]
+    fn unavailable_message_names_runtime_and_fix() {
+        let e = unavailable_error(
+            "docker",
+            "windows",
+            "\nerror during connect: open //./pipe/dockerDesktopLinuxEngine\nmore",
+        );
+        assert_eq!(e.code(), "RUNTIME_UNAVAILABLE");
+        let m = e.to_string();
+        assert!(
+            m.starts_with("docker is installed but not responding"),
+            "{m}"
+        );
+        assert!(m.contains("start Docker Desktop"), "{m}");
+        assert!(m.contains("error during connect"), "{m}");
+        assert!(!m.contains("more"), "first line only: {m}");
+
+        let m = unavailable_error("podman", "macos", "").to_string();
+        assert!(m.contains("podman machine start"), "{m}");
+        assert!(!m.contains("said"), "{m}");
+        // No machine on Linux: never suggest it there — not even by quoting
+        // podman's own banner (verbatim podman 6.1.1, dead CONTAINER_HOST).
+        let m = unavailable_error(
+            "podman",
+            "linux",
+            "Cannot connect to Podman. Please verify your connection to the Linux system using `podman system connection list`, or try `podman machine init` and `podman machine start` to manage a new Linux VM\nError: unable to connect to Podman socket: Get \"http://d/v6.1.1/libpod/_ping\": dial unix /tmp/mineui-nope.sock: connect: no such file or directory",
+        )
+        .to_string();
+        assert!(!m.contains("machine"), "{m}");
+        assert!(m.contains("dial unix /tmp/mineui-nope.sock"), "{m}");
+        let m = unavailable_error("docker", "linux", "x").to_string();
+        assert!(!m.contains("Docker Desktop"), "{m}");
+    }
+
+    #[test]
+    fn helper_argv_runs_the_command_over_the_volumes() {
+        let script = "for f in /data/x/*; do :; done";
+        let args = helper_run_args("mc-forge", "sha256:abc", &["sh", "-c", script]).unwrap();
+        assert_eq!(
+            args,
+            [
+                "run",
+                "--rm",
+                "--volumes-from",
+                "mc-forge",
+                "--entrypoint",
+                "sh",
+                "sha256:abc",
+                "-c",
+                script
+            ]
+        );
+        assert!(helper_run_args("mc", "img", &[]).is_none());
+    }
+
+    #[test]
+    fn container_access_follows_the_state() {
+        let detail = |exists: bool, status: Option<&str>| ContainerDetail {
+            exists,
+            id: None,
+            status: status.map(String::from),
+            created_at: None,
+            started_at: None,
+        };
+        assert_eq!(
+            ContainerAccess::for_detail(&detail(false, None)),
+            ContainerAccess::Missing
+        );
+        assert_eq!(
+            ContainerAccess::for_detail(&detail(true, Some("running"))),
+            ContainerAccess::Exec
+        );
+        for status in ["exited", "created", "paused", "stopped"] {
+            assert_eq!(
+                ContainerAccess::for_detail(&detail(true, Some(status))),
+                ContainerAccess::Helper,
+                "{status}"
+            );
+        }
     }
 }

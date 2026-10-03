@@ -21,7 +21,7 @@ export function isTauri(): boolean {
 /* ---------- errors ---------- */
 
 export type ErrorCode =
-  | "RUNTIME_NOT_FOUND" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
+  | "RUNTIME_NOT_FOUND" | "RUNTIME_UNAVAILABLE" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
   | "CONTAINER_CREATE_FAILED" | "SERVER_NOT_RUNNING"
   | "SERVER_RUNNING" | "RCON_UNAVAILABLE" | "RCON_COMMAND_BLOCKED"
   | "QUERY_UNAVAILABLE" | "JAVA_NOT_FOUND" | "JAVA_INCOMPATIBLE"
@@ -378,8 +378,14 @@ export type PlayerHistoryRow = {
 };
 
 export const getPlayers = () => scoped<PlayersResult>("get_players");
+/** 2.9.0 — resolves without RCON too: then rconAvailable is false and every row is offline. */
+export type PlayerHistory = {
+  users: PlayerHistoryRow[];
+  rconAvailable: boolean;
+};
+
 export const getPlayerHistory = () =>
-  scoped<{ users: PlayerHistoryRow[] }>("get_player_history");
+  scoped<PlayerHistory>("get_player_history");
 export const runRconCommand = (command: string) =>
   scoped<{ output: string }>("run_rcon_command", { command });
 
@@ -481,7 +487,10 @@ export type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-export const createBackup = () => scoped<BackupEntry>("create_backup");
+/** 2.9.0 — the new archive plus the filenames retention (keepLast) removed in this call. */
+export type CreatedBackup = BackupEntry & { pruned: string[] };
+
+export const createBackup = () => scoped<CreatedBackup>("create_backup");
 export const listBackups = () => scoped<BackupEntry[]>("list_backups");
 export const restoreBackup = (filename: string) =>
   scoped<void>("restore_backup", { filename });

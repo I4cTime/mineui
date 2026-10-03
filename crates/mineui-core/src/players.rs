@@ -121,7 +121,15 @@ async fn read_log_lines(core: &crate::Core) -> Vec<String> {
                 ("/data/logs/latest.log", "4000"),
                 ("/data/logs/latest.log.1", "2000"),
             ] {
-                if let Ok(out) = runtime.exec(name, &["tail", "-n", tail, file]).await {
+                // `exec` while running, the volumes-from helper while
+                // stopped — history must not need a running server (2.9.0).
+                if let Ok(out) = crate::runtime::run_in_container(
+                    runtime.as_ref(),
+                    name,
+                    &["tail", "-n", tail, file],
+                )
+                .await
+                {
                     if out.success() {
                         lines.extend(
                             out.stdout
@@ -149,26 +157,60 @@ async fn read_log_lines(core: &crate::Core) -> Vec<String> {
     }
 }
 
-/// `get_player_history` (§3.4).
+/// `get_player_history` (§3.4). Never rejects because RCON is down (2.9.0):
+/// rows that do not need it — log history and noted players — come back
+/// offline with `rcon_available: false`.
 pub async fn history(core: &crate::Core) -> Result<PlayerHistory> {
-    let list_output = crate::rcon::run(core, "list").await?;
-    let online_players = parse_list_output(&list_output);
+    let (online_players, rcon_available) = match crate::rcon::run(core, "list").await {
+        Ok(output) => (parse_list_output(&output), true),
+        Err(crate::Error::RconUnavailable(_)) => (Vec::new(), false),
+        Err(e) => return Err(e),
+    };
     let log_lines = read_log_lines(core).await;
     let parsed = parse_log_lines(&log_lines);
+    let noted: Vec<String> = crate::notes::list(core)
+        .await
+        .map(|n| n.notes.into_iter().map(|note| note.username).collect())
+        .unwrap_or_default();
+    Ok(PlayerHistory {
+        users: merge_history(&online_players, &parsed, &noted),
+        rcon_available,
+    })
+}
 
-    let mut usernames: Vec<String> = online_players.clone();
-    for name in parsed.keys() {
-        if !usernames.contains(name) {
+/// Union of the online set, log history and noted players; names compared
+/// case-insensitively (notes are keyed lowercase, §3.11). The spelling comes
+/// from RCON, then the logs, then the note. Sort: online first, then
+/// lastSeen desc (unknown last).
+fn merge_history(
+    online: &[String],
+    parsed: &HashMap<String, HistoryEntry>,
+    noted: &[String],
+) -> Vec<PlayerHistoryRow> {
+    let mut usernames: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut log_names: Vec<&String> = parsed.keys().collect();
+    log_names.sort(); // HashMap order is random; keep ties stable
+    for name in online.iter().chain(log_names).chain(noted.iter()) {
+        if seen.insert(name.to_lowercase()) {
             usernames.push(name.clone());
         }
     }
+    let parsed_lower: HashMap<String, &HistoryEntry> =
+        parsed.iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
+    let online_lower: std::collections::HashSet<String> =
+        online.iter().map(|n| n.to_lowercase()).collect();
 
     let mut rows: Vec<PlayerHistoryRow> = usernames
         .into_iter()
         .map(|username| {
-            let entry = parsed.get(&username).cloned().unwrap_or_default();
+            let key = username.to_lowercase();
+            let entry = parsed_lower
+                .get(&key)
+                .map(|e| (*e).clone())
+                .unwrap_or_default();
             PlayerHistoryRow {
-                is_online: online_players.contains(&username),
+                is_online: online_lower.contains(&key),
                 last_seen_epoch_ms: entry.last_seen_epoch_ms,
                 ip_address: entry.ip_address,
                 username,
@@ -184,7 +226,7 @@ pub async fn history(core: &crate::Core) -> Result<PlayerHistory> {
                 .cmp(&a.last_seen_epoch_ms.unwrap_or(0))
         })
     });
-    Ok(PlayerHistory { users: rows })
+    rows
 }
 
 #[cfg(test)]
@@ -256,6 +298,76 @@ mod tests {
         let entry = parsed.get("Eve").unwrap();
         let two_am = crate::util::log_time_to_epoch_ms(2, 0, 0).unwrap();
         assert_eq!(entry.last_seen_epoch_ms, Some(two_am));
+    }
+
+    fn names(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn history_without_rcon_keeps_logs_and_noted_players_offline() {
+        // Explicit times: log `[HH:MM:SS]` resolution depends on the clock.
+        let seen = |ms: i64| HistoryEntry {
+            last_seen_epoch_ms: Some(ms),
+            ip_address: None,
+        };
+        let parsed: HashMap<String, HistoryEntry> = [
+            ("Alice".to_string(), seen(1_000)),
+            ("Bob".to_string(), seen(2_000)),
+        ]
+        .into_iter()
+        .collect();
+        // RCON down: no online set. Carol only has a note; "alice" is noted
+        // in lowercase and must not duplicate the log's "Alice".
+        let rows = merge_history(&[], &parsed, &names(&["Carol", "alice"]));
+        let got: Vec<(&str, bool, bool)> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.username.as_str(),
+                    r.is_online,
+                    r.last_seen_epoch_ms.is_some(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("Bob", false, true),
+                ("Alice", false, true),
+                ("Carol", false, false),
+            ]
+        );
+        assert!(rows.iter().all(|r| !r.is_online));
+    }
+
+    #[test]
+    fn history_with_rcon_marks_online_and_still_lists_notes() {
+        let parsed = parse_log_lines(&lines(&[
+            "[01:00:00] [Server thread/INFO]: Alice[/10.0.0.5:5000] logged in with entity id 1 at (0, 0, 0)",
+        ]));
+        let rows = merge_history(&names(&["alice", "Dave"]), &parsed, &names(&["Erin"]));
+        assert_eq!(rows.len(), 3);
+        // Online first; RCON's spelling wins.
+        assert!(rows[0].is_online && rows[1].is_online);
+        let alice = rows.iter().find(|r| r.username == "alice").unwrap();
+        assert_eq!(alice.ip_address.as_deref(), Some("10.0.0.5:5000"));
+        let erin = rows.iter().find(|r| r.username == "Erin").unwrap();
+        assert!(!erin.is_online);
+        assert_eq!(erin.last_seen_epoch_ms, None);
+        assert_eq!(rows[2].username, "Erin");
+    }
+
+    #[test]
+    fn player_history_serializes_rcon_flag() {
+        let history = PlayerHistory {
+            users: vec![],
+            rcon_available: false,
+        };
+        assert_eq!(
+            serde_json::to_value(&history).unwrap(),
+            serde_json::json!({ "users": [], "rconAvailable": false })
+        );
     }
 
     #[test]
