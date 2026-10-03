@@ -38,6 +38,7 @@ import Logo from "./Logo";
 import ServerSwitcher from "./ServerSwitcher";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
 import { applyTheme, useTheme } from "@/app/hooks/useTheme";
+import { applyColorMode, useColorMode } from "@/app/hooks/useColorMode";
 import { useMediaQuery } from "@/app/hooks/useMediaQuery";
 import { useMode } from "@/app/components/ModeProvider";
 import type { Mode } from "@/app/lib/ipc";
@@ -179,6 +180,12 @@ export default function Navbar() {
   useEffect(() => {
     applyTheme(currentTheme);
   }, [currentTheme]);
+  // Same for the color mode (dark / light / match system, contract §10);
+  // public/theme-init.js already stamped both before first paint.
+  const { preference: colorModePreference } = useColorMode();
+  useEffect(() => {
+    applyColorMode(colorModePreference);
+  }, [colorModePreference]);
 
   const handleNavigate = (href: string) => {
     play("click_confirm");

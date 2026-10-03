@@ -3,6 +3,30 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Light mode.** App Settings → Appearance has a new *Mode* choice — Dark,
+  Light, or Match system — that works with every style: Deepslate becomes
+  *Calcite & Emerald*, Phosphor a warm *paper console*, Quantum *Daybreak*,
+  Soft Glass warm paper and terracotta. Each light palette was checked
+  numerically for text contrast (WCAG AA or better everywhere, including
+  status chips). An accent override that would be unreadable on a light
+  ground is shown darker in light mode; your pick is kept for dark mode.
+  Dark stays the default, so nothing changes until you choose it.
+
+### Fixed
+
+- **Config editor could save one file's text into another.** Selecting a file
+  switched the name immediately while the editor still held the previous
+  file's text (for good, if the read failed) and Save stayed enabled. The
+  editor and Save are now off until the opened file's own text has loaded, a
+  failed read is shown with *Try again*, late reads of a previously clicked
+  file are ignored, and switching files with unsaved edits asks first. Save
+  is only enabled when something changed, and its confirmation says a
+  restart is needed.
+
 ## [2.8.0] - 2026-10-03
 
 ### Added

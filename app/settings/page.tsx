@@ -468,7 +468,7 @@ export default function SettingsPage() {
     <div
       className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main

@@ -334,7 +334,7 @@ export default function Home() {
     <div
       className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
@@ -499,7 +499,7 @@ export default function Home() {
                     className="mt-4 max-h-105 rounded-lg border border-border p-4 text-xs leading-5 font-mono text-foreground"
                     style={{
                       background:
-                        "color-mix(in oklab, var(--background) 70%, black)",
+                        "var(--well)",
                     }}
                   >
                     {logLines.length ? (

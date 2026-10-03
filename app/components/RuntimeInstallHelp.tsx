@@ -127,7 +127,7 @@ function CommandRow({ step }: { step: Step }) {
       {step.label && <span className="text-xs text-muted">{step.label}</span>}
       <div
         className="flex items-center justify-between gap-2 rounded-lg border border-border py-1 pr-1 pl-3"
-        style={{ background: "color-mix(in oklab, var(--background) 70%, black)" }}
+        style={{ background: "var(--well)" }}
       >
         <code className="min-w-0 truncate font-mono text-xs">{step.command}</code>
         <Button

@@ -63,7 +63,7 @@ export default function RconPage() {
     <div
       className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
@@ -140,7 +140,7 @@ export default function RconPage() {
                 <ScrollShadow
                   className="min-h-30 max-h-80 p-4 font-mono text-xs leading-5 text-foreground"
                   style={{
-                    background: "color-mix(in oklab, var(--background) 70%, black)",
+                    background: "var(--well)",
                   }}
                 >
                   {commandError ? (

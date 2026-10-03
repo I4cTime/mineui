@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { FileCode2, Loader2, RefreshCcw, Save, Search } from "lucide-react";
 import {
@@ -34,18 +34,45 @@ export default function ConfigPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [content, setContent] = useState("");
+  // What is on disk for the open file. `null` while it loads or when the
+  // read failed: the editor and Save stay off until the text shown is
+  // really `selected`'s — otherwise Save would write the previous file's
+  // text into the new one.
+  const [loaded, setLoaded] = useState<{ file: string; content: string } | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<string | null>(null);
+  // Only the newest read may land (fast clicking through the list).
+  const readId = useRef(0);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const { play } = useUISound();
 
+  const openFile = useCallback((file: string) => {
+    const myRead = ++readId.current;
+    setSelected(file);
+    setLoaded(null);
+    setContent("");
+    setFileError(null);
+    readConfigFile(file)
+      .then((data) => {
+        if (readId.current !== myRead) return;
+        setLoaded({ file, content: data.content });
+        setContent(data.content);
+      })
+      .catch((error: unknown) => {
+        if (readId.current !== myRead) return;
+        setFileError(error instanceof IpcError ? error.message : "Read failed.");
+      });
+  }, []);
+
   useEffect(() => {
     listConfigFiles()
       .then((data) => {
         setFiles(data.files);
         if (data.files.length) {
-          setSelected(data.files[0]);
+          openFile(data.files[0]);
         }
       })
       .catch((error: unknown) => {
@@ -54,16 +81,10 @@ export default function ConfigPage() {
         );
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [openFile]);
 
-  useEffect(() => {
-    if (!selected) return;
-    readConfigFile(selected)
-      .then((data) => setContent(data.content))
-      .catch((error: unknown) =>
-        toast.danger(error instanceof IpcError ? error.message : "Read failed."),
-      );
-  }, [selected]);
+  const ready = loaded !== null && loaded.file === selected;
+  const dirty = ready && content !== loaded.content;
 
   const filteredFiles = useMemo(() => {
     const needle = query.toLowerCase().trim();
@@ -72,13 +93,14 @@ export default function ConfigPage() {
   }, [files, query]);
 
   const saveFile = async () => {
-    if (!selected) return;
+    if (!selected || !ready || !dirty) return;
     play("click_confirm");
     setSaving(true);
     try {
       await writeConfigFile(selected, content);
+      setLoaded({ file: selected, content });
       play("success");
-      toast.success("Saved successfully");
+      toast.success(`Saved ${selected}. Restart the server for it to take effect.`);
     } catch (error) {
       play("error");
       toast.danger(error instanceof IpcError ? error.message : "Save failed.");
@@ -119,7 +141,7 @@ export default function ConfigPage() {
     <div
       className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
@@ -152,9 +174,13 @@ export default function ConfigPage() {
                     selectedKeys={selected ? new Set([selected]) : new Set()}
                     onSelectionChange={(keys) => {
                       const next = Array.from(keys as Set<string>)[0];
-                      if (!next) return;
+                      if (!next || String(next) === selected) return;
                       play("click_confirm");
-                      setSelected(String(next));
+                      if (dirty) {
+                        setPendingFile(String(next));
+                      } else {
+                        openFile(String(next));
+                      }
                     }}
                   >
                     {filteredFiles.map((file) => (
@@ -165,7 +191,11 @@ export default function ConfigPage() {
                     ))}
                   </ListBox>
                 ) : (
-                  <span className="text-muted">No files found.</span>
+                  <span className="text-muted">
+                    {files.length
+                      ? `No files match “${query.trim()}”.`
+                      : "No config files yet — start the server once to create them."}
+                  </span>
                 )}
               </div>
             </Card>
@@ -174,13 +204,16 @@ export default function ConfigPage() {
           <motion.div variants={cardMotion}>
             <Card className="flex flex-col gap-4 p-5">
               <Card.Header className="flex flex-wrap items-center justify-between gap-3">
-                <div className="font-pixel text-xs tracking-wide text-accent">
-                  {selected ?? "Select a file"}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-pixel text-xs tracking-wide text-accent">
+                    {selected ?? "Select a file"}
+                  </span>
+                  {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     onPress={saveFile}
-                    isDisabled={saving}
+                    isDisabled={saving || !dirty}
                     onMouseEnter={() => play("hover")}
                   >
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -200,17 +233,52 @@ export default function ConfigPage() {
                   </Button>
                 </div>
               </Card.Header>
-              <Card.Content>
+              <Card.Content className="grid gap-3">
+                {fileError && selected && (
+                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger p-3 text-sm">
+                    <span>
+                      Could not open {selected}: {fileError}
+                    </span>
+                    <Button size="sm" variant="secondary" onPress={() => openFile(selected)}>
+                      Try again
+                    </Button>
+                  </div>
+                )}
                 <textarea
-                  className="min-h-[520px] w-full resize-y rounded-lg border border-field-border bg-field p-3 font-mono text-xs text-foreground"
+                  aria-label={selected ? `Contents of ${selected}` : "File contents"}
+                  className="min-h-[520px] w-full resize-y rounded-lg border border-field-border bg-field p-3 font-mono text-xs text-foreground disabled:opacity-60"
                   value={content}
+                  disabled={!ready}
                   onChange={(event) => setContent(event.target.value)}
-                  placeholder="Select a file to load its contents."
+                  placeholder={
+                    !selected
+                      ? "Select a file to load its contents."
+                      : fileError
+                        ? ""
+                        : ready
+                          ? "This file is empty."
+                          : `Opening ${selected}…`
+                  }
                 />
               </Card.Content>
             </Card>
           </motion.div>
         </motion.section>
+
+        <ConfirmDialog
+          isOpen={pendingFile !== null}
+          title={`Discard changes to ${selected ?? "this file"}?`}
+          description={`You edited ${selected ?? "this file"} and have not saved. Opening ${pendingFile ?? "another file"} throws those edits away.`}
+          confirmLabel="Discard changes"
+          cancelLabel="Keep editing"
+          variant="danger"
+          onCancel={() => setPendingFile(null)}
+          onConfirm={() => {
+            const next = pendingFile;
+            setPendingFile(null);
+            if (next) openFile(next);
+          }}
+        />
 
         <ConfirmDialog
           isOpen={confirmOpen}

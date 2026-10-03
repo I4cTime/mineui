@@ -193,7 +193,7 @@ export default function ModsPage() {
   return (
     <div
       className="min-h-screen"
-      style={{ background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)` }}
+      style={{ background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)` }}
     >
       <motion.main
         className="page-main mx-auto flex max-w-5xl flex-col gap-6 px-4 pt-5 pb-10 md:px-6"
