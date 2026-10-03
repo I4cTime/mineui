@@ -127,7 +127,7 @@ function CommandRow({ step }: { step: Step }) {
       {step.label && <span className="text-xs text-muted">{step.label}</span>}
       <div
         className="flex items-center justify-between gap-2 rounded-lg border border-border py-1 pr-1 pl-3"
-        style={{ background: "color-mix(in oklab, var(--background) 70%, black)" }}
+        style={{ background: "var(--well)" }}
       >
         <code className="min-w-0 truncate font-mono text-xs">{step.command}</code>
         <Button
@@ -216,8 +216,8 @@ export default function RuntimeInstallHelp({ onRecheck, checking = false }: Runt
           Installed it but MineUI still cannot see it? An app started from a
           launcher can have a shorter PATH than your terminal. Put the full
           path to <code className="font-mono">podman</code> or{" "}
-          <code className="font-mono">docker</code> in Server Settings →
-          Runtime binary override.
+          <code className="font-mono">docker</code> in this server&apos;s Settings →
+          Advanced → Runtime binary override, save, then check again.
         </span>
         <Button
           variant="secondary"

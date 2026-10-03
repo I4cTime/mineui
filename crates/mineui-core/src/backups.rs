@@ -5,11 +5,13 @@
 //! the server stopped, and `exec` cannot run in a stopped container — so
 //! restore runs its `test`/`mv`/`tar` steps in a throwaway helper container
 //! sharing the target's volumes (`run --rm --volumes-from`, still pure argv;
-//! verified live against rootless podman 4.9.3). Simple: host-side tar.gz via
-//! the `tar` + `flate2` crates.
+//! verified live against rootless podman 4.9.3). Listing and delete (2.9.0)
+//! go through `runtime::run_in_container`: `exec` while the container runs,
+//! the same helper otherwise. Simple: host-side tar.gz via the `tar` +
+//! `flate2` crates.
 
 use crate::error::{Error, Result};
-use crate::model::{AuditSource, BackupEntry};
+use crate::model::{AuditSource, BackupEntry, CreatedBackup};
 use crate::settings::Mode;
 
 const LIST_BACKUPS_SCRIPT: &str =
@@ -40,6 +42,23 @@ fn parse_stat_lines(stdout: &str) -> Vec<BackupEntry> {
         .collect();
     entries.sort_by(|a, b| b.filename.cmp(&a.filename)); // newest first
     entries
+}
+
+/// A listing run's outcome → entries; a failed run is an error, never `[]`
+/// (§3.8, 2.9.0 — an empty list means there are no backups).
+fn listing_result(out: crate::runtime::ExecOutput) -> Result<Vec<BackupEntry>> {
+    if out.success() {
+        Ok(parse_stat_lines(&out.stdout))
+    } else {
+        Err(Error::Io(format!(
+            "could not list /data/backups: {}",
+            if out.stderr.is_empty() {
+                format!("exit code {:?}", out.exit_code)
+            } else {
+                out.stderr
+            }
+        )))
+    }
 }
 
 async fn require_stopped(core: &crate::Core) -> Result<()> {
@@ -155,17 +174,13 @@ pub async fn list(core: &crate::Core) -> Result<Vec<BackupEntry>> {
     match settings.active_mode {
         Mode::Advanced => {
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
-            let out = runtime
-                .exec(
-                    &settings.advanced.container_name,
-                    &["sh", "-c", LIST_BACKUPS_SCRIPT],
-                )
-                .await?;
-            Ok(if out.success() {
-                parse_stat_lines(&out.stdout)
-            } else {
-                Vec::new()
-            })
+            let out = crate::runtime::run_in_container(
+                runtime.as_ref(),
+                &settings.advanced.container_name,
+                &["sh", "-c", LIST_BACKUPS_SCRIPT],
+            )
+            .await?;
+            listing_result(out)
         }
         Mode::Simple => {
             let dir = settings.simple.instance_dir.join("backups");
@@ -285,12 +300,12 @@ async fn delete_inner(core: &crate::Core, filename: &str) -> Result<()> {
         Mode::Advanced => {
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
             let path = format!("/data/backups/{filename}");
-            let out = runtime
-                .exec(
-                    &settings.advanced.container_name,
-                    &["rm", "-f", "--", &path],
-                )
-                .await?;
+            let out = crate::runtime::run_in_container(
+                runtime.as_ref(),
+                &settings.advanced.container_name,
+                &["rm", "-f", "--", &path],
+            )
+            .await?;
             if !out.success() {
                 return Err(Error::Io(format!(
                     "failed to delete backup: {}",
@@ -315,14 +330,14 @@ async fn delete_inner(core: &crate::Core, filename: &str) -> Result<()> {
 /* ---------- audited entry points, retention and off-box copy (§3.8, §3.11) ---------- */
 
 /// `create_backup` (§3.8) from the user: snapshot, then retention + copy.
-pub async fn create(core: &crate::Core) -> Result<BackupEntry> {
+pub async fn create(core: &crate::Core) -> Result<CreatedBackup> {
     create_from(core, AuditSource::User).await
 }
 
 /// Create on behalf of `source` (the scheduler passes `Scheduler`). Retention
 /// pruning and the off-box copy run after a successful snapshot and never
-/// change its outcome.
-pub async fn create_from(core: &crate::Core, source: AuditSource) -> Result<BackupEntry> {
+/// change its outcome; the files retention removed come back in `pruned`.
+pub async fn create_from(core: &crate::Core, source: AuditSource) -> Result<CreatedBackup> {
     let r = create_inner(core).await;
     let target = r.as_ref().ok().map(|e| e.filename.clone());
     let detail = r.as_ref().ok().map(|e| format!("{} bytes", e.size_bytes));
@@ -335,11 +350,10 @@ pub async fn create_from(core: &crate::Core, source: AuditSource) -> Result<Back
         r.as_ref().err(),
     )
     .await;
-    if let Ok(entry) = &r {
-        prune(core, source, &entry.filename).await;
-        copy_off_box(core, source, &entry.filename).await;
-    }
-    r
+    let entry = r?;
+    let pruned = prune(core, source, &entry.filename).await;
+    copy_off_box(core, source, &entry.filename).await;
+    Ok(CreatedBackup { entry, pruned })
 }
 
 /// `restore_backup` (§3.8), audited as `backup.restore`.
@@ -389,10 +403,12 @@ pub fn prune_candidates<'a>(
 }
 
 /// Retention (§3.8): delete the oldest archives beyond `settings.backups.keepLast`.
-async fn prune(core: &crate::Core, source: AuditSource, just_written: &str) {
+/// Returns the filenames actually deleted (newest first, oldest last).
+async fn prune(core: &crate::Core, source: AuditSource, just_written: &str) -> Vec<String> {
+    let mut pruned: Vec<String> = Vec::new();
     let keep_last = core.settings().await.backups.keep_last;
     if keep_last == 0 {
-        return;
+        return pruned;
     }
     let entries = match list(core).await {
         Ok(entries) => entries,
@@ -406,7 +422,7 @@ async fn prune(core: &crate::Core, source: AuditSource, just_written: &str) {
                 Some(&e),
             )
             .await;
-            return;
+            return pruned;
         }
     };
     for stale in prune_candidates(&entries, keep_last, just_written) {
@@ -421,7 +437,11 @@ async fn prune(core: &crate::Core, source: AuditSource, just_written: &str) {
             r.as_ref().err(),
         )
         .await;
+        if r.is_ok() {
+            pruned.push(stale.filename.clone());
+        }
     }
+    pruned
 }
 
 /// Off-box copy (§3.8): `<copyDir>/<filename>` via a `.tmp` sibling + rename.
@@ -516,6 +536,69 @@ mod tests {
         // A stale-looking listing that contains the fresh file keeps it.
         let stale = prune_candidates(&entries, 1, "world-20260923-040000.tar.gz");
         assert_eq!(stale.len(), 2);
+    }
+
+    #[test]
+    fn created_backup_serializes_flat_with_pruned() {
+        let created = CreatedBackup {
+            entry: BackupEntry {
+                filename: "world-20261003-120000.tar.gz".into(),
+                size_bytes: 42,
+                created_at_epoch_ms: 1_790_000_000_000,
+            },
+            pruned: vec!["world-20260901-040000.tar.gz".into()],
+        };
+        assert_eq!(
+            serde_json::to_value(&created).unwrap(),
+            serde_json::json!({
+                "filename": "world-20261003-120000.tar.gz",
+                "sizeBytes": 42,
+                "createdAtEpochMs": 1_790_000_000_000i64,
+                "pruned": ["world-20260901-040000.tar.gz"],
+            })
+        );
+        let none = CreatedBackup {
+            pruned: vec![],
+            ..created
+        };
+        assert_eq!(
+            serde_json::to_value(&none).unwrap()["pruned"],
+            serde_json::json!([])
+        );
+    }
+
+    fn exec_out(code: i32, stdout: &str, stderr: &str) -> crate::runtime::ExecOutput {
+        crate::runtime::ExecOutput {
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+            exit_code: Some(code),
+        }
+    }
+
+    #[test]
+    fn a_failed_listing_is_an_error_not_an_empty_list() {
+        // Empty dir / no matches: success with no output → genuinely none.
+        assert!(listing_result(exec_out(0, "", "")).unwrap().is_empty());
+        let ok = listing_result(exec_out(
+            0,
+            "/data/backups/world-20261003-120000.tar.gz|10|1790000000\n",
+            "",
+        ))
+        .unwrap();
+        assert_eq!(ok.len(), 1);
+        // The pre-2.9.0 bug: a failing exec on a stopped container came back as [].
+        let err = listing_result(exec_out(
+            125,
+            "",
+            "Error: can only create exec sessions on running containers: container state improper",
+        ))
+        .unwrap_err();
+        assert_eq!(err.code(), "IO");
+        assert!(err.to_string().contains("running containers"));
+        assert_eq!(
+            listing_result(exec_out(1, "", "")).unwrap_err().code(),
+            "IO"
+        );
     }
 
     #[test]

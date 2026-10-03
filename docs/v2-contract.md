@@ -46,6 +46,7 @@ type IpcErrorShape = {
 
 type ErrorCode =
   | "RUNTIME_NOT_FOUND"        // no usable podman/docker CLI (advanced)
+  | "RUNTIME_UNAVAILABLE"      // CLI present, engine/machine not responding (2.9.0, §3.1)
   | "CONTAINER_NOT_FOUND"      // configured container does not exist
   | "CONTAINER_EXISTS"         // create_container over an existing container (§3.13)
   | "CONTAINER_CREATE_FAILED"  // the runtime refused to create/start it (§3.13)
@@ -399,10 +400,37 @@ Notes:
 - `set_settings` validates (§2.3), persists atomically (write temp + rename), re-chmods
   0600, and returns the normalized result. Changing `activeMode` takes effect
   immediately for subsequent commands; it does not stop a running managed server.
-- Every subprocess the core spawns (runtime CLI, `java`) is created without a
-  console window on Windows (`CREATE_NO_WINDOW`, 2.7.1): a GUI app otherwise
-  flashes one terminal per call, and the status poll makes several a second.
+- Every subprocess the core spawns (runtime CLI, `java`, `wsl.exe`) goes
+  through `util::prepare_child`: on Windows it is created without a console
+  window (`CREATE_NO_WINDOW`, 2.7.1 — a GUI app otherwise flashes one terminal
+  per call, and the status poll makes several a second); inside an AppImage
+  (`APPIMAGE`/`APPDIR` set) the launcher's `LD_LIBRARY_PATH`, `LD_PRELOAD` and
+  GTK/GIO/GStreamer overrides are removed from the child's environment (2.8.1:
+  the bundled `libseccomp.so.2` made `podman --version` fail with an undefined
+  symbol, so the AppImage found no runtime on a machine that had one).
 - `detect_runtimes` probes `podman --version` and `docker --version` (argv arrays).
+- **Binary override on Auto (2.9.0)**: `advanced.runtimeBinary` is honored whatever
+  `advanced.runtime` says. With `runtime: "podman"`/`"docker"` it replaces that CLI's
+  name as before. With `runtime: "auto"` and an override set, the override is probed
+  **first** (`<override> --version`) and its kind is inferred from the version line —
+  `podman version …` → podman, `Docker version …` → docker; when the line says
+  neither, the file name decides (contains `docker` → docker, `podman` → podman),
+  else the override is ignored. A working override is what `resolve` uses and what
+  `detect_runtimes` reports in that kind's slot (`resolved` = its kind); if it does
+  not run, Auto falls back to `podman` then `docker` on PATH. (Before 2.9.0 Auto
+  ignored the override although the settings help tells users to set it when the
+  app's PATH is shorter than their terminal's.)
+- **Installed but not responding (2.9.0)**: `RUNTIME_NOT_FOUND` means no usable CLI
+  binary (`--version` fails or cannot be spawned). When the binary works but a
+  runtime call fails because its engine cannot be reached — Docker Desktop not
+  started, the Docker/Podman service down, `podman machine` stopped — commands reject
+  with `RUNTIME_UNAVAILABLE` instead. Raised when `ps` fails (every state read goes
+  through it), and when any other runtime call fails with a recognised "cannot
+  connect" error. The message names the runtime, says it is installed but not
+  responding, and gives the usual fix: Docker → "start Docker Desktop" on
+  Windows/macOS, "start the Docker service" on Linux; Podman → "run
+  `podman machine start`" on Windows/macOS, "check the Podman service/socket" on
+  Linux (no machine there).
 - `java_check` resolves `simple.javaPath` override → `JAVA_HOME/bin/java` → `java` on
   PATH; parses `java -version` stderr. `requiredMajor` comes from the current instance
   metadata (`mineui-instance.json`, §3.6) when present, else `null` and
@@ -412,7 +440,8 @@ Notes:
 type RuntimeProbe = {
   podman: { binary: string; version: string } | null;
   docker: { binary: string; version: string } | null;
-  /** What "auto" would pick right now: podman if present, else docker, else null. */
+  /** What "auto" would pick right now: a working runtimeBinary override's kind
+   *  (2.9.0), else podman if present, else docker, else null. */
   resolved: "podman" | "docker" | null;
 };
 
@@ -533,7 +562,7 @@ Semantics:
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
 | `get_players` | — | `PlayersResult` | both | `players::online` | GET /api/rcon/players |
-| `get_player_history` | — | `{ users: PlayerHistoryRow[] }` | both | `players::history` | GET /api/rcon/users |
+| `get_player_history` | — | `PlayerHistory` (2.9.0) | both | `players::history` | GET /api/rcon/users |
 | `run_rcon_command` | `{ command: string }` | `{ output: string }` | both | `rcon::run_allowlisted` | POST /api/rcon/command |
 
 ```ts
@@ -544,6 +573,13 @@ type PlayerHistoryRow = {
   lastSeenEpochMs: number | null; // epoch ms; frontend formats (v1 sent a locale string — dropped)
   ipAddress: string | null;
   isOnline: boolean;
+};
+
+/** 2.9.0 — was `{ users }` and rejected RCON_UNAVAILABLE when RCON was down. */
+type PlayerHistory = {
+  users: PlayerHistoryRow[];
+  /** false when RCON `list` failed: every row then has isOnline: false. */
+  rconAvailable: boolean;
 };
 ```
 
@@ -577,6 +613,19 @@ Semantics:
   matched; v2 patterns must match `[Not Secure]`-prefixed lines and use real `\d`/`\s`
   classes. Timestamps: log lines carry `[HH:MM:SS]`; resolve against the local date
   (yesterday if > 60 s in the future) and return **epoch ms only**.
+- `get_player_history` without RCON (2.9.0): it **never rejects** because RCON is
+  unreachable (`RCON_UNAVAILABLE` from `list` — server stopped, still starting, wrong
+  password). It then returns every row that does not need RCON, with
+  `isOnline: false` and `rconAvailable: false`. Rows are the union of: the online set
+  (RCON), the log-derived history, and **every player with a stored note** (§3.11) —
+  noted players are included whether or not RCON is up, so notes stay reachable for
+  players who are not in the current logs (`lastSeenEpochMs`/`ipAddress` null unless
+  the logs have them). Names are matched case-insensitively against notes (the note's
+  stored spelling is used only when neither RCON nor the logs know the player). In
+  advanced mode the logs are read with `exec` while the container runs and through
+  the stopped-container helper (§3.8) otherwise; a log or notes read that fails
+  contributes no rows rather than failing the call. Sort unchanged: online first,
+  then `lastSeenEpochMs` desc (nulls last).
 
 ### 3.5 Mods & plugins
 
@@ -624,6 +673,14 @@ Semantics:
   `stat -c %n|%s|%Y` per batch — implementer's choice of exact exec strategy, but the
   constraint is absolute: **argv arrays only, never `sh -c` with interpolated strings**.
   (Static, constant `sh -c` scripts with zero interpolation are permitted.)
+- `list_mods` / `delete_mod` advanced on a stopped container (2.9.0): `exec` only
+  works on a running container, and before 2.9.0 a failed listing came back as an
+  empty list ("Mods (0)" for a stopped server). Now the container's state is read
+  first: missing → `CONTAINER_NOT_FOUND`; running → `exec`; otherwise (stopped,
+  created, paused…) the same argv runs in the stopped-container helper of §3.8
+  (`run --rm --volumes-from`). One constant script lists both roots in one call. A
+  listing that fails (non-zero exit) rejects with `IO` — an empty list always means
+  the folders hold no files.
 - `upload_mod`: `sourcePath` is a host filesystem path obtained by the frontend via the
   Tauri dialog plugin (there is no multipart upload in v2). Validate the *basename* of
   `sourcePath` per §6.2, then advanced → `runtime cp <src> <name>:<root>/<filename>`;
@@ -773,7 +830,7 @@ Semantics:
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `create_backup` | — | `BackupEntry` | both | `backups::create` | POST /api/backup |
+| `create_backup` | — | `CreatedBackup` (2.9.0) | both | `backups::create` | POST /api/backup |
 | `list_backups` | — | `BackupEntry[]` | both | `backups::list` | — (new) |
 | `restore_backup` | `{ filename: string }` | `void` | both | `backups::restore` | — (new) |
 | `delete_backup` | `{ filename: string }` | `void` | both | `backups::delete` | — (new) |
@@ -783,6 +840,12 @@ type BackupEntry = {
   filename: string;          // world-YYYYMMDD-HHMMSS.tar.gz
   sizeBytes: number;
   createdAtEpochMs: number;
+};
+
+/** 2.9.0 — what create_backup returns: the new archive plus what retention removed. */
+type CreatedBackup = BackupEntry & {
+  /** Filenames deleted by retention in this call (keepLast), oldest last; [] when none. */
+  pruned: string[];
 };
 ```
 
@@ -796,6 +859,15 @@ type BackupEntry = {
   Rust (`tar` + `flate2`). Allowed while running (crash-consistent snapshot; frontend
   may advise `save-all` first — not enforced).
 - `list_backups`: advanced → exec `ls`/`stat` argv pattern as in §3.5; simple → readdir.
+- **Stopped container (2.9.0)**: `list_backups` and `delete_backup` work whether the
+  container runs or not — restore *requires* it stopped, so the list must be there
+  when it is. Advanced reads the container state first: missing →
+  `CONTAINER_NOT_FOUND`; running → `exec`; anything else → the **stopped-container
+  helper**: the same argv in a throwaway container sharing the target's volumes,
+  `run --rm --volumes-from <name> --entrypoint <argv0> <its image> <argv1…>` (pure
+  argv; the mechanism restore uses). A listing that fails rejects with `IO`; an
+  empty array always means there are no backups (before 2.9.0 a stopped server
+  showed "No backups yet" because a failed `exec` was returned as `[]`).
 - `restore_backup`: **requires server stopped** (`SERVER_RUNNING`). Sequence: rename
   current world dir to `<worldDir>.pre-restore-<timestamp>` (kept, not deleted), then
   extract the archive into the data root. Missing archive → `INVALID_INPUT`.
@@ -804,7 +876,10 @@ type BackupEntry = {
   core lists the backup dir and deletes the oldest archives beyond
   `settings.backups.keepLast` (0 = unlimited). The archive just written is never
   pruned. Each pruned file is recorded in the audit log (`backup.prune`); prune
-  failures never fail the backup.
+  failures never fail the backup. `create_backup` returns the files this call
+  actually deleted in `CreatedBackup.pruned` (2.9.0) so the UI can say so; a file
+  whose delete failed is audited (`ok: false`) and not listed. The scheduler's
+  backup job ignores `pruned` (the audit log already records each one).
 - **Off-box copy (2.5.0)**: when `settings.backups.copyDir` is non-null, the new
   archive is copied to `<copyDir>/<filename>` (simple → host copy through a
   `.tmp` sibling + rename; advanced → `runtime.cp_from(<container>:/data/backups/<file>)`
@@ -1507,7 +1582,7 @@ export function isTauri(): boolean {
 /* ---------- errors ---------- */
 
 export type ErrorCode =
-  | "RUNTIME_NOT_FOUND" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
+  | "RUNTIME_NOT_FOUND" | "RUNTIME_UNAVAILABLE" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
   | "CONTAINER_CREATE_FAILED" | "SERVER_NOT_RUNNING"
   | "SERVER_RUNNING" | "RCON_UNAVAILABLE" | "RCON_COMMAND_BLOCKED"
   | "QUERY_UNAVAILABLE" | "JAVA_NOT_FOUND" | "JAVA_INCOMPATIBLE"
@@ -1864,8 +1939,14 @@ export type PlayerHistoryRow = {
 };
 
 export const getPlayers = () => scoped<PlayersResult>("get_players");
+/** 2.9.0 — resolves without RCON too: then rconAvailable is false and every row is offline. */
+export type PlayerHistory = {
+  users: PlayerHistoryRow[];
+  rconAvailable: boolean;
+};
+
 export const getPlayerHistory = () =>
-  scoped<{ users: PlayerHistoryRow[] }>("get_player_history");
+  scoped<PlayerHistory>("get_player_history");
 export const runRconCommand = (command: string) =>
   scoped<{ output: string }>("run_rcon_command", { command });
 
@@ -1967,7 +2048,10 @@ export type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-export const createBackup = () => scoped<BackupEntry>("create_backup");
+/** 2.9.0 — the new archive plus the filenames retention (keepLast) removed in this call. */
+export type CreatedBackup = BackupEntry & { pruned: string[] };
+
+export const createBackup = () => scoped<CreatedBackup>("create_backup");
 export const listBackups = () => scoped<BackupEntry[]>("list_backups");
 export const restoreBackup = (filename: string) =>
   scoped<void>("restore_backup", { filename });
@@ -2131,7 +2215,7 @@ Frontend rules:
 | --- | --- |
 | `error` | `Error` enum + serde serialization to `{code,message}` (§1) |
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
-| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`. All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
+| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
 | `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |

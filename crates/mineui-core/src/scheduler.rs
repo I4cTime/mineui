@@ -239,7 +239,7 @@ async fn execute(core: &crate::Core, job: &ScheduledJob, source: AuditSource) ->
             }
             crate::backups::create_from(core, source)
                 .await
-                .map(|entry| Some(entry.filename))
+                .map(|created| Some(created.entry.filename))
         }
         ScheduledJobKind::Broadcast => {
             if phase(core).await != ServerPhase::Running {

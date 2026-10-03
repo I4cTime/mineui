@@ -11,7 +11,6 @@ import {
   Archive,
   Boxes,
   Coffee,
-  Container,
   Ellipsis,
   Gauge,
   ScrollText,
@@ -19,7 +18,6 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
-  Sparkles,
   Users,
   Volume2,
   VolumeX,
@@ -29,18 +27,15 @@ import {
   Dropdown,
   Label,
   Popover,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
 } from "@heroui/react";
-import type { Key } from "@heroui/react";
 import Logo from "./Logo";
 import ServerSwitcher from "./ServerSwitcher";
 import { useSoundSettings, useUISound } from "@/app/hooks/useUISound";
 import { applyTheme, useTheme } from "@/app/hooks/useTheme";
+import { applyColorMode, useColorMode } from "@/app/hooks/useColorMode";
+import { leaveOr } from "@/app/lib/leaveGuard";
 import { useMediaQuery } from "@/app/hooks/useMediaQuery";
-import { useMode } from "@/app/components/ModeProvider";
-import type { Mode } from "@/app/lib/ipc";
 
 // Priority order is load-bearing (docs/theme-contract.md §9.2): the first
 // four are the T3 standalone set and the T3 "More" overflow always holds
@@ -52,10 +47,10 @@ const navItems = [
   { href: "/status", label: "Status", icon: Gauge, description: "TPS, resources and the activity log" },
   { href: "/mods", label: "Mods", icon: Boxes, description: "Installed mods and plugins" },
   { href: "/players", label: "Players", icon: Users, description: "Who's on, history and notes" },
-  { href: "/rcon", label: "RCON", icon: Shield, description: "Run allowlisted server commands" },
+  { href: "/rcon", label: "Console", icon: Shield, description: "Send commands to the running server" },
   { href: "/config", label: "Config", icon: ScrollText, description: "Edit server.properties and configs" },
-  { href: "/backups", label: "Backups", icon: Archive, description: "World snapshots and restore" },
-  { href: "/settings", label: "Settings", icon: Settings, description: "This server: mode, connection, schedule" },
+  { href: "/backups", label: "Backups", icon: Archive, description: "World backups and restore" },
+  { href: "/settings", label: "Settings", icon: Settings, description: "This server: name, schedule, backups, advanced" },
 ];
 
 /** Tooltip body for a nav item: label + what the page is for. */
@@ -171,7 +166,6 @@ export default function Navbar() {
   const { enabled: soundEnabled, setEnabled: setSoundEnabled } =
     useSoundSettings();
   const { play } = useUISound();
-  const { mode, switching, setMode } = useMode();
 
   // The navbar mounts on every page, so this is where the stored theme is
   // stamped on <html> after hydration (the server render stays deepslate to
@@ -179,19 +173,16 @@ export default function Navbar() {
   useEffect(() => {
     applyTheme(currentTheme);
   }, [currentTheme]);
+  // Same for the color mode (dark / light / match system, contract §10);
+  // public/theme-init.js already stamped both before first paint.
+  const { preference: colorModePreference } = useColorMode();
+  useEffect(() => {
+    applyColorMode(colorModePreference);
+  }, [colorModePreference]);
 
   const handleNavigate = (href: string) => {
     play("click_confirm");
-    router.push(href);
-  };
-
-  // Simple is the base/"off" state, Advanced is the "on" (more-powered) one —
-  // same on/off sense the sound toggle already uses toggle_on/toggle_off for.
-  const handleModeChange = (keys: Set<Key>) => {
-    const next = Array.from(keys)[0] as Mode | undefined;
-    if (!next || next === mode) return;
-    play(next === "advanced" ? "toggle_on" : "toggle_off");
-    setMode(next);
+    leaveOr(() => router.push(href));
   };
 
   const toggleSound = () => {
@@ -423,34 +414,10 @@ export default function Navbar() {
 
         {/* Controls zone — fixed, shrink-0 (§9.1). */}
         <div className="flex shrink-0 items-center gap-1">
-          {/* This server: which one the pages show, then its mode (§9.1
-              amendment, 2.6.0). */}
+          {/* This server: which one the pages show (§9.1). How it is run
+              (Simple / Advanced) is changed in Server Settings only — a
+              one-click header toggle made a server look deleted. */}
           <ServerSwitcher />
-
-          {/* Simple/Advanced mode switch. Persists app-wide via ModeProvider
-              (app/components/ModeProvider.tsx). Individual ToggleButtons are
-              NOT wrapped in Tooltip here: ToggleButtonGroup inspects its
-              direct children (unique `id`s, first/last radius pairing) and
-              an intervening Tooltip element breaks that — see the
-              objection in the final report. aria-labels are kept so the
-              accessible name survives regardless. */}
-          <ToggleButtonGroup
-            aria-label="App mode"
-            size="sm"
-            selectionMode="single"
-            disallowEmptySelection
-            isDisabled={switching}
-            selectedKeys={[mode]}
-            onSelectionChange={handleModeChange}
-          >
-            <ToggleButton id="simple" isIconOnly aria-label="Switch to Simple mode">
-              <Sparkles size={14} />
-            </ToggleButton>
-            <ToggleButton id="advanced" isIconOnly aria-label="Switch to Advanced mode">
-              <ToggleButtonGroup.Separator />
-              <Container size={14} />
-            </ToggleButton>
-          </ToggleButtonGroup>
 
           {/* The app: sound, app-wide settings, Ko-fi. */}
           <Tooltip delay={400}>

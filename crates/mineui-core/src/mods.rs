@@ -20,11 +20,10 @@ const MOD_MAX_BYTES: u64 = 256 * 1024 * 1024;
 /// sparse files too).
 const UPLOAD_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
-/// Constant listing scripts — zero interpolation (§6.1 rule 6).
-const LIST_MODS_SCRIPT: &str =
-    r#"for f in /data/mods/*; do [ -f "$f" ] || continue; stat -c '%n|%s|%Y' "$f"; done"#;
-const LIST_PLUGINS_SCRIPT: &str =
-    r#"for f in /data/plugins/*; do [ -f "$f" ] || continue; stat -c '%n|%s|%Y' "$f"; done"#;
+/// Constant listing script — zero interpolation (§6.1 rule 6). Both roots in
+/// one run (2.9.0): on a stopped container each run is a helper container,
+/// so one is cheaper than two. Lines are told apart by their path prefix.
+const LIST_SCRIPT: &str = r#"for f in /data/mods/* /data/plugins/*; do [ -f "$f" ] || continue; stat -c '%n|%s|%Y' "$f"; done"#;
 
 pub(crate) fn container_root(target: ModTarget) -> &'static str {
     match target {
@@ -64,6 +63,42 @@ fn parse_stat_lines(stdout: &str) -> Vec<ModEntry> {
     entries
 }
 
+/// Split the combined listing into (mods, plugins) by path prefix.
+fn parse_combined_listing(stdout: &str) -> ModsList {
+    let mut mods = String::new();
+    let mut plugins = String::new();
+    for line in stdout.lines() {
+        if line.starts_with("/data/mods/") {
+            mods.push_str(line);
+            mods.push('\n');
+        } else if line.starts_with("/data/plugins/") {
+            plugins.push_str(line);
+            plugins.push('\n');
+        }
+    }
+    ModsList {
+        mods: parse_stat_lines(&mods),
+        plugins: parse_stat_lines(&plugins),
+    }
+}
+
+/// A listing run's outcome → lists; a failed run is an error, never empty
+/// lists (§3.5, 2.9.0 — empty means the folders hold no files).
+fn listing_result(out: crate::runtime::ExecOutput) -> Result<ModsList> {
+    if out.success() {
+        Ok(parse_combined_listing(&out.stdout))
+    } else {
+        Err(Error::Io(format!(
+            "could not list /data/mods and /data/plugins: {}",
+            if out.stderr.is_empty() {
+                format!("exit code {:?}", out.exit_code)
+            } else {
+                out.stderr
+            }
+        )))
+    }
+}
+
 async fn list_host_dir(dir: &std::path::Path) -> Vec<ModEntry> {
     let mut entries: Vec<ModEntry> = Vec::new();
     let Ok(mut reader) = tokio::fs::read_dir(dir).await else {
@@ -96,21 +131,15 @@ pub async fn list(core: &crate::Core) -> Result<ModsList> {
     match settings.active_mode {
         Mode::Advanced => {
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
-            let name = &settings.advanced.container_name;
-            let mut lists: Vec<Vec<ModEntry>> = Vec::with_capacity(2);
-            for script in [LIST_MODS_SCRIPT, LIST_PLUGINS_SCRIPT] {
-                let out = runtime.exec(name, &["sh", "-c", script]).await?;
-                // Missing dir → glob doesn't match → empty output; non-zero
-                // exit means the container is unavailable.
-                lists.push(if out.success() {
-                    parse_stat_lines(&out.stdout)
-                } else {
-                    Vec::new()
-                });
-            }
-            let plugins = lists.pop().unwrap_or_default();
-            let mods = lists.pop().unwrap_or_default();
-            Ok(ModsList { mods, plugins })
+            // Missing dir → glob doesn't match → empty output. `exec` while
+            // running, the volumes-from helper while stopped (2.9.0).
+            let out = crate::runtime::run_in_container(
+                runtime.as_ref(),
+                &settings.advanced.container_name,
+                &["sh", "-c", LIST_SCRIPT],
+            )
+            .await?;
+            listing_result(out)
         }
         Mode::Simple => {
             let dir = settings.simple.instance_dir.clone();
@@ -262,7 +291,12 @@ async fn delete_inner(core: &crate::Core, filename: &str, target: ModTarget) -> 
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
             let name = &settings.advanced.container_name;
             let path = format!("{}/{}", container_root(target), filename);
-            let out = runtime.exec(name, &["rm", "-f", "--", &path]).await?;
+            let out = crate::runtime::run_in_container(
+                runtime.as_ref(),
+                name,
+                &["rm", "-f", "--", &path],
+            )
+            .await?;
             if !out.success() {
                 return Err(Error::Io(format!(
                     "failed to delete {filename}: {}",
@@ -374,6 +408,34 @@ mod tests {
         assert_eq!(fabric.updated_at_epoch_ms, 1753200000000);
         assert_eq!(fabric.loader, crate::model::ModLoader::Fabric);
         assert_eq!(entries[1].name, "sodium fabric");
+    }
+
+    #[test]
+    fn combined_listing_splits_by_root() {
+        let stdout = "/data/mods/sodium-fabric.jar|10|1790000000\n\
+/data/plugins/EssentialsX.jar|20|1790000001\n\
+/data/mods/fabric-api.jar|30|1790000002\n\
+/data/other/stray.jar|1|1\n";
+        let list = parse_combined_listing(stdout);
+        let mods: Vec<&str> = list.mods.iter().map(|m| m.filename.as_str()).collect();
+        assert_eq!(mods, ["fabric-api.jar", "sodium-fabric.jar"]);
+        assert_eq!(list.plugins.len(), 1);
+        assert_eq!(list.plugins[0].filename, "EssentialsX.jar");
+        assert_eq!(list.plugins[0].size_bytes, 20);
+    }
+
+    #[test]
+    fn a_failed_listing_is_an_error_not_empty_lists() {
+        let out = |code: i32, stderr: &str| crate::runtime::ExecOutput {
+            stdout: String::new(),
+            stderr: stderr.into(),
+            exit_code: Some(code),
+        };
+        let empty = listing_result(out(0, "")).unwrap();
+        assert!(empty.mods.is_empty() && empty.plugins.is_empty());
+        let err = listing_result(out(125, "Error: container state improper")).unwrap_err();
+        assert_eq!(err.code(), "IO");
+        assert!(err.to_string().contains("state improper"));
     }
 
     #[test]

@@ -60,6 +60,11 @@
   --link: var(--accent);
   --backdrop: rgba(0, 1, 2, 0.7);
   --scrollbar: #2a2e38;
+  /* inset well: log viewer, console output, command rows */
+  --well: color-mix(in oklab, var(--background) 70%, black);
+  --well-foreground: var(--foreground);
+  /* the accent wash behind every page (radial, top) */
+  --page-wash: color-mix(in oklab, var(--accent) 18%, transparent);
 
   /* -- Shape ---------------------------------------------- */
   --radius: 0.625rem; /* 10px (refined from Phase-1 12px; see contract) */
@@ -119,4 +124,65 @@
   --nav-active-radius: 999px; /* glow capsule */
   --nav-indicator: transparent;
   --nav-indicator-height: 0px;
+}
+
+/* ------------------------------------------------------------
+   Light mode — "Daybreak" (contract §10). Cool white ground,
+   the cyan signal deepened to read as text, violet kept for
+   glows and a text-safe variant. Glows are tinted, not black.
+   ------------------------------------------------------------ */
+[data-theme="quantum"][data-mode="light"] {
+  color-scheme: light;
+
+  --background: #f3f6fb;
+  --foreground: #0a1020;
+  --surface: #ffffff;
+  --surface-secondary: #f6f8fc;
+  --surface-tertiary: #eef2f8;
+  --overlay: #ffffff;
+  --muted: #555d6e; /* 6.6:1 on surface */
+  --subtle: #768095;
+  --default: #e4e9f2;
+
+  --accent: #006f94; /* deep cyan, 5.7:1 on surface */
+  --accent-foreground: #ffffff;
+  --success: #0f7a48;
+  --success-foreground: #ffffff;
+  --warning: #8a5c00;
+  --warning-foreground: #ffffff;
+  --danger: #c72c4c; /* 5.4:1 as text on surface — no soft override needed */
+  --danger-foreground: #ffffff;
+  --danger-soft-foreground: #8f1f39;
+
+  --quantum-violet: #7b2dff; /* glows/gradients/fills ONLY */
+  --quantum-violet-text: #5a2fcf; /* text-safe violet, 7.7:1 */
+
+  --field-background: #ffffff;
+  --field-border: #cdd5e2;
+  --segment: #ffffff;
+  --border: #d5dbe7;
+  --separator: #e1e6ef;
+  --backdrop: rgba(10, 16, 32, 0.4);
+  --scrollbar: #b4bccb;
+  --well: #e9eef6;
+  --page-wash: color-mix(in oklab, var(--accent) 9%, transparent); /* a tint, not a stain */
+
+  --overlay-shadow:
+    0 0 24px oklch(0.6 0.13 230 / 12%),
+    0 16px 40px rgba(10, 16, 32, 0.14);
+  --shadow-quantum:
+    0 0 20px oklch(0.6 0.13 230 / 14%),
+    0 0 40px oklch(0.55 0.28 290 / 8%);
+
+  --header-shadow: 0 10px 32px -12px oklch(0.6 0.13 230 / 28%); /* cyan underglow */
+  --header-edge-bottom: linear-gradient(
+    90deg,
+    transparent,
+    oklch(0.6 0.13 230 / 50%) 30%,
+    oklch(0.55 0.28 290 / 38%) 70%,
+    transparent
+  );
+  --nav-active-bg: #d6eff8; /* cyan-tinted well (solid; ratio is exact) */
+  --nav-active-fg: #005f80; /* 6.0:1 on --nav-active-bg */
+  --nav-active-shadow: 0 0 14px oklch(0.6 0.13 230 / 18%);
 }

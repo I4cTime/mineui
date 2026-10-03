@@ -11,10 +11,11 @@ use std::sync::Arc;
 
 use mineui_core::model::{
     AuditLog, BackupEntry, ConfigFileContent, ConfigFileList, CreateContainerArgs,
-    CreateInstanceArgs, DeletedContainer, DownloadedMod, InstanceStatus, JavaCheck, JobRunResult,
-    LogsTail, McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory,
-    PlayerNote, PlayerNotes, PlayersResult, RconOutput, RuntimeProbe, SchedulerStatus, ServerList,
-    ServerOverview, ServerState, ServerStatus, UnpackedMods, UploadedMod,
+    CreateInstanceArgs, CreatedBackup, DeletedContainer, DownloadedMod, InstanceStatus, JavaCheck,
+    JobRunResult, LogsTail, McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList,
+    PlayerHistory, PlayerNote, PlayerNotes, PlayersResult, RconOutput, RuntimeProbe,
+    SchedulerStatus, ServerList, ServerOverview, ServerState, ServerStatus, UnpackedMods,
+    UploadedMod,
 };
 use mineui_core::settings::Mode;
 use mineui_core::{Core, Error, Hub, Settings};
@@ -297,7 +298,10 @@ pub async fn write_config_file(
 /* ---------- §3.8 backups ---------- */
 
 #[tauri::command]
-pub async fn create_backup(hub: HubState<'_>, server_id: Option<String>) -> CmdResult<BackupEntry> {
+pub async fn create_backup(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+) -> CmdResult<CreatedBackup> {
     let core = core_for(&hub, server_id).await?;
     mineui_core::backups::create(&core).await
 }

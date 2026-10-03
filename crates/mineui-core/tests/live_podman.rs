@@ -260,7 +260,10 @@ async fn live_mods_list_vanilla_is_empty_not_error() {
 async fn live_backup_create_list_delete() {
     let _g = live_lock().await;
     let (_tmp, core) = live_core().await;
-    let created = mineui_core::backups::create(&core).await.expect("create");
+    let created = mineui_core::backups::create(&core)
+        .await
+        .expect("create")
+        .entry;
     assert!(
         created.size_bytes > 0,
         "tar.gz of a world must be non-empty"
@@ -287,7 +290,10 @@ async fn live_backup_restore_cycle_stops_and_restarts() {
     let (_tmp, core) = live_core().await;
 
     // Create a backup while running (crash-consistent, allowed).
-    let backup = mineui_core::backups::create(&core).await.expect("create");
+    let backup = mineui_core::backups::create(&core)
+        .await
+        .expect("create")
+        .entry;
 
     // Restore while running must be rejected.
     let err = mineui_core::backups::restore(&core, &backup.filename)

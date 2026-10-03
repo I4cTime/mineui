@@ -1,10 +1,13 @@
 /* ============================================================
    MineUI v2 — global styles + theme system
    Token contract: docs/theme-contract.md (binding).
-   Four themes, one per [data-theme] on <html>:
+   Four styles, one per [data-theme] on <html>:
      deepslate (default / :root fallback), phosphor, quantum,
      softglass. Legacy ids (emerald/ember/aether/void) have no
      block and therefore resolve to the :root deepslate values.
+   Each style has a dark and a light palette; [data-mode] on
+   <html> ("dark" | "light", contract §10) picks one. Dark is
+   the base block, light a second block in the same file.
    Rules:
    - Components never hardcode hex/oklch — tokens only.
    - Never set HeroUI color-mix derived vars (--*-hover, --*-soft,
@@ -69,6 +72,8 @@
   --color-danger-foreground: var(--danger-foreground);
   --color-border: var(--border);
   --color-separator: var(--separator);
+  --color-well: var(--well);
+  --color-well-foreground: var(--well-foreground);
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);

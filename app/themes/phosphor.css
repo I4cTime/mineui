@@ -52,6 +52,11 @@
   --link: var(--accent);
   --backdrop: rgba(0, 0, 0, 0.65);
   --scrollbar: #333a42;
+  /* inset well: log viewer, console output, command rows */
+  --well: color-mix(in oklab, var(--background) 70%, black);
+  --well-foreground: var(--foreground);
+  /* the accent wash behind every page (radial, top) */
+  --page-wash: color-mix(in oklab, var(--accent) 18%, transparent);
 
   /* -- Shape ---------------------------------------------- */
   --radius: 0.375rem; /* 6px everywhere — uniformity is the point */
@@ -99,4 +104,46 @@
   --nav-active-radius: 0px;
   --nav-indicator: var(--accent); /* the 2px underline */
   --nav-indicator-height: 2px;
+}
+
+/* ------------------------------------------------------------
+   Light mode — "Paper console" (contract §10). The statusline on
+   warm paper: amber becomes amber ink. Still zero shadows;
+   hierarchy stays borders + background steps.
+   ------------------------------------------------------------ */
+[data-theme="phosphor"][data-mode="light"] {
+  color-scheme: light;
+
+  --background: #f4f1ea;
+  --foreground: #1f1d18;
+  --surface: #faf8f3;
+  --surface-secondary: #f2efe7;
+  --surface-tertiary: #ebe7de;
+  --overlay: #fdfcf9;
+  --muted: #625d52; /* 6.2:1 on surface */
+  --subtle: #837d70;
+  --default: #e6e2d8;
+
+  --accent: #9a5200; /* amber ink, 5.5:1 on surface */
+  --accent-foreground: #fffaf0;
+  --success: #2a7436;
+  --success-foreground: #ffffff;
+  --warning: #7d5a00;
+  --warning-foreground: #ffffff;
+  --danger: #bd362c;
+  --danger-foreground: #ffffff;
+
+  --field-background: #fdfcf9;
+  --field-border: #cfc9bb;
+  --segment: #fdfcf9;
+  --border: #d6d0c3;
+  --separator: #e0dbcf;
+  --backdrop: rgba(31, 29, 24, 0.45);
+  --scrollbar: #b9b2a3;
+  --well: #ebe7de;
+  --page-wash: color-mix(in oklab, var(--accent) 9%, transparent); /* a tint, not a stain */
+
+  --header-bg: #f4f1ea; /* = --background; the bar dissolves into the page */
+  --header-edge-top: #d6d0c3; /* hairline */
+  --header-edge-bottom: #d6d0c3; /* hairline */
 }

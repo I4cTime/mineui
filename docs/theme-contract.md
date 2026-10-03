@@ -4,8 +4,9 @@ Phase-2 deliverable from the theme coordinator. This is the contract downstream
 specialists implement against. Source spec: `docs/aesthetic-directions.md`.
 Implementation lives in `app/globals.css` + `app/themes/*.css` (one file per theme).
 
-**Decision of record:** all four Phase-1 directions ship as selectable themes;
-**Deepslate & Emerald is the default** and the `:root` fallback.
+**Decision of record:** all four Phase-1 directions ship as selectable themes
+("styles" in the UI since light mode); **Deepslate & Emerald is the default** and
+the `:root` fallback. Every style has a dark and a light palette — §10.
 
 ---
 
@@ -59,6 +60,11 @@ display/numeric`, `--motion-*`, and quantum's decor tokens.
 `--accent(+-fg) --success(+-fg) --warning(+-fg) --danger(+-fg)`
 `--field-background --field-foreground --field-placeholder --field-border --field-border-width`
 `--segment(+-fg) --border --separator --focus --link --backdrop --scrollbar`
+`--well(+-fg)` — inset well for log viewers, console output and command rows
+(bridged as `bg-well` / `text-well-foreground`); never rebuild it with `color-mix`
+against `black`, which only works on a dark ground (§10)
+`--page-wash` — the accent wash behind every page (18% accent in dark, 9% in
+light); pages use it instead of an inline `color-mix` of `--accent`
 `--radius --surface-shadow --overlay-shadow --field-shadow`
 `--font-sans --font-mono --font-display --font-numeric`
 `--motion-fast --motion-base --motion-slow --motion-ease`
@@ -231,9 +237,9 @@ No infinite pulse loops in any theme.
    `backdrop-filter: blur(20px) saturate(1.4)`). Current solid hexes are the
    mandated fallbacks and stay as such. Layering rule when it lands: only one
    frosted level; overlays go solid `--overlay`.
-2. **Soft Glass light variant**: bg `#F4F2EF`, fg `#26262B`, accent darkened to
-   `#C56A3D`; full token QA pass required. Also decide the project-wide light-mode
-   strategy then (today: dark-only, `color-scheme: dark` per theme).
+2. ~~Soft Glass light variant / project-wide light-mode strategy~~ — **done, §10.**
+   The proposed accent `#C56A3D` failed the QA pass as text (3.7:1 on the light
+   surface); `#A54F24` ships.
 
 ## 8. Downstream instructions
 
@@ -301,7 +307,7 @@ centering — this is an app chrome bar, not a web page), `padding-inline: 1rem`
 |---|---|---|
 | brand | `Logo` (28px) + wordmark (`font-display`, `text-accent`) linking `/` | fixed, `shrink-0` |
 | nav | 8 nav items + (at narrow tiers) the "More" overflow `Menu` | center, `min-w-0`, the only zone that adapts |
-| controls | server switcher · mode `ToggleButtonGroup` (icon-only, as today) · sound mute · app settings · Ko-fi `Popover` | fixed, `shrink-0` |
+| controls | server switcher · sound mute · app settings · Ko-fi `Popover` | fixed, `shrink-0` |
 
 Amendment (2.5.0): the theme `Select` left the header. Theme choice lives in
 Settings → Appearance next to the accent override (`app/hooks/useTheme.ts`
@@ -316,8 +322,11 @@ starting/stopping · `bg-danger` crashed · `bg-muted` otherwise — semantic
 tokens, no literals), the open server's name, and a chevron. The menu lists
 every server with its dot, name and a one-line state ("Running · 2/20 players ·
 Advanced"), marks the open one, and ends with "Manage servers…" (App Settings →
-Servers). It sits first, with the mode toggle right after it — that toggle is
-the *open server's* mode. Tiers: the name shows at T1–T2
+Servers). It sits first. **There is no mode toggle in the header (2.9.0):** a
+one-click Simple/Advanced flip re-pointed the open server at the other kind,
+which looked like the server had been deleted; how a server is run is changed
+in Server Settings → Advanced only, never while it runs, and asks first.
+Tiers: the name shows at T1–T2
 (`header-mid:` and up, truncated at 7rem) and is CSS-hidden at T3–T4, leaving
 dot + chevron; the trigger itself is rendered at every tier, so no
 `matchMedia` gate is needed. Tooltip + `aria-label` per §9.6.
@@ -327,8 +336,8 @@ pages. Everything that is not about one server — the server list, theme and
 accent — lives on `/app-settings` ("App Settings"), reached from an icon
 button in the controls zone (`SlidersHorizontal`, Tooltip + `aria-label`,
 `aria-current="page"` and `--nav-active-fg` on that route), never from the
-nav. The controls zone therefore reads as two groups: *this server* (switcher,
-mode toggle) then *the app* (sound, app settings, Ko-fi). The nav's "Settings"
+nav. The controls zone therefore reads as two groups: *this server* (switcher)
+then *the app* (sound, app settings, Ko-fi). The nav's "Settings"
 item is the open server's settings; its page title is "Server Settings".
 
 Page header (`app/components/PageHeader.tsx`, every page but the dashboard):
@@ -457,7 +466,7 @@ exactly what the owner banned), their own surface styling, and a
 marketing-page structure. The four-character surface treatment (edge strips,
 detached glass, glow rail) needs a bespoke shell, and every control already
 exists as a primitive. Build: plain `<header>` shell (§9.1) + HeroUI
-`Button` (nav items + icon buttons), `ToggleButtonGroup` (mode), `Select`
+`Button` (nav items + icon buttons), `Select`
 (theme), `Menu` (More overflow), `Tooltip` (icon-only tiers), `Popover`
 (Ko-fi), `Separator` (optional, between nav and controls zones in phosphor
 only if implemented via `--separator` — do not hardcode).
@@ -505,3 +514,68 @@ Contrast (computed, WCAG 2.1):
 \* translucent header bgs measured against their solid `--surface` base — the
 worst case is content identical to the surface color; blur + darker page bg
 only ever raises these. All pass 4.5:1 text / 3:1 UI.
+
+---
+
+## 10. Color mode: dark and light (binding)
+
+**Strategy.** Mode is an axis independent of the style: every style ships a dark
+palette (the original block) and a light palette (a second block in the same
+`app/themes/<id>.css`). The user picks **Dark / Light / Match system** in App
+Settings → Appearance; the style picker and the accent override are unchanged.
+
+**Mechanism.**
+- `data-mode="dark" | "light"` on `<html>`, next to `data-theme`. The stored
+  preference is `"dark" | "light" | "system"` under localStorage key
+  `mineui-color-mode` (appearance-local, like the style and the accent — not
+  backend Settings). **Default `dark`**: no existing install changes appearance
+  on update. `system` resolves through `prefers-color-scheme` and keeps following
+  the OS while the app is open.
+- `public/theme-init.js` (blocking, same-origin — the CSP is `script-src 'self'`)
+  stamps `data-theme` and `data-mode` before first paint; `app/hooks/useColorMode.ts`
+  owns the preference at runtime and must stay in step with it (same key, same
+  fallbacks). The Navbar re-applies both after hydration.
+- Light selectors: `[data-theme="<id>"][data-mode="light"]`; deepslate also
+  matches `:root:not([data-theme])[data-mode="light"]`. Specificity (two
+  attributes) beats every dark block without depending on file order.
+
+**What a light block may set.** Color, shadow and header-color tokens only:
+`color-scheme`, the base/brand/field/misc colors of §3, `--well`, the three
+shadows, and `--header-bg / --header-border / --header-shadow /
+--header-edge-top / --header-edge-bottom / --nav-active-bg / --nav-active-fg /
+--nav-active-shadow` (quantum also its decor tokens and
+`--danger-soft-foreground`). **Never** shape, type, motion or header geometry —
+those are the style, and they are the same in both modes.
+
+**QA bar (every light palette, checked numerically before it ships).**
+`--foreground` ≥ 7:1 on background, surface and well; `--muted` ≥ 4.5:1 on
+background and all three surfaces; `--subtle` ≥ 3.2:1; `--accent`, `--success`,
+`--warning`, `--danger` ≥ 4.5:1 **as text** on the surface (in light mode the
+status colors are text colors first — chips, links, labels) and their
+`*-foreground` ≥ 4.5:1 on the fill; soft-chip text (HeroUI's
+`color-mix(color, --foreground)`) ≥ 4.5:1 on its 15% tint; `--nav-active-fg`
+≥ 4.5:1 on `--nav-active-bg`.
+
+**Light palettes** (full values in the theme files):
+
+| style | name | background / surface / foreground | accent (on surface) | notes |
+|---|---|---|---|---|
+| deepslate | Calcite & Emerald | `#eef1ee` / `#fbfcfb` / `#141a17` | `#0b7a41` (5.3:1) | success = accent, as in dark; bevel shadows become white insets + a soft drop |
+| phosphor | Paper console | `#f4f1ea` / `#faf8f3` / `#1f1d18` | `#9a5200` amber ink (5.5:1) | still zero shadows; hairlines `#d6d0c3` |
+| quantum | Daybreak | `#f3f6fb` / `#ffffff` / `#0a1020` | `#006f94` deep cyan (5.7:1) | violet text `#5a2fcf`; glows tinted, never black |
+| softglass | (light) | `#f4f2ef` / `#fcfbfa` / `#26262b` | `#a54f24` terracotta (5.4:1) | whisper borders become `rgba(38,38,43,…)` |
+
+**Accent override in light mode.** The stored pick never changes. When the mode
+is light and the pick is below 4.5:1 against `--background`, it is shown darkened
+(channels scaled toward black in 4% steps) until it reaches 4.5:1
+(`readableOnLight` in `useAccentColor.ts`); `--accent-foreground` is then chosen
+between the palette's `--background` / `--foreground` as before. The Appearance
+card says so when an override is active in light mode.
+
+**Rules for components.**
+1. Nothing may assume a dark ground: no `color-mix(… , black)` / `white` literals,
+   no `rgba(255,255,255,…)` highlights in components — use tokens (`--well`,
+   `--border`, `--surface-*`).
+2. The Ko-fi iframe keeps its own light background in both modes (third-party
+   content).
+3. `color-scheme` is set per block, so native controls and scrollbars follow.

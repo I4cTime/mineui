@@ -55,7 +55,7 @@ export default function DiscardServerButton({ isDisabled = false }: { isDisabled
       <ConfirmDialog
         isOpen={confirming}
         title="Remove server"
-        description={`Remove "${active.name}" from MineUI? Nothing has been created for it yet, so nothing is lost. You will be taken to ${next}.`}
+        description={`Remove "${active.name}" from MineUI? Nothing is deleted from this computer: if it had server files or a container before, they stay where they are. You will be taken to ${next}.`}
         confirmLabel="Remove"
         variant="danger"
         isLoading={busy}

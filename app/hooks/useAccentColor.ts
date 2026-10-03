@@ -55,6 +55,31 @@ function contrastRatio(l1: number, l2: number): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+const TEXT_CONTRAST = 4.5; // WCAG AA, normal text
+
+/**
+ * The override as it can be shown on a light ground (contract §10): the
+ * accent is also a text color (links, active labels, chips), and most picks
+ * that glow on a dark theme are unreadable on paper. Darken toward black in
+ * small steps until it reaches 4.5:1 against the background; a pick that is
+ * already readable is returned untouched. The stored value never changes.
+ */
+export function readableOnLight(hex: string, background: string): string {
+  const full =
+    hex.length === 4
+      ? `#${[...hex.slice(1)].map((c) => c + c).join("")}`
+      : hex;
+  const bgL = relativeLuminance(background);
+  const channels = [1, 3, 5].map((i) => parseInt(full.slice(i, i + 2), 16));
+  for (let keep = 1; keep > 0.1; keep -= 0.04) {
+    const shade = `#${channels
+      .map((c) => Math.round(c * keep).toString(16).padStart(2, "0"))
+      .join("")}`;
+    if (contrastRatio(relativeLuminance(shade), bgL) >= TEXT_CONTRAST) return shade;
+  }
+  return full;
+}
+
 /**
  * Apply (or clear) the stored override on <html>. --accent-foreground is
  * not a fixed black/white: it's whichever of the current theme's own
@@ -71,10 +96,16 @@ export function applyAccentOverride() {
     root.style.removeProperty("--accent-foreground");
     return;
   }
+  // Clear a previous override first: the tokens read below must be the
+  // palette's own, not last time's inline values.
+  root.style.removeProperty("--accent");
+  root.style.removeProperty("--accent-foreground");
   const styles = getComputedStyle(root);
   const bg = styles.getPropertyValue("--background").trim();
   const fg = styles.getPropertyValue("--foreground").trim();
-  const accentL = relativeLuminance(value);
+  const shown =
+    root.dataset.mode === "light" && HEX_RE.test(bg) ? readableOnLight(value, bg) : value;
+  const accentL = relativeLuminance(shown);
   const score = (candidate: string) =>
     HEX_RE.test(candidate)
       ? contrastRatio(accentL, relativeLuminance(candidate))
@@ -87,7 +118,7 @@ export function applyAccentOverride() {
       : bgScore >= fgScore
         ? bg
         : fg;
-  root.style.setProperty("--accent", value);
+  root.style.setProperty("--accent", shown);
   root.style.setProperty("--accent-foreground", foreground);
 }
 

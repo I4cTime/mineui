@@ -62,27 +62,27 @@ const ADD_KINDS: {
 }[] = [
   {
     id: "new-container",
-    title: "New container",
+    title: "Modded or modpack server",
     description:
-      "MineUI creates an itzg/minecraft-server container for you — Vanilla, Paper, Fabric, Forge, NeoForge and more.",
+      "MineUI creates the server in a container for you — Paper, Fabric, Forge, NeoForge, or a whole modpack. Needs Podman or Docker (MineUI shows how to install one).",
     icon: Container,
     mode: "advanced",
     next: "/",
   },
   {
     id: "existing-container",
-    title: "Existing container",
+    title: "A container I already run",
     description:
-      "Attach to a Podman or Docker container you already run. You enter its name, ports and RCON password next.",
+      "Connect MineUI to a Minecraft container you set up yourself in Podman or Docker. You enter its name, ports and RCON password next.",
     icon: Link2,
     mode: "advanced",
     next: "/settings",
   },
   {
     id: "managed",
-    title: "Managed vanilla",
+    title: "Plain Minecraft server",
     description:
-      "No containers: MineUI downloads the official server and runs it as a process.",
+      "The simplest: MineUI downloads the official (vanilla) server and runs it on this computer. Nothing else to install; no mods.",
     icon: Sparkles,
     mode: "simple",
     next: "/",
@@ -116,10 +116,12 @@ export default function ServersCard() {
     const state = overview.find((entry) => entry.id === server.id);
     const consequence =
       state?.phase === "not-created"
-        ? "Nothing has been created for it yet, so nothing is lost."
-        : state?.containerName
-          ? "Unless you tick the box below, the server itself is untouched: its container, world and backups stay where they are."
-          : "The server itself is untouched: its world and backups stay where they are.";
+        ? "It has no container right now. A world kept from an earlier container of the same name is not deleted."
+        : state?.containerName && state.phase !== null
+          ? "Unless you tick the box below, the server itself is untouched: its container, world and backups stay where they are (a running container keeps running)."
+          : state?.containerName
+            ? "The server itself is untouched: its container, world and backups stay where they are."
+            : "The server itself is untouched: its world and backups stay on this computer, in the server folder shown in its Server Settings.";
     const leaving =
       server.id === activeId
         ? ` It is the server you have open; MineUI will move to ${

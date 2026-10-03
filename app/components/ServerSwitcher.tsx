@@ -22,6 +22,7 @@ import {
   phaseText,
   useServers,
 } from "@/app/components/ServerProvider";
+import { leaveOr } from "@/app/lib/leaveGuard";
 
 const MANAGE_KEY = "__manage";
 
@@ -35,7 +36,7 @@ export default function ServerSwitcher() {
   const handleAction = (key: string) => {
     play("click_confirm");
     if (key === MANAGE_KEY) {
-      router.push("/app-settings#servers");
+      leaveOr(() => router.push("/app-settings#servers"));
       return;
     }
     switchTo(key);

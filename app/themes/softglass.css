@@ -56,6 +56,11 @@
   --link: var(--accent);
   --backdrop: rgba(0, 0, 0, 0.5);
   --scrollbar: #3d3d46;
+  /* inset well: log viewer, console output, command rows */
+  --well: color-mix(in oklab, var(--background) 70%, black);
+  --well-foreground: var(--foreground);
+  /* the accent wash behind every page (radial, top) */
+  --page-wash: color-mix(in oklab, var(--accent) 18%, transparent);
 
   /* -- Shape ---------------------------------------------- */
   --radius: 0.875rem; /* 14px (refined from Phase-1 12px; see contract) */
@@ -110,4 +115,57 @@
   --nav-active-radius: 999px; /* capsule */
   --nav-indicator: transparent;
   --nav-indicator-height: 0px;
+}
+
+/* ------------------------------------------------------------
+   Light mode (contract §10; resolves the §7.2 follow-up). Warm
+   paper white, soft layered shadows, the apricot deepened to
+   terracotta: the #C56A3D first proposed is 3.7:1 as text on the
+   surface, so text-safe #A54F24 (5.4:1) ships instead.
+   ------------------------------------------------------------ */
+[data-theme="softglass"][data-mode="light"] {
+  color-scheme: light;
+
+  --background: #f4f2ef;
+  --foreground: #26262b;
+  --surface: #fcfbfa;
+  --surface-secondary: #f7f5f2;
+  --surface-tertiary: #f1eeea;
+  --overlay: #ffffff;
+  --muted: #62626b; /* 5.8:1 on surface */
+  --subtle: #85858e;
+  --default: #ebe8e4;
+
+  --accent: #a54f24; /* terracotta, 5.4:1 on surface */
+  --accent-foreground: #ffffff;
+  --success: #237a49;
+  --success-foreground: #ffffff;
+  --warning: #80600c;
+  --warning-foreground: #ffffff;
+  --danger: #c33c41;
+  --danger-foreground: #ffffff;
+
+  --field-background: #ffffff;
+  --field-border: rgba(38, 38, 43, 0.14);
+  --segment: #ffffff;
+  --border: rgba(38, 38, 43, 0.11);
+  --separator: rgba(38, 38, 43, 0.08);
+  --backdrop: rgba(38, 38, 43, 0.32);
+  --scrollbar: #c4c1bc;
+  --well: #ebe8e4;
+  --page-wash: color-mix(in oklab, var(--accent) 9%, transparent); /* a tint, not a stain */
+
+  --surface-shadow:
+    0 1px 2px rgba(38, 38, 43, 0.06),
+    0 8px 24px rgba(38, 38, 43, 0.07);
+  --overlay-shadow:
+    0 2px 8px rgba(38, 38, 43, 0.1),
+    0 24px 60px rgba(38, 38, 43, 0.18);
+  --field-shadow: 0 1px 2px rgba(38, 38, 43, 0.05);
+
+  --header-border: rgba(38, 38, 43, 0.11);
+  --header-shadow:
+    0 2px 8px rgba(38, 38, 43, 0.07),
+    0 12px 32px rgba(38, 38, 43, 0.09);
+  --nav-active-shadow: 0 1px 2px rgba(38, 38, 43, 0.14); /* gentle lift */
 }

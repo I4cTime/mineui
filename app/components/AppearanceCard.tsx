@@ -1,11 +1,11 @@
 "use client";
 
-// App Settings → Appearance: theme choice + user accent override. Applies to
-// the whole app, not to a server. The swatch fills are user-pickable data
+// App Settings → Appearance: color mode (dark / light / match system), style
+// choice and user accent override. Applies to the whole app, not to a server. The swatch fills are user-pickable data
 // values (see ACCENT_PRESETS), not UI styling; the surrounding chrome stays
 // on theme tokens.
 import { useMemo, useRef } from "react";
-import { Check, Palette } from "lucide-react";
+import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
 import {
   Button,
   Card,
@@ -20,11 +20,44 @@ import {
 import { useUISound } from "@/app/hooks/useUISound";
 import { ACCENT_PRESETS, useAccentColor } from "@/app/hooks/useAccentColor";
 import { THEMES, useTheme, type ThemeId } from "@/app/hooks/useTheme";
+import {
+  COLOR_MODES,
+  useColorMode,
+  type ColorModePreference,
+} from "@/app/hooks/useColorMode";
+
+const MODE_ICONS: Record<ColorModePreference, typeof Sun> = {
+  dark: Moon,
+  light: Sun,
+  system: Monitor,
+};
 
 export default function AppearanceCard() {
   const { play } = useUISound();
   const { accent, setAccent } = useAccentColor();
   const { theme, setTheme } = useTheme();
+  const { preference, mode, setPreference } = useColorMode();
+  const modeRefs = useRef<Record<ColorModePreference, HTMLButtonElement | null>>({
+    dark: null,
+    light: null,
+    system: null,
+  });
+  const handleModeSelect = (next: ColorModePreference) => {
+    if (next === preference) return;
+    play("toggle_on");
+    setPreference(next);
+  };
+  const handleModeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const index = COLOR_MODES.findIndex((m) => m.id === preference);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % COLOR_MODES.length;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + COLOR_MODES.length) % COLOR_MODES.length;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const next = COLOR_MODES[nextIndex].id;
+    handleModeSelect(next);
+    modeRefs.current[next]?.focus();
+  };
   const themeRefs = useRef<Record<ThemeId, HTMLButtonElement | null>>({
     deepslate: null,
     phosphor: null,
@@ -60,7 +93,9 @@ export default function AppearanceCard() {
         .getPropertyValue("--accent")
         .trim() || "#3ddc84"
     );
-  }, [accent]);
+    // `mode` and `theme`: the palette's own accent differs per mode and style.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accent, mode, theme]);
 
   return (
     <Card className="p-6">
@@ -70,14 +105,60 @@ export default function AppearanceCard() {
           <Card.Title>Appearance</Card.Title>
         </div>
         <Card.Description>
-          Pick a theme, then optionally override its accent everywhere
-          in the app. Both apply instantly and persist on this machine.
+          Choose dark or light, pick a style, then optionally override its
+          accent everywhere in the app. All three apply instantly and persist
+          on this machine.
         </Card.Description>
       </Card.Header>
       <Card.Content className="mt-4 flex flex-col items-start gap-4">
+        <Label className="text-sm">Mode</Label>
         <div
           role="radiogroup"
-          aria-label="Theme"
+          aria-label="Color mode"
+          className="grid w-full gap-3 sm:grid-cols-3"
+          onKeyDown={handleModeKeyDown}
+        >
+          {COLOR_MODES.map((option) => {
+            const selected = option.id === preference;
+            const Icon = MODE_ICONS[option.id];
+            return (
+              <button
+                key={option.id}
+                ref={(node) => {
+                  modeRefs.current[option.id] = node;
+                }}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => handleModeSelect(option.id)}
+                onMouseEnter={() => play("hover")}
+                className="flex items-center gap-2 rounded-lg border px-4 py-3 text-left text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2"
+                style={{
+                  borderColor: selected ? "var(--accent)" : "var(--border)",
+                  background: selected
+                    ? "color-mix(in oklab, var(--accent) 8%, transparent)"
+                    : "var(--surface-secondary)",
+                  outlineColor: "var(--focus)",
+                  transition:
+                    "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
+                }}
+              >
+                <Icon size={15} className={selected ? "text-accent" : "text-muted"} />
+                <span className="flex-1">{option.label}</span>
+                {option.id === "system" && (
+                  <span className="text-xs font-normal text-muted">
+                    now {mode}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <Label className="text-sm">Style</Label>
+        <div
+          role="radiogroup"
+          aria-label="Style"
           className="grid w-full gap-3 sm:grid-cols-2"
           onKeyDown={handleThemeKeyDown}
         >
@@ -108,7 +189,9 @@ export default function AppearanceCard() {
               >
                 <span className="flex-1">
                   <span className="block text-sm font-semibold">{option.label}</span>
-                  <span className="mt-1 block text-xs text-muted">{option.description}</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    {mode === "light" ? option.descriptionLight : option.description}
+                  </span>
                 </span>
                 {selected && (
                   <span
@@ -195,10 +278,17 @@ export default function AppearanceCard() {
               }}
               onMouseEnter={() => play("hover")}
             >
-              Reset to theme accent
+              Reset to style accent
             </Button>
           )}
         </div>
+        {accent !== null && mode === "light" && (
+          <p className="text-xs text-muted">
+            In light mode a bright pick is shown darker, so text and icons in
+            this color stay readable. Your choice is kept as picked for dark
+            mode.
+          </p>
+        )}
       </Card.Content>
     </Card>
   );

@@ -27,6 +27,7 @@ import CreateServerFlow from "@/app/components/CreateServerFlow";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import ServerIdentity from "@/app/components/ServerIdentity";
 import ServersOverview from "@/app/components/ServersOverview";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { useServers } from "@/app/components/ServerProvider";
 import {
   createBackup,
@@ -55,10 +56,46 @@ import {
 
 const MAX_LOG_LINES = 1000;
 
-const phaseChipColor = (phase: ServerPhase | undefined) => {
+// One statement of how the server is doing, from the two facts the backend
+// gives: the process/container phase and whether the game answers a ping.
+// "running" without an answer is the minutes between Start and "Done" (a
+// modpack's first start installs the pack then) — showing "running" next to
+// "Offline" made that look broken (UX review 2026-10).
+type Condition = "online" | "warming" | "starting" | "stopping" | "stopped" | "crashed" | "unknown";
+
+const conditionOf = (phase: ServerPhase | undefined, online: boolean): Condition => {
   switch (phase) {
     case "running":
+      return online ? "online" : "warming";
+    case "starting":
+      return "starting";
+    case "stopping":
+      return "stopping";
+    case "crashed":
+      return "crashed";
+    case "stopped":
+    case "not-created":
+      return "stopped";
+    default:
+      return "unknown";
+  }
+};
+
+const CONDITION_LABEL: Record<Condition, string> = {
+  online: "Online",
+  warming: "Starting up…",
+  starting: "Starting…",
+  stopping: "Stopping…",
+  stopped: "Stopped",
+  crashed: "Crashed",
+  unknown: "Unknown",
+};
+
+const conditionChipColor = (condition: Condition) => {
+  switch (condition) {
+    case "online":
       return "success" as const;
+    case "warming":
     case "starting":
     case "stopping":
       return "warning" as const;
@@ -69,16 +106,7 @@ const phaseChipColor = (phase: ServerPhase | undefined) => {
   }
 };
 
-const phaseLabel = (phase: ServerPhase | undefined) => {
-  switch (phase) {
-    case "not-created":
-      return "not created";
-    case undefined:
-      return "unknown";
-    default:
-      return phase;
-  }
-};
+type DashAction = "start" | "stop" | "restart" | "backup";
 
 export default function Home() {
   const router = useRouter();
@@ -88,7 +116,12 @@ export default function Home() {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [mods, setMods] = useState<ModsList | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
+  // Which action is in flight — the spinner goes on that button only.
+  const [busyAction, setBusyAction] = useState<DashAction | null>(null);
+  const busy = busyAction !== null;
+  const [confirmAction, setConfirmAction] = useState<"stop" | "restart" | null>(null);
+  // The backend answered, but the container runtime behind it did not.
+  const [runtimeDown, setRuntimeDown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [backendError, setBackendError] = useState<string | null>(null);
   // Advanced mode with neither Podman nor Docker installed is not a broken
@@ -102,7 +135,8 @@ export default function Home() {
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
-  const { active: activeServer } = useServers();
+  const { active: activeServer, activeId, overview } = useServers();
+  const address = overview.find((item) => item.id === activeId)?.address ?? null;
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
@@ -134,8 +168,12 @@ export default function Home() {
       }
       setBackendError(null);
       setRuntimeMissing(false);
+      setRuntimeDown(false);
     } catch (error) {
       setRuntimeMissing(error instanceof IpcError && error.code === "RUNTIME_NOT_FOUND");
+      // Installed but not responding (Docker Desktop closed, podman machine
+      // stopped) — not the same thing as "install a runtime".
+      setRuntimeDown(error instanceof IpcError && error.code === "RUNTIME_UNAVAILABLE");
       setBackendError(
         error instanceof IpcError ? error.message : String(error),
       );
@@ -229,24 +267,57 @@ export default function Home() {
     }
   }, [logLines]);
 
-  const runAction = async (action: () => Promise<unknown>, label: string) => {
+  // What each action says when the *request* went through — which for Start
+  // and Restart is not yet "the server is up".
+  const runAction = async (kind: DashAction) => {
     play("click_confirm");
-    setBusy(true);
+    setBusyAction(kind);
+    const name = activeServer.name;
     try {
-      await action();
+      if (kind === "start") {
+        await startServer();
+        toast(`${name} is starting — it is ready when the status turns Online.`);
+      } else if (kind === "stop") {
+        await stopServer();
+        toast.success(`${name} stopped`);
+      } else if (kind === "restart") {
+        await restartServer();
+        toast(`${name} is restarting — it is ready when the status turns Online.`);
+      } else {
+        const { pruned } = await createBackup();
+        toast.success(
+          pruned.length > 0
+            ? `Backup created. The oldest backup (${pruned[0]}) was removed — see Backups for how many are kept.`
+            : "Backup created",
+        );
+      }
       play("success");
-      toast.success(`${label} completed`);
       setServerState(await getServerState().catch(() => null));
       await refreshPolled();
     } catch (error) {
       play("error");
-      toast.danger(
-        error instanceof IpcError ? error.message : `${label} failed`,
-      );
+      const fallback = { start: "Could not start", stop: "Could not stop", restart: "Could not restart", backup: "Backup failed" }[kind];
+      toast.danger(error instanceof IpcError ? error.message : fallback);
     } finally {
-      setBusy(false);
+      setBusyAction(null);
     }
   };
+
+  // Stop/Restart disconnect people: ask when someone is playing.
+  const requestAction = (kind: "stop" | "restart") => {
+    if (playerCount > 0) {
+      play("click_confirm");
+      setConfirmAction(kind);
+    } else {
+      void runAction(kind);
+    }
+  };
+
+  const phase = serverState?.phase;
+  const condition = conditionOf(phase, serverOnline);
+  const canStart = phase === "stopped" || phase === "crashed";
+  const canStop = phase === "running" || phase === "starting";
+  const canRestart = phase === "running";
 
   const handleRefresh = () => {
     play("click_confirm");
@@ -287,11 +358,21 @@ export default function Home() {
               <Card.Description>
                 This server runs in a container, and MineUI found neither
                 Podman nor Docker on this computer. Your other servers are
-                unaffected — a managed vanilla server needs no containers.
+                unaffected. If you would rather not install anything, a plain
+                Minecraft server needs no containers: switch how this server
+                is run under <em>Advanced</em> in its settings.
               </Card.Description>
             </Card.Header>
-            <Card.Content className="mt-4">
+            <Card.Content className="mt-4 grid gap-4">
               <RuntimeInstallHelp onRecheck={() => bootstrap()} />
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onPress={() => router.push("/settings")}>
+                  Open Server Settings
+                </Button>
+                <Button variant="tertiary" onPress={() => router.push("/app-settings#servers")}>
+                  Manage servers
+                </Button>
+              </div>
             </Card.Content>
           </Card>
         </main>
@@ -307,21 +388,39 @@ export default function Home() {
             <Card.Header className="flex items-center gap-3 text-sm text-accent">
               <Server size={18} />
               <span className="font-pixel text-xs tracking-wide">
-                Backend unavailable
+                {runtimeDown
+                  ? `${activeServer.name}: the container runtime is not responding`
+                  : `Couldn't load ${activeServer.name}`}
               </span>
             </Card.Header>
             <Card.Content className="mt-4 grid gap-3 text-sm text-muted">
               <p>{backendError}</p>
-              <p>
-                Launch MineUI with{" "}
-                <code className="font-mono">pnpm tauri dev</code> or the packaged
-                app — the web preview has no backend.
-              </p>
+              {runtimeDown && (
+                <p>
+                  Podman or Docker is installed but not running. Start Docker
+                  Desktop, or on Windows and macOS run{" "}
+                  <code className="font-mono">podman machine start</code>, then try
+                  again. Nothing is wrong with the server itself.
+                </p>
+              )}
+              {!isTauri() && (
+                <p>
+                  Launch MineUI with{" "}
+                  <code className="font-mono">pnpm tauri dev</code> or the packaged
+                  app — the web preview has no backend.
+                </p>
+              )}
             </Card.Content>
-            <Card.Footer className="mt-4">
+            <Card.Footer className="mt-4 flex flex-wrap gap-2">
               <Button onPress={() => bootstrap()}>
                 <RefreshCcw size={16} />
-                Retry
+                Try again
+              </Button>
+              <Button variant="secondary" onPress={() => router.push("/settings")}>
+                Server Settings
+              </Button>
+              <Button variant="tertiary" onPress={() => router.push("/app-settings#servers")}>
+                Manage servers
               </Button>
             </Card.Footer>
           </Card>
@@ -334,7 +433,7 @@ export default function Home() {
     <div
       className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
@@ -379,59 +478,50 @@ export default function Home() {
               </Chip>
               {!needsOnboarding && (
                 <>
-                  {/* Signature moment: brief scale/glow on every stopped→
-                      starting→running (etc.) transition, keyed to
-                      --motion-base. Remounting on phase change is what
-                      drives the "enter" animation below — no loop. */}
+                  {/* One chip says how the server is doing. Signature moment:
+                      a brief scale/glow whenever the condition changes,
+                      keyed to --motion-base (remount drives the enter
+                      animation — no loop). */}
                   <motion.span
-                    key={serverState?.phase ?? "unknown"}
+                    key={condition}
                     className="inline-flex"
                     initial={{ opacity: 0, scale: 0.92, filter: "brightness(1.5)" }}
                     animate={{ opacity: 1, scale: 1, filter: "brightness(1)" }}
                     transition={transition("base")}
                   >
-                    <Chip
-                      variant="soft"
-                      color={phaseChipColor(serverState?.phase)}
-                    >
-                      Server: {phaseLabel(serverState?.phase)}
+                    <Chip variant="soft" color={conditionChipColor(condition)}>
+                      {condition === "online" ? (
+                        <span className="flex items-center gap-1.5">
+                          {/* The one sanctioned ambient loop on this screen
+                              (docs/theme-contract.md §6); reduced-motion
+                              guard in globals.css. */}
+                          <span className="inline-block h-2 w-2 rounded-full animate-pulse bg-accent" />
+                          Online
+                        </span>
+                      ) : (
+                        CONDITION_LABEL[condition]
+                      )}
                     </Chip>
                   </motion.span>
-                  <Chip
-                    variant="soft"
-                    color={serverOnline ? "success" : "warning"}
-                  >
-                    {serverOnline ? (
-                      <span className="flex items-center gap-1.5">
-                        {/* The one sanctioned ambient loop on this screen
-                            (docs/theme-contract.md §6 / audit finding) —
-                            everything else on this page is state-triggered
-                            or static. Reduced-motion guard: globals.css
-                            "motion" section. */}
-                        <span
-                          className="inline-block h-2 w-2 rounded-full animate-pulse bg-accent"
-                        />
-                        Online
-                      </span>
-                    ) : (
-                      "Offline"
-                    )}
-                  </Chip>
                   <Button
                     onPress={handleRefresh}
                     isDisabled={busy}
                     onMouseEnter={() => play("hover")}
                   >
-                    <RefreshCcw size={16} className={busy ? "animate-spin" : ""} />
+                    <RefreshCcw size={16} />
                     <span className="hidden sm:inline">Refresh</span>
                   </Button>
                   <Button
                     variant="tertiary"
-                    onPress={() => runAction(createBackup, "Backup")}
+                    onPress={() => runAction("backup")}
                     isDisabled={busy}
                     onMouseEnter={() => play("hover")}
                   >
-                    <Archive size={16} />
+                    {busyAction === "backup" ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Archive size={16} />
+                    )}
                     <span className="hidden sm:inline">Backup</span>
                   </Button>
                 </>
@@ -499,7 +589,7 @@ export default function Home() {
                     className="mt-4 max-h-105 rounded-lg border border-border p-4 text-xs leading-5 font-mono text-foreground"
                     style={{
                       background:
-                        "color-mix(in oklab, var(--background) 70%, black)",
+                        "var(--well)",
                     }}
                   >
                     {logLines.length ? (
@@ -542,36 +632,53 @@ export default function Home() {
                   </KPI.Header>
                   <KPI.Content className="items-start">
                     <div className="grid flex-1 gap-2 text-sm">
-                      <div className="text-lg font-semibold">
-                        {serverOnline ? "Online" : "Offline"}
-                      </div>
-                      <div className="text-muted">
-                        Version: {status?.version ?? "unknown"}
-                      </div>
-                      <div className="text-muted">
-                        MOTD: {status?.motd ?? "—"}
-                      </div>
-                      <div className="text-muted font-pixel-num">
-                        Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}
-                      </div>
-                      {status && !status.online && status.error && (
-                        <p className="text-xs text-muted" title={status.error}>
-                          {status.error}
+                      <div className="text-lg font-semibold">{CONDITION_LABEL[condition]}</div>
+                      {condition === "online" && (
+                        <>
+                          {address && (
+                            <div className="text-muted">
+                              Players join at <span className="font-mono">{address}</span>
+                            </div>
+                          )}
+                          <div className="text-muted">Version: {status?.version ?? "unknown"}</div>
+                          <div className="text-muted">MOTD: {status?.motd ?? "—"}</div>
+                          <div className="text-muted font-pixel-num">
+                            Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}
+                          </div>
+                        </>
+                      )}
+                      {condition === "warming" && (
+                        <p className="text-muted" title={status?.error ?? undefined}>
+                          The server is running but not taking players yet. The first
+                          start of a modded server or modpack can take several minutes —
+                          watch the log above; it is ready when a line says{" "}
+                          <span className="font-mono">Done</span>.
+                        </p>
+                      )}
+                      {condition === "starting" && (
+                        <p className="text-muted">Starting — this updates by itself.</p>
+                      )}
+                      {condition === "stopping" && (
+                        <p className="text-muted">Saving the world and shutting down.</p>
+                      )}
+                      {condition === "stopped" && (
+                        <p className="text-muted">Press Start to bring the server online.</p>
+                      )}
+                      {condition === "crashed" && (
+                        <p className="text-muted">
+                          The server stopped unexpectedly. The last lines of the log
+                          above usually say why; Start tries again.
                         </p>
                       )}
                     </div>
                   </KPI.Content>
                   <KPI.Footer className="mt-auto flex flex-wrap gap-2 pt-4">
                     <Button
-                      onPress={() => runAction(startServer, "Start")}
-                      isDisabled={
-                        busy ||
-                        serverState?.phase === "running" ||
-                        serverState?.phase === "starting"
-                      }
+                      onPress={() => runAction("start")}
+                      isDisabled={busy || !canStart}
                       onMouseEnter={() => play("hover")}
                     >
-                      {busy ? (
+                      {busyAction === "start" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
                         <Play size={16} />
@@ -580,20 +687,28 @@ export default function Home() {
                     </Button>
                     <Button
                       variant="danger"
-                      onPress={() => runAction(stopServer, "Stop")}
-                      isDisabled={busy}
+                      onPress={() => requestAction("stop")}
+                      isDisabled={busy || !canStop}
                       onMouseEnter={() => play("hover")}
                     >
-                      <Square size={16} />
+                      {busyAction === "stop" ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Square size={16} />
+                      )}
                       Stop
                     </Button>
                     <Button
                       variant="tertiary"
-                      onPress={() => runAction(restartServer, "Restart")}
-                      isDisabled={busy}
+                      onPress={() => requestAction("restart")}
+                      isDisabled={busy || !canRestart}
                       onMouseEnter={() => play("hover")}
                     >
-                      <RefreshCcw size={16} />
+                      {busyAction === "restart" ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <RefreshCcw size={16} />
+                      )}
                       Restart
                     </Button>
                   </KPI.Footer>
@@ -693,6 +808,20 @@ export default function Home() {
             </motion.section>
           </>
         )}
+        <ConfirmDialog
+          isOpen={confirmAction !== null}
+          title={confirmAction === "restart" ? `Restart ${activeServer.name}` : `Stop ${activeServer.name}`}
+          description={`${playerCount} ${playerCount === 1 ? "player is" : "players are"} online and will be disconnected. The world is saved first.`}
+          confirmLabel={confirmAction === "restart" ? "Restart anyway" : "Stop anyway"}
+          cancelLabel="Cancel"
+          variant="danger"
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => {
+            const kind = confirmAction;
+            setConfirmAction(null);
+            if (kind) void runAction(kind);
+          }}
+        />
       </motion.main>
     </div>
   );

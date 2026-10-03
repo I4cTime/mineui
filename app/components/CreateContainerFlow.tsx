@@ -246,9 +246,11 @@ export default function CreateContainerFlow({
             <DiscardServerButton isDisabled={creating} />
           </div>
           <Card.Description>
-            {serverName} has no container yet. MineUI can create one from the{" "}
-            <code className="font-mono">itzg/minecraft-server</code> image and
-            connect to it — pick what it should run.
+            {serverName} is not set up yet. Pick what it should run and MineUI
+            creates the server in a container (the widely used{" "}
+            <code className="font-mono">itzg/minecraft-server</code> image) and
+            connects to it. Only want plain Minecraft with nothing to install? Add
+            a <em>Plain Minecraft server</em> in App Settings → Servers instead.
           </Card.Description>
         </Card.Header>
 
@@ -460,7 +462,8 @@ export default function CreateContainerFlow({
               {exposeToNetwork
                 ? `The game port (${gamePort}) is opened on every network interface of this machine.`
                 : "Only this computer can connect. Choose this for a test server."}{" "}
-              RCON always stays local, with a password MineUI generates.
+              RCON — the channel MineUI itself uses to send commands — always stays
+              on this computer, with a password MineUI generates.
             </span>
 
             <label className="flex items-start gap-3 text-sm">
@@ -484,7 +487,11 @@ export default function CreateContainerFlow({
                 >
                   Minecraft End User License Agreement
                 </a>
-                .
+                .{" "}
+                <span className="text-muted">
+                  Mojang&apos;s rules for running a server — every Minecraft server has to
+                  agree to them.
+                </span>
               </span>
             </label>
           </div>
@@ -518,8 +525,24 @@ export default function CreateContainerFlow({
             }}
             onMouseEnter={() => play("hover")}
           >
-            Attach an existing container instead
+            Use a container I already run instead
           </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            {!canCreate && !creating && (
+              <span className="text-xs text-muted">
+                {noRuntime
+                  ? "Install Podman or Docker first (see above)."
+                  : !workloadReady
+                    ? kind === "modpack" && modpack === null
+                      ? "Pick a modpack."
+                      : "Pick the Minecraft version."
+                    : containerName.trim() === ""
+                      ? "Give the container a name."
+                      : !eulaAccepted
+                        ? "Accept the EULA to continue."
+                        : "Check the ports."}
+              </span>
+            )}
           <Button
             onPress={handleCreate}
             isDisabled={!canCreate}
@@ -538,6 +561,7 @@ export default function CreateContainerFlow({
               </>
             )}
           </Button>
+          </div>
         </Card.Footer>
       </Card>
     </motion.section>

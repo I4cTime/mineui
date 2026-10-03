@@ -3,6 +3,102 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.9.0] - 2026-10-03
+
+A full review of every screen and flow ("does this make sense to someone
+running a server for friends?") plus light mode. Nothing here changes saved
+settings or worlds.
+
+### Added
+
+- **Light mode.** App Settings → Appearance has a new *Mode* choice — Dark,
+  Light, or Match system — that works with every style: Deepslate becomes
+  *Calcite & Emerald*, Phosphor a warm *paper console*, Quantum *Daybreak*,
+  Soft Glass warm paper and terracotta. Each light palette was checked
+  numerically for text contrast (WCAG AA or better everywhere, including
+  status chips). An accent override that would be unreadable on a light
+  ground is shown darker in light mode; your pick is kept for dark mode.
+  Dark stays the default, so nothing changes until you choose it.
+- **"The server is stopped — Start it" where it matters.** Players, Console,
+  Status and Backups say what state the server has to be in and carry the
+  button, instead of an empty list or a raw connection error.
+- **Unsaved-changes protection.** Server Settings and the config editor ask
+  before you leave the page or switch servers with unsaved edits.
+
+### Changed
+
+- **The Simple/Advanced toggle is gone from the header.** One unlabelled click
+  re-pointed a server at the other kind, which looked exactly like the server
+  had been deleted. How a server is run now lives under *Advanced* in Server
+  Settings, is refused while the server is running, and asks first — saying
+  that nothing is deleted or moved.
+- **Server Settings is reorganised by how often things are needed:** This
+  server (rename it right there), Performance & network, Scheduled tasks,
+  Backups, a collapsed *Advanced* section (connection details, console
+  command rules, downloads from your own network, how the server is run) and
+  a Danger zone. Every field says what it does in plain words. One *Unsaved
+  changes — Discard / Save* bar replaces the Save buttons that sat in
+  unrelated cards; it names what is wrong before you save. The container name
+  is locked behind *Change…* (editing it silently pointed MineUI at nothing),
+  and the RCON password can be revealed.
+- **Dashboard status is one statement:** Online, Starting up… (running but
+  not answering yet — the minutes a modpack needs on first start), Starting…,
+  Stopping…, Stopped or Crashed, with a sentence saying what to expect and the
+  address players join at. Start/Stop/Restart are only enabled when they make
+  sense, say what actually happened ("is starting…", not "Start completed"),
+  and Stop/Restart ask first when players are online.
+- **Players:** Whitelist, Kick and Ban up front, Make admin / Remove admin /
+  Unban in a menu, each explained and confirmed in its own words; the result
+  shown is the server's own reply. A stopped server keeps your notes visible
+  and editable.
+- **Console** (was "RCON Tools"): says what it is, shows which commands are
+  allowed, keeps a transcript with Up/Down recall, confirms `stop`.
+- **Backups:** shows how many are kept and that older ones are deleted
+  automatically, whether a second copy is set up, and which backup retention
+  removed after a new one. Restore shows the backup's date and size and says
+  what it rolls back and where the current world is kept.
+- **Status:** "Players can join", game speed (TPS) explained with its
+  1/5/15-minute averages, rings coloured by what good means, rows that can
+  never have a value hidden, the activity log in plain words.
+- **Mods:** restart-to-apply banner with the button after adding or deleting
+  on a running server, a warning when a mod is made for another loader.
+- **Create and Add-server flows** speak in user terms ("Modded or modpack
+  server", "Plain Minecraft server", "A container I already run"), explain
+  the EULA and RCON, say why *Create* is disabled, and give Java install
+  advice for every OS.
+- **Deleting a Simple server's files** ("Delete instance") now says it
+  deletes every backup stored with the world, requires the server's name
+  typed, and is unavailable while the server runs.
+- `create_backup` returns the files retention removed; `get_player_history`
+  returns `rconAvailable`; new error code `RUNTIME_UNAVAILABLE`.
+
+### Fixed
+
+- **Backups and mods of a stopped container server were invisible** — the
+  page said "No backups yet" although restoring *requires* the server to be
+  stopped. Listing and deleting now work while the container is stopped, and
+  a listing that fails is shown as an error, never as an empty list.
+- **Config editor could save one file's text into another.** Selecting a file
+  switched the name immediately while the editor still held the previous
+  file's text (for good, if the read failed) and Save stayed enabled. The
+  editor and Save are now off until the opened file's own text has loaded, a
+  failed read is shown with *Try again*, late reads of a previously clicked
+  file are ignored, and switching files with unsaved edits asks first.
+- **Player notes could not be edited** (the pencil did nothing).
+- **"Install Podman or Docker" shown when one is installed but not running**
+  (Docker Desktop closed, `podman machine` stopped): MineUI now says the
+  runtime is installed but not responding, and how to start it. The *Runtime
+  binary override* now also works while the runtime setting is on Auto, as
+  the help text always claimed.
+- The Console's `ops` preset was blocked by the default allowlist; presets
+  are now built from the commands that are allowed.
+- **Linux AppImage: "Podman or Docker is needed, and neither was found" on a
+  machine that has Podman.** The AppImage launcher points `LD_LIBRARY_PATH`
+  at its bundled libraries, and its `libseccomp.so.2` is older than the
+  system's, so every `podman` call died with `undefined symbol:
+  seccomp_export_bpf_mem`. Child processes (podman, docker, java) now get a
+  clean environment inside an AppImage. The .deb was not affected.
+
 ## [2.8.0] - 2026-10-03
 
 ### Added

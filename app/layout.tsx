@@ -35,6 +35,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Blocking on purpose: stamps data-theme / data-mode from
+            localStorage before first paint (no dark flash in light mode).
+            Same-origin file because the CSP forbids inline scripts. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="/theme-init.js" />
+      </head>
       <body className="antialiased" suppressHydrationWarning>
         {/* Global reduced-motion handling (task: "respect prefers-reduced-
             motion globally"): Motion auto-strips transform/layout animation

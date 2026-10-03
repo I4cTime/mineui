@@ -140,6 +140,8 @@ pub struct PlayerHistoryRow {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerHistory {
     pub users: Vec<PlayerHistoryRow>,
+    /// false when RCON `list` failed; every row is then offline (§3.4, 2.9.0).
+    pub rcon_available: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -282,6 +284,16 @@ pub struct BackupEntry {
     pub filename: String,
     pub size_bytes: u64,
     pub created_at_epoch_ms: i64,
+}
+
+/// `create_backup` (§3.8, 2.9.0): the new archive, flattened, plus the files
+/// retention deleted in the same call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedBackup {
+    #[serde(flatten)]
+    pub entry: BackupEntry,
+    pub pruned: Vec<String>,
 }
 
 /* ---------- §3.9 metrics ---------- */

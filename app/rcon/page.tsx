@@ -1,61 +1,153 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { motion } from "motion/react";
-import { Loader2, Send, ShieldAlert } from "lucide-react";
-import { Button, Card, Chip, ScrollShadow, TextField, Input, toast } from "@heroui/react";
+import { Loader2, Send, Terminal, Trash2 } from "lucide-react";
+import { Button, Card, Chip, Input, Label, TextField } from "@heroui/react";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
+import ServerStateNotice from "@/app/components/ServerStateNotice";
+import { useServers } from "@/app/components/ServerProvider";
 import { useUISound } from "@/app/hooks/useUISound";
-import { transition, usePageMotion } from "@/app/lib/motion";
-import { runRconCommand, IpcError } from "@/app/lib/ipc";
+import { usePageMotion } from "@/app/lib/motion";
+import { getSettings, runRconCommand, IpcError } from "@/app/lib/ipc";
 
-const presets = [
-  "list",
-  "whitelist list",
-  "ops",
-  "banlist",
-  "save-all",
-  "say Server save completed.",
+type Line = { id: number; kind: "command" | "reply" | "error"; text: string };
+
+// Friendly presets. Each is only offered when its command is in the allowlist.
+const PRESETS: { label: string; command: string; needsArgument?: boolean }[] = [
+  { label: "Who's online", command: "list" },
+  { label: "Save the world now", command: "save-all" },
+  { label: "Show the whitelist", command: "whitelist list" },
+  { label: "Show bans", command: "banlist" },
+  { label: "Say something…", command: "say ", needsArgument: true },
 ];
 
-export default function RconPage() {
-  const { containerMotion, cardMotion } = usePageMotion();
-  const [command, setCommand] = useState("");
-  const [commandOutput, setCommandOutput] = useState<string | null>(null);
-  const [commandError, setCommandError] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const { play } = useUISound();
+const firstWord = (value: string) => value.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
 
-  const sendCommand = async () => {
-    if (!command.trim()) return;
-    play("click_confirm");
-    setSending(true);
-    setCommandError(null);
-    setCommandOutput(null);
-    try {
-      const { output } = await runRconCommand(command);
-      play("success");
-      setCommandOutput(output || "OK");
-      toast.success("Command executed");
-    } catch (error) {
-      play("error");
-      const message =
-        error instanceof IpcError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : "Command failed.";
-      setCommandError(message);
-      toast.danger(message);
-    } finally {
-      setSending(false);
+export default function ConsolePage() {
+  const { containerMotion, cardMotion } = usePageMotion();
+  const { activeId } = useServers();
+  const { play } = useUISound();
+  const [command, setCommand] = useState("");
+  const [lines, setLines] = useState<Line[]>([]);
+  const [sending, setSending] = useState(false);
+  const [allowlist, setAllowlist] = useState<string[] | null>(null);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const history = useRef<string[]>([]);
+  const historyPos = useRef<number | null>(null);
+  const draft = useRef("");
+  const nextId = useRef(1);
+  const outputRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then((settings) => {
+        if (!cancelled) setAllowlist(settings.rconAllowlist);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowlist([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
+
+  useEffect(() => {
+    const el = outputRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines]);
+
+  const presets = useMemo(() => {
+    if (!allowlist) return [];
+    return PRESETS.filter((preset) => allowlist.includes(firstWord(preset.command)));
+  }, [allowlist]);
+
+  const append = useCallback((entries: Omit<Line, "id">[]) => {
+    setLines((prev) => [...prev, ...entries.map((entry) => ({ ...entry, id: nextId.current++ }))]);
+  }, []);
+
+  const execute = useCallback(
+    async (raw: string) => {
+      const text = raw.trim().replace(/^\//, "");
+      if (!text) return;
+      play("click_confirm");
+      history.current.push(text);
+      historyPos.current = null;
+      setCommand("");
+      setSending(true);
+      const entries: Omit<Line, "id">[] = [{ kind: "command", text: `> ${text}` }];
+      try {
+        const { output } = await runRconCommand(text);
+        play("success");
+        entries.push({ kind: "reply", text: output.trim() || "(no reply — the command ran)" });
+      } catch (error) {
+        play("error");
+        let message = "Command failed.";
+        if (error instanceof IpcError) {
+          message =
+            error.code === "RCON_UNAVAILABLE"
+              ? "The server isn't reachable — is it running?"
+              : error.message;
+        } else if (error instanceof Error) {
+          message = error.message;
+        }
+        entries.push({ kind: "error", text: message });
+      } finally {
+        append(entries);
+        setSending(false);
+      }
+    },
+    [append, play],
+  );
+
+  const request = (raw: string) => {
+    if (firstWord(raw) === "stop") {
+      setConfirmStop(true);
+      return;
+    }
+    void execute(raw);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (command.trim() && !sending) request(command);
+    } else if (event.key === "ArrowUp") {
+      const past = history.current;
+      if (!past.length) return;
+      event.preventDefault();
+      if (historyPos.current === null) {
+        draft.current = command;
+        historyPos.current = past.length - 1;
+      } else {
+        historyPos.current = Math.max(0, historyPos.current - 1);
+      }
+      setCommand(past[historyPos.current]);
+    } else if (event.key === "ArrowDown") {
+      if (historyPos.current === null) return;
+      event.preventDefault();
+      const past = history.current;
+      if (historyPos.current >= past.length - 1) {
+        historyPos.current = null;
+        setCommand(draft.current);
+      } else {
+        historyPos.current += 1;
+        setCommand(past[historyPos.current]);
+      }
     }
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendCommand();
+  const runPreset = (preset: (typeof PRESETS)[number]) => {
+    play("click_confirm");
+    if (preset.needsArgument) {
+      setCommand(preset.command);
+      inputRef.current?.focus();
+    } else {
+      request(preset.command);
     }
   };
 
@@ -63,7 +155,7 @@ export default function RconPage() {
     <div
       className="min-h-screen"
       style={{
-        background: `radial-gradient(circle at top, color-mix(in oklab, var(--accent) 18%, transparent), transparent 60%), var(--background)`,
+        background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
@@ -72,91 +164,139 @@ export default function RconPage() {
         animate="show"
         variants={containerMotion}
       >
-        <PageHeader
-          title="RCON Tools"
-          icon={ShieldAlert}
-          actions={null}
-        />
+        <PageHeader title="Server Console" icon={Terminal} actions={null} />
+
+        <ServerStateNotice need="running" what="to send commands" />
 
         <motion.section variants={cardMotion}>
           <Card className="p-5">
-            <Card.Header className="flex flex-wrap items-center gap-3 text-sm">
-              <Chip variant="soft" color="accent" className="flex items-center gap-2">
-                <ShieldAlert size={14} />
-                RCON Command Panel
-              </Chip>
-              <span className="text-xs text-muted">
-                Commands restricted by the RCON allowlist in{" "}
-                <span className="font-mono">Settings</span>.
-              </span>
+            <Card.Header className="flex flex-col items-start gap-2">
+              <p className="text-sm">
+                Send a command to the running server — the same as typing it in the server&apos;s
+                own console. No leading slash.
+              </p>
+              {allowlist && (
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                  <span>Allowed here:</span>
+                  {allowlist.length ? (
+                    allowlist.map((name) => (
+                      <Chip key={name} size="sm" variant="soft">
+                        <span className="font-mono">{name}</span>
+                      </Chip>
+                    ))
+                  ) : (
+                    <span>nothing yet</span>
+                  )}
+                  <span>
+                    — change in{" "}
+                    <Link href="/settings" className="text-accent underline underline-offset-2">
+                      Server Settings
+                    </Link>
+                  </span>
+                </div>
+              )}
             </Card.Header>
 
             <Card.Content>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {presets.map((preset) => (
-                  <Button
-                    key={preset}
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => {
-                      play("click_confirm");
-                      setCommand(preset);
-                    }}
-                    onMouseEnter={() => play("hover")}
-                    type="button"
-                  >
-                    {preset}
-                  </Button>
-                ))}
+              {presets.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {presets.map((preset) => (
+                    <Button
+                      key={preset.label}
+                      size="sm"
+                      variant="secondary"
+                      isDisabled={sending}
+                      onPress={() => runPreset(preset)}
+                      onMouseEnter={() => play("hover")}
+                      type="button"
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              <div
+                ref={outputRef}
+                role="log"
+                aria-label="Console transcript"
+                className="mt-4 max-h-80 min-h-40 overflow-y-auto rounded-lg border border-border p-4 font-mono text-xs leading-5 text-foreground"
+                style={{ background: "var(--well)" }}
+              >
+                {lines.length === 0 ? (
+                  <span className="text-muted">
+                    Commands and the server&apos;s replies will appear here.
+                  </span>
+                ) : (
+                  lines.map((line) => (
+                    <pre
+                      key={line.id}
+                      className={
+                        line.kind === "error"
+                          ? "whitespace-pre-wrap text-danger"
+                          : line.kind === "command"
+                            ? "mt-2 whitespace-pre-wrap text-accent first:mt-0"
+                            : "whitespace-pre-wrap"
+                      }
+                    >
+                      {line.text}
+                    </pre>
+                  ))
+                )}
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-3">
-                <TextField className="flex-1">
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <TextField className="min-w-60 flex-1" aria-label="Command">
+                  <Label className="sr-only">Command</Label>
                   <Input
-                    placeholder="Enter RCON command, e.g. whitelist add player"
+                    ref={inputRef}
+                    placeholder="e.g. whitelist add Steve  (Up arrow: previous command)"
                     value={command}
-                    onChange={(event) => setCommand(event.target.value)}
+                    onChange={(event) => {
+                      setCommand(event.target.value);
+                      historyPos.current = null;
+                    }}
                     onKeyDown={handleKeyDown}
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                 </TextField>
                 <Button
-                  onPress={sendCommand}
-                  isDisabled={sending}
+                  onPress={() => request(command)}
+                  isDisabled={sending || !command.trim()}
                   onMouseEnter={() => play("hover")}
                 >
                   {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                   {sending ? "Sending..." : "Send"}
                 </Button>
-              </div>
-
-              <motion.div
-                className="mt-4 overflow-hidden rounded-lg border"
-                style={{
-                  borderColor: commandError ? "var(--accent)" : "var(--border)",
-                }}
-                animate={{ borderColor: commandError ? "var(--accent)" : "var(--border)" }}
-                transition={transition("fast")}
-              >
-                <ScrollShadow
-                  className="min-h-30 max-h-80 p-4 font-mono text-xs leading-5 text-foreground"
-                  style={{
-                    background: "color-mix(in oklab, var(--background) 70%, black)",
+                <Button
+                  variant="tertiary"
+                  isDisabled={lines.length === 0}
+                  onPress={() => {
+                    play("click_back");
+                    setLines([]);
                   }}
                 >
-                  {commandError ? (
-                    <span className="text-accent">{commandError}</span>
-                  ) : commandOutput ? (
-                    <pre className="whitespace-pre-wrap">{commandOutput}</pre>
-                  ) : (
-                    <span className="text-muted">
-                      Command output will appear here.
-                    </span>
-                  )}
-                </ScrollShadow>
-              </motion.div>
+                  <Trash2 size={16} />
+                  Clear
+                </Button>
+              </div>
             </Card.Content>
           </Card>
         </motion.section>
+
+        <ConfirmDialog
+          isOpen={confirmStop}
+          title="Stop the server"
+          description="Stop the server? Everyone playing is disconnected."
+          confirmLabel="Stop server"
+          variant="danger"
+          onCancel={() => setConfirmStop(false)}
+          onConfirm={() => {
+            setConfirmStop(false);
+            void execute(command.trim() && firstWord(command) === "stop" ? command : "stop");
+          }}
+        />
       </motion.main>
     </div>
   );

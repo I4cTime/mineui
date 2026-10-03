@@ -4,18 +4,52 @@ use chrono::{Local, TimeZone};
 
 use crate::model::Tps;
 
-/// Prepare a child process for a GUI app (§3.1): on Windows every spawn
-/// would otherwise open a console window for its lifetime, and the status
-/// poll spawns several a second. No-op elsewhere.
-pub fn hide_console(cmd: &mut tokio::process::Command) {
+/// Environment an AppImage's launcher injects for *its own* GTK process.
+/// Handed on to podman/docker/java it breaks them: the bundled
+/// `libseccomp.so.2` is older than the system's, so `podman --version` dies
+/// with `undefined symbol: seccomp_export_bpf_mem` and MineUI reports no
+/// runtime at all (2.8.1, seen on Arch with the 2.8.0 AppImage).
+const APPIMAGE_CHILD_ENV: &[&str] = &[
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "GIO_MODULE_DIR",
+    "GTK_PATH",
+    "GTK_DATA_PREFIX",
+    "GTK_EXE_PREFIX",
+    "GTK_IM_MODULE_FILE",
+    "GDK_PIXBUF_MODULE_FILE",
+    "GSETTINGS_SCHEMA_DIR",
+    "GI_TYPELIB_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GST_PLUGIN_PATH_1_0",
+    "GST_PLUGIN_SCANNER_1_0",
+    "GST_PTP_HELPER_1_0",
+    "GST_REGISTRY_REUSE_PLUGIN_SCANNER",
+];
+
+/// Prepare a child process spawned by a GUI app (§3.1): on Windows every
+/// spawn would otherwise open a console window for its lifetime (the status
+/// poll spawns several a second); inside an AppImage the launcher's library
+/// and GTK overrides must not reach system binaries.
+pub fn prepare_child(cmd: &mut tokio::process::Command) {
     #[cfg(windows)]
     {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    #[cfg(not(windows))]
-    {
-        let _ = cmd;
+    let in_appimage =
+        std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
+    strip_appimage_env(cmd, in_appimage);
+}
+
+/// The AppImage part of `prepare_child`, with the detection as a parameter
+/// so it can be tested outside an AppImage.
+pub fn strip_appimage_env(cmd: &mut tokio::process::Command, in_appimage: bool) {
+    if in_appimage {
+        for key in APPIMAGE_CHILD_ENV {
+            cmd.env_remove(key);
+        }
     }
 }
 
@@ -322,5 +356,29 @@ mod tests {
     fn log_time_resolution_is_not_in_future() {
         let ms = log_time_to_epoch_ms(23, 59, 59).unwrap();
         assert!(ms <= now_epoch_ms() + 60_000);
+    }
+
+    #[test]
+    fn appimage_env_is_stripped_only_inside_an_appimage() {
+        let mut inside = tokio::process::Command::new("podman");
+        strip_appimage_env(&mut inside, true);
+        let removed: Vec<_> = inside
+            .as_std()
+            .get_envs()
+            .filter(|(_, v)| v.is_none())
+            .map(|(k, _)| k.to_string_lossy().to_string())
+            .collect();
+        assert!(
+            removed.contains(&"LD_LIBRARY_PATH".to_string()),
+            "{removed:?}"
+        );
+        assert!(
+            removed.contains(&"GIO_MODULE_DIR".to_string()),
+            "{removed:?}"
+        );
+
+        let mut outside = tokio::process::Command::new("podman");
+        strip_appimage_env(&mut outside, false);
+        assert_eq!(outside.as_std().get_envs().count(), 0);
     }
 }
