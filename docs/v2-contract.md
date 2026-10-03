@@ -1104,11 +1104,23 @@ Sequence (first failure wins; nothing is created before step 7):
    ```
    run -d --name <containerName>
        --env-file <tmpfile>
-       -p <bind>:<gamePort>:25565      # bind = 0.0.0.0 or 127.0.0.1
-       -p 127.0.0.1:<rconPort>:25575
+       -p [<bind>:]<gamePort>:25565    # bind = 0.0.0.0 (exposeToNetwork) or 127.0.0.1
+       -p [127.0.0.1:]<rconPort>:25575
        -v <containerName>-data:/data
        docker.io/itzg/minecraft-server:<tag>
    ```
+
+   The `127.0.0.1:` host address is omitted (both ports) when the loopback the
+   runtime would bind is a VM's, not the user's: Podman on Windows with the WSL
+   provider (`podman machine info --format {{.Host.VMType}}` = `wsl`, 2.7.2)
+   publishes inside the machine, and WSL's localhost relay only reaches ports
+   bound on all interfaces there — a `127.0.0.1` bind inside the VM is
+   unreachable from Windows, which showed as a running container with
+   `online: false` and no RCON. Published without an address, the port is bound
+   on the machine's interfaces and reaches the Windows host at `127.0.0.1`
+   (WSL NAT mode, the default; in WSL mirrored mode it is also reachable on the
+   LAN). The Hyper-V provider and Docker Desktop bind on the Windows host itself
+   and keep the explicit `127.0.0.1`. `queryHost`/`rconHost` stay `127.0.0.1`.
 
    If that call fails because the runtime cannot apply its default pids limit —
    crun: ``controller `pids` is not available under …/cgroup.controllers``, seen

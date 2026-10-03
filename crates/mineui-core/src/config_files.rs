@@ -83,7 +83,7 @@ pub async fn read(core: &crate::Core, path: &str) -> Result<ConfigFileContent> {
     match settings.active_mode {
         Mode::Advanced => {
             let abs = crate::validate::join_under_root(std::path::Path::new(ADVANCED_ROOT), path)?;
-            let abs = abs.to_string_lossy().to_string();
+            let abs = crate::validate::container_path(&abs);
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
             let out = runtime
                 .exec(&settings.advanced.container_name, &["cat", &abs])
@@ -120,9 +120,9 @@ async fn write_inner(core: &crate::Core, path: &str, content: &str) -> Result<()
             let abs = crate::validate::join_under_root(std::path::Path::new(ADVANCED_ROOT), path)?;
             let parent = abs
                 .parent()
-                .map(|p| p.to_string_lossy().to_string())
+                .map(crate::validate::container_path)
                 .unwrap_or_else(|| ADVANCED_ROOT.to_string());
-            let abs = abs.to_string_lossy().to_string();
+            let abs = crate::validate::container_path(&abs);
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
 
             // `cp` cannot create missing parent directories (verified live:

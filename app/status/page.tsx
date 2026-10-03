@@ -253,6 +253,11 @@ export default function StatusPage() {
                   <span>Source:</span>
                   <span>{status?.source ?? "—"}</span>
                 </div>
+                {status && !status.online && status.error && (
+                  <p className="text-xs text-muted" title={status.error}>
+                    {status.error}
+                  </p>
+                )}
               </Card.Content>
             </Card>
           </motion.div>

@@ -3,6 +3,25 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.7.2] - 2026-10-02
+
+### Fixed
+
+- **Windows: config files of a container server could not be opened**
+  (`cat: '\data\config\fml.toml': No such file or directory`). Paths inside
+  the container were joined with the host's separator; they are now always
+  `/`-separated.
+- **Windows + Podman (WSL): the server stayed "Offline" with no RCON although
+  the log said Done.** A "keep on this computer" server was published on
+  `127.0.0.1` *inside the Podman machine*, which Windows cannot reach — WSL's
+  localhost relay only forwards ports bound on all of the machine's
+  interfaces. On the WSL provider the ports are now published without a host
+  address and arrive on the Windows host's own `127.0.0.1`. Hyper-V and
+  Docker Desktop are unaffected. Servers created with 2.7.1 or earlier on
+  WSL need to be deleted and created again.
+- The Status page now says *why* the server is offline (the probe's error,
+  e.g. "ping timed out (127.0.0.1:25566)") instead of only "No".
+
 ## [2.7.1] - 2026-10-02
 
 ### Fixed

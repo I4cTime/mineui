@@ -34,8 +34,9 @@ pub struct ContainerSpec {
     pub image: String,
     /// `KEY=VALUE` lines; keeps secrets out of the argv.
     pub env_file: std::path::PathBuf,
-    /// (host bind address, host port, container port).
-    pub ports: Vec<(String, u16, u16)>,
+    /// (host bind address — `None` publishes on every interface the runtime
+    /// has, see §3.13 —, host port, container port).
+    pub ports: Vec<(Option<String>, u16, u16)>,
     /// (named volume, container path).
     pub volume: (String, String),
     /// `None` leaves the runtime's own default; `Some(0)` asks for no pids
@@ -57,7 +58,10 @@ impl ContainerSpec {
         ];
         for (bind, host, container) in &self.ports {
             args.push("-p".into());
-            args.push(format!("{bind}:{host}:{container}"));
+            args.push(match bind {
+                Some(bind) => format!("{bind}:{host}:{container}"),
+                None => format!("{host}:{container}"),
+            });
         }
         args.push("-v".into());
         args.push(format!("{}:{}", self.volume.0, self.volume.1));
@@ -158,6 +162,11 @@ pub trait Runtime: Send + Sync {
     async fn inspect_mounts(&self, name: &str) -> Result<Vec<Mount>>;
     /// `volume rm <volume>` — `delete_container` with `deleteData` only.
     async fn remove_volume(&self, volume: &str) -> Result<()>;
+    /// Podman: `machine info --format {{.Host.VMType}}` ("wsl", "hyperv",
+    /// "applehv", "qemu", …), lower-cased; `None` for docker or when the
+    /// command fails. `create_container` uses it to tell whose loopback a
+    /// published port lands on (§3.13).
+    async fn machine_vm_type(&self) -> Option<String>;
 }
 
 /// Shared CLI backend. Podman and docker take identical argv for everything we
@@ -489,6 +498,18 @@ impl Runtime for CliBackend {
     async fn remove_volume(&self, volume: &str) -> Result<()> {
         self.run_ok(&["volume", "rm", volume]).await.map(|_| ())
     }
+
+    async fn machine_vm_type(&self) -> Option<String> {
+        if self.kind == RuntimeKind::Docker {
+            return None;
+        }
+        let out = self
+            .run(&["machine", "info", "--format", "{{.Host.VMType}}"])
+            .await
+            .ok()?;
+        let vm_type = out.stdout.trim().to_ascii_lowercase();
+        (out.success() && !vm_type.is_empty()).then_some(vm_type)
+    }
 }
 
 /// `Type|Name|Source|Destination` per line → mounts; malformed lines skipped.
@@ -577,6 +598,9 @@ macro_rules! delegate_runtime {
             }
             async fn remove_volume(&self, volume: &str) -> Result<()> {
                 self.0.remove_volume(volume).await
+            }
+            async fn machine_vm_type(&self) -> Option<String> {
+                self.0.machine_vm_type().await
             }
         }
     };
@@ -853,8 +877,8 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             image: "docker.io/itzg/minecraft-server:java21".into(),
             env_file: "/tmp/x.env".into(),
             ports: vec![
-                ("0.0.0.0".into(), 25566, 25565),
-                ("127.0.0.1".into(), 25576, 25575),
+                (Some("0.0.0.0".into()), 25566, 25565),
+                (Some("127.0.0.1".into()), 25576, 25575),
             ],
             volume: ("mc-forge-data".into(), "/data".into()),
             pids_limit: None,
@@ -894,6 +918,21 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             &args[args.len() - 2..],
             ["--pids-limit=0", "docker.io/itzg/minecraft-server:java21"]
         );
+    }
+
+    #[test]
+    fn a_port_without_a_bind_address_is_published_plainly() {
+        // Podman on Windows/WSL: the machine's loopback is not the user's (§3.13)
+        let spec = ContainerSpec {
+            name: "mc".into(),
+            image: "docker.io/itzg/minecraft-server:java21".into(),
+            env_file: "/tmp/x.env".into(),
+            ports: vec![(None, 25566, 25565), (None, 25576, 25575)],
+            volume: ("mc-data".into(), "/data".into()),
+            pids_limit: None,
+        };
+        let args = spec.run_args();
+        assert_eq!(&args[6..10], ["-p", "25566:25565", "-p", "25576:25575"]);
     }
 
     #[test]
