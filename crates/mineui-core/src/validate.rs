@@ -105,6 +105,14 @@ pub fn join_under_root(root: &Path, rel: &str) -> Result<PathBuf> {
     Ok(normalized)
 }
 
+/// A path *inside a container* as a single argv element: always `/`-separated.
+/// `PathBuf` joins with the host's separator, and on Windows that produced
+/// `cat '\data\config\fml.toml'` (2.7.2). Use for every in-container path
+/// that started life as a `Path`.
+pub fn container_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
 /// Lexical (non-filesystem) normalization: resolves `.` and `..` components.
 pub fn lexical_normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
@@ -412,6 +420,18 @@ mod tests {
         let root = Path::new("/data");
         assert!(join_under_root(root, "config/ok.toml").is_ok());
         assert!(join_under_root(root, "config/../../etc/passwd.txt").is_err());
+    }
+
+    #[test]
+    fn container_paths_are_slash_separated() {
+        assert_eq!(
+            container_path(Path::new(r"\data\config\fml.toml")),
+            "/data/config/fml.toml"
+        );
+        assert_eq!(
+            container_path(Path::new("/data/config/a.toml")),
+            "/data/config/a.toml"
+        );
     }
 
     #[test]

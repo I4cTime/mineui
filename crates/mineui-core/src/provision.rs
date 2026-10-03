@@ -225,21 +225,27 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
         &env_file_body(&plan, args.memory_mb, &rcon_password),
     )
     .await?;
+    // "Keep on this computer" binds 127.0.0.1 — unless that loopback is a
+    // VM's rather than the user's: Podman on Windows with the WSL provider
+    // publishes inside the machine, and WSL's localhost relay only reaches
+    // ports bound on all interfaces there (§3.13). Published without an
+    // address, the port arrives on the Windows host's own 127.0.0.1.
+    let loopback_is_a_vms = cfg!(windows)
+        && runtime.kind() == "podman"
+        && runtime.machine_vm_type().await.as_deref() == Some("wsl");
+    let local_bind = (!loopback_is_a_vms).then(|| LOOPBACK.to_string());
+    let game_bind = if args.expose_to_network {
+        Some(ALL_INTERFACES.to_string())
+    } else {
+        local_bind.clone()
+    };
     let spec = ContainerSpec {
         name: name.to_string(),
         image: image.clone(),
         env_file: env_file.clone(),
         ports: vec![
-            (
-                if args.expose_to_network {
-                    ALL_INTERFACES.to_string()
-                } else {
-                    LOOPBACK.to_string()
-                },
-                args.game_port,
-                CONTAINER_GAME_PORT,
-            ),
-            (LOOPBACK.to_string(), args.rcon_port, CONTAINER_RCON_PORT),
+            (game_bind, args.game_port, CONTAINER_GAME_PORT),
+            (local_bind, args.rcon_port, CONTAINER_RCON_PORT),
         ],
         volume: (format!("{name}-data"), DATA_PATH.to_string()),
         pids_limit: None,
