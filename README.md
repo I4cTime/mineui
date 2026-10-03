@@ -63,11 +63,11 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.8.0_amd64.AppImage` — `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.8.0_amd64.deb` — `sudo apt install ./MineUI_2.8.0_amd64.deb` |
-| Windows x64 | `MineUI_2.8.0_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.8.0_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.8.0_x64.dmg` |
+| Linux x86_64 | `MineUI_2.9.0_amd64.AppImage` — `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.9.0_amd64.deb` — `sudo apt install ./MineUI_2.9.0_amd64.deb` |
+| Windows x64 | `MineUI_2.9.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.9.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.9.0_x64.dmg` |
 
 Simple mode needs Java installed (MineUI version-checks it against the
 Minecraft release you pick). Advanced mode needs Docker or Podman.

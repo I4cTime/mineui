@@ -3,7 +3,7 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.9.0] - 2026-10-03
 
 A full review of every screen and flow ("does this make sense to someone
 running a server for friends?") plus light mode. Nothing here changes saved
