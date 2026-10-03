@@ -177,8 +177,10 @@ export default function CreateServerFlow({
             <DiscardServerButton isDisabled={creating} />
           </div>
           <Card.Description>
-            MineUI downloads the official server for the version you pick and
-            manages it for you. No containers required.
+            MineUI downloads the official (plain, &ldquo;vanilla&rdquo;) server for the version
+            you pick and runs it on this computer. Nothing else to install. Want
+            mods, plugins or a modpack instead? Add a <em>Modded or modpack
+            server</em> in App Settings → Servers.
           </Card.Description>
         </Card.Header>
 
@@ -275,8 +277,8 @@ export default function CreateServerFlow({
                 </Slider.Track>
               </Slider>
               <span className="text-xs text-muted">
-                JVM heap (-Xms/-Xmx). 2048 MB is a good default for a small
-                vanilla server.
+                How much of this computer&apos;s RAM the server may use. 2048 MB is a
+                good default for a small server.
               </span>
             </div>
           )}
@@ -325,12 +327,14 @@ export default function CreateServerFlow({
                       No Java found
                     </Chip>
                     <span className="text-xs text-muted">
-                      Recent Minecraft servers need Java 21+. Install it (e.g.{" "}
+                      Recent Minecraft servers need Java 21 or newer. On Windows and
+                      macOS install it from adoptium.net; on Linux use your package
+                      manager (e.g.{" "}
                       <code className="font-mono">
                         sudo apt install openjdk-21-jre-headless
                       </code>
-                      ) or set a Java path override in Settings, then hit
-                      Re-check.
+                      ). Then hit Re-check. If Java is installed but not found, set
+                      its location in this server&apos;s Settings → Advanced.
                     </span>
                   </div>
                 )}
@@ -357,7 +361,11 @@ export default function CreateServerFlow({
                   >
                     Minecraft End User License Agreement
                   </a>
-                  .
+                  .{" "}
+                  <span className="text-muted">
+                    Mojang&apos;s rules for running a server — every Minecraft server has to
+                    agree to them.
+                  </span>
                 </span>
               </label>
             </div>
