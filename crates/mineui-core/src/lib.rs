@@ -17,6 +17,7 @@ pub mod instance;
 pub mod java;
 pub mod lifecycle;
 pub mod logs;
+pub mod machine;
 pub mod metrics;
 pub mod mod_archive;
 pub mod model;
@@ -67,6 +68,9 @@ pub struct Core {
     /// Loader/version of the attached container, cached per container id
     /// (§3.12 overview identity).
     pub(crate) container_kind: std::sync::Mutex<Option<identity::ContainerKind>>,
+    /// Podman machine facts, cached 60 s (§3.2 `machine::facts`).
+    pub(crate) machine_facts:
+        tokio::sync::Mutex<Option<(std::time::Instant, machine::MachineFacts)>>,
     /// Serializes appends to the audit log (§3.11).
     pub(crate) audit_lock: tokio::sync::Mutex<()>,
     /// Serializes read-modify-write of the player notes store (§3.11).
@@ -110,6 +114,7 @@ impl Core {
             mojang_cache: tokio::sync::Mutex::new(None),
             last_advanced_phase: std::sync::Mutex::new(None),
             container_kind: std::sync::Mutex::new(None),
+            machine_facts: tokio::sync::Mutex::new(None),
             audit_lock: tokio::sync::Mutex::new(()),
             notes_lock: tokio::sync::Mutex::new(()),
             scheduler: scheduler::Engine::new(),

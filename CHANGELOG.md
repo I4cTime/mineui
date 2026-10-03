@@ -3,6 +3,19 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.7.3] - 2026-10-02
+
+### Fixed
+
+- **Windows + Podman (WSL) in rootful mode: the server stays Offline even on
+  2.7.2.** A rootful machine publishes ports with NAT rules rather than a
+  listening socket, and WSL's localhost relay mirrors listening sockets only,
+  so Windows never reaches them — confirmed on a tester's machine. MineUI now
+  detects a rootful WSL machine and the Status page says so, with the fix
+  (`podman machine stop; podman machine set --rootful=false; podman machine
+  start`, then create the server again — the two modes have separate
+  container stores) and the VM address the server answers at meanwhile.
+
 ## [2.7.2] - 2026-10-02
 
 ### Fixed

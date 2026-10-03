@@ -498,7 +498,18 @@ Semantics:
   `minecraft` mod entry). Otherwise/simple: Minecraft **server list ping** against
   `queryHost:queryPort` (advanced) or `127.0.0.1:simple.serverPort` (simple),
   3 s timeout. Failure resolves `{ online: false, source: "none", error }` — it does
-  **not** reject (matches v1 UX where offline is a normal state).
+  **not** reject (matches v1 UX where offline is a normal state). On Windows with
+  Podman, when the machine is the WSL provider **and rootful** (`podman machine
+  inspect --format {{.Rootful}}`, 2.7.3), `error` is extended with why and what
+  to do: a rootful machine publishes ports with NAT rules, not a listening
+  socket, and WSL's localhost relay mirrors listening sockets only — so Windows
+  never reaches them (verified on a tester's machine: `ss -nlt` in the VM shows
+  no listener, the VM's own address answers). The note names the fix (`podman
+  machine stop; podman machine set --rootful=false; podman machine start`, then
+  create the server again — the two modes have separate container stores) and,
+  when `wsl.exe -d <machine> hostname -I` yields one, the VM address the server
+  answers at meanwhile. Machine facts are cached per profile for 60 s
+  (`machine::facts`).
 
 ### 3.3 Logs
 
@@ -2074,6 +2085,7 @@ Frontend rules:
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
 | `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`. All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
+| `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
 | `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback |
