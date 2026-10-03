@@ -554,6 +554,11 @@ export default function Home() {
                       <div className="text-muted font-pixel-num">
                         Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}
                       </div>
+                      {status && !status.online && status.error && (
+                        <p className="text-xs text-muted" title={status.error}>
+                          {status.error}
+                        </p>
+                      )}
                     </div>
                   </KPI.Content>
                   <KPI.Footer className="mt-auto flex flex-wrap gap-2 pt-4">

@@ -82,6 +82,20 @@ pub async fn get(core: &crate::Core) -> Result<ServerStatus> {
     };
     match crate::query::ping(&host, port).await {
         Ok(status) => Ok(status),
-        Err(e) => Ok(ServerStatus::offline(e.to_string())),
+        Err(e) => {
+            let mut error = e.to_string();
+            // Windows + rootful WSL machine: the port is published but can
+            // never reach this loopback — say so instead of "refused" (§3.2).
+            if settings.active_mode == Mode::Advanced {
+                if let Ok(runtime) = crate::runtime::resolve(&settings.advanced).await {
+                    let facts = crate::machine::facts(core, runtime.as_ref()).await;
+                    if facts.ports_unreachable_from_windows() {
+                        let note = crate::machine::rootful_wsl_note(facts.ip.as_deref(), port);
+                        error = format!("{error}. {note}");
+                    }
+                }
+            }
+            Ok(ServerStatus::offline(error))
+        }
     }
 }

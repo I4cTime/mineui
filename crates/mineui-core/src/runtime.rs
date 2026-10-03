@@ -167,6 +167,10 @@ pub trait Runtime: Send + Sync {
     /// command fails. `create_container` uses it to tell whose loopback a
     /// published port lands on (§3.13).
     async fn machine_vm_type(&self) -> Option<String>;
+    /// Podman: `machine inspect --format {{.Rootful}}` of the current machine.
+    async fn machine_rootful(&self) -> Option<bool>;
+    /// Podman: `machine info --format {{.Host.CurrentMachine}}`.
+    async fn machine_name(&self) -> Option<String>;
 }
 
 /// Shared CLI backend. Podman and docker take identical argv for everything we
@@ -510,6 +514,33 @@ impl Runtime for CliBackend {
         let vm_type = out.stdout.trim().to_ascii_lowercase();
         (out.success() && !vm_type.is_empty()).then_some(vm_type)
     }
+
+    async fn machine_rootful(&self) -> Option<bool> {
+        if self.kind == RuntimeKind::Docker {
+            return None;
+        }
+        let out = self
+            .run(&["machine", "inspect", "--format", "{{.Rootful}}"])
+            .await
+            .ok()?;
+        match out.stdout.trim() {
+            "true" if out.success() => Some(true),
+            "false" if out.success() => Some(false),
+            _ => None,
+        }
+    }
+
+    async fn machine_name(&self) -> Option<String> {
+        if self.kind == RuntimeKind::Docker {
+            return None;
+        }
+        let out = self
+            .run(&["machine", "info", "--format", "{{.Host.CurrentMachine}}"])
+            .await
+            .ok()?;
+        let name = out.stdout.trim().to_string();
+        (out.success() && !name.is_empty()).then_some(name)
+    }
 }
 
 /// `Type|Name|Source|Destination` per line → mounts; malformed lines skipped.
@@ -601,6 +632,12 @@ macro_rules! delegate_runtime {
             }
             async fn machine_vm_type(&self) -> Option<String> {
                 self.0.machine_vm_type().await
+            }
+            async fn machine_rootful(&self) -> Option<bool> {
+                self.0.machine_rootful().await
+            }
+            async fn machine_name(&self) -> Option<String> {
+                self.0.machine_name().await
             }
         }
     };
