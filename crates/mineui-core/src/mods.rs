@@ -3,7 +3,7 @@
 //! Advanced-mode listing uses compile-time-constant `sh -c` scripts with
 //! zero interpolation (explicitly permitted by §6.1 rule 6); every other exec
 //! is a plain argv array. Downloads happen host-side in Rust (reqwest) and
-//! are streamed into the container via `cp` — never `curl` in the container.
+//! are streamed into the container via `cp` - never `curl` in the container.
 
 use std::path::{Path, PathBuf};
 
@@ -14,13 +14,13 @@ use crate::settings::Mode;
 /// §3.5: 256 MB download cap.
 const MOD_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
-/// §3.5: upload source cap — 512 MiB comfortably covers real modpack jars
+/// §3.5: upload source cap - 512 MiB comfortably covers real modpack jars
 /// while stopping accidental (or malicious) multi-GB copies into the
 /// container/instance dir. Checked via metadata length (fast, works for
 /// sparse files too).
 const UPLOAD_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
-/// Constant listing script — zero interpolation (§6.1 rule 6). Both roots in
+/// Constant listing script - zero interpolation (§6.1 rule 6). Both roots in
 /// one run (2.9.0): on a stopped container each run is a helper container,
 /// so one is cheaper than two. Lines are told apart by their path prefix.
 const LIST_SCRIPT: &str = r#"for f in /data/mods/* /data/plugins/*; do [ -f "$f" ] || continue; stat -c '%n|%s|%Y' "$f"; done"#;
@@ -37,7 +37,7 @@ fn entry_from_parts(filename: &str, size: u64, mtime_secs: i64) -> ModEntry {
         name: crate::util::mod_display_name(filename),
         filename: filename.to_string(),
         size_bytes: size,
-        // v1 sent unix seconds — normalized to epoch ms (§3.5).
+        // v1 sent unix seconds - normalized to epoch ms (§3.5).
         updated_at_epoch_ms: mtime_secs * 1000,
         loader: crate::util::detect_loader(filename),
     }
@@ -83,7 +83,7 @@ fn parse_combined_listing(stdout: &str) -> ModsList {
 }
 
 /// A listing run's outcome → lists; a failed run is an error, never empty
-/// lists (§3.5, 2.9.0 — empty means the folders hold no files).
+/// lists (§3.5, 2.9.0 - empty means the folders hold no files).
 fn listing_result(out: crate::runtime::ExecOutput) -> Result<ModsList> {
     if out.success() {
         Ok(parse_combined_listing(&out.stdout))
@@ -125,7 +125,7 @@ async fn list_host_dir(dir: &std::path::Path) -> Vec<ModEntry> {
 }
 
 /// `list_mods` (§3.5). Works in both modes (simple manages files even though
-/// a vanilla jar loads none — the frontend shows an informational note).
+/// a vanilla jar loads none - the frontend shows an informational note).
 pub async fn list(core: &crate::Core) -> Result<ModsList> {
     let settings = core.settings().await;
     match settings.active_mode {
@@ -189,7 +189,7 @@ async fn place_file(
 /// into the mods dir/container. Canonicalize (resolving symlinks) and
 /// require the *resolved* path to be a regular `.jar`/`.zip` file under the
 /// size cap. Consequence for symlinks: a symlink is accepted only when its
-/// target is itself a regular `.jar`/`.zip` file — the copy reads the
+/// target is itself a regular `.jar`/`.zip` file - the copy reads the
 /// target's bytes anyway, so this is exactly the content that gets placed.
 pub(crate) async fn validate_upload_source(source: &Path) -> Result<PathBuf> {
     let canonical = tokio::fs::canonicalize(source).await.map_err(|_| {
@@ -237,7 +237,7 @@ async fn upload_inner(
     let source = PathBuf::from(source_path);
     let canonical = validate_upload_source(&source).await?;
     // The stored filename comes from the path the user picked (then §6.2
-    // sanitization), not the canonical target — renaming via symlink is fine.
+    // sanitization), not the canonical target - renaming via symlink is fine.
     let basename = source
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -257,7 +257,7 @@ async fn download_inner(
 ) -> Result<DownloadedMod> {
     let allow_private = core.settings().await.allow_private_download_hosts;
     let parsed_url = crate::validate::download_url(url)?;
-    // §6.3 rule 5: SSRF hardening — user-supplied URLs must point at a
+    // §6.3 rule 5: SSRF hardening - user-supplied URLs must point at a
     // public host unless the user opted in (homelab escape hatch).
     crate::validate::ensure_public_download_host(&parsed_url, allow_private)?;
     let filename = crate::validate::download_filename(&parsed_url, filename)?;
@@ -526,7 +526,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let big = tmp.path().join("huge-pack.jar");
         // Sparse file: set_len makes metadata report the size without
-        // writing 512 MiB — the check reads metadata.len(), so this is fast.
+        // writing 512 MiB - the check reads metadata.len(), so this is fast.
         let file = std::fs::File::create(&big).unwrap();
         file.set_len(UPLOAD_MAX_BYTES + 1).unwrap();
         drop(file);

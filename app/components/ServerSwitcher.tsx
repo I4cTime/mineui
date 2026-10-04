@@ -43,7 +43,7 @@ export default function ServerSwitcher() {
   };
 
   return (
-    // Tooltip outside, the Button as the Dropdown's direct child — same
+    // Tooltip outside, the Button as the Dropdown's direct child - same
     // PressResponder constraint as the More overflow in Navbar.tsx.
     <Tooltip delay={400}>
       <Dropdown trigger="press">
@@ -108,7 +108,7 @@ export default function ServerSwitcher() {
           <span className="font-semibold">{active.name}</span>
           <span className="text-muted">
             {servers.length > 1
-              ? `Showing 1 of ${servers.length} servers — switch or manage`
+              ? `Showing 1 of ${servers.length} servers - switch or manage`
               : "Add another server to manage several at once"}
           </span>
         </span>

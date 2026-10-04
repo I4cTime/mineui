@@ -243,7 +243,7 @@ async fn simple_metrics(core: &crate::Core) -> Result<Metrics> {
     metrics.cpu_percent = cpu;
     metrics.mem = mem;
     metrics.disk = disk;
-    // net/block: container-only unless future enrichment (§3.9) — stay None.
+    // net/block: container-only unless future enrichment (§3.9) - stay None.
 
     if core.supervisor.is_active() {
         metrics.tps = tps_via_rcon(core).await;

@@ -216,7 +216,7 @@ export default function BackupsPage() {
                 <div className="flex flex-col gap-1 text-xs text-muted">
                   <span>
                     {retention.keepLast > 0
-                      ? `Keeps the newest ${retention.keepLast} — older backups are deleted automatically. `
+                      ? `Keeps the newest ${retention.keepLast} - older backups are deleted automatically. `
                       : "Keeps every backup. "}
                     {retention.keepLast > 0 && (
                       <>
@@ -232,7 +232,7 @@ export default function BackupsPage() {
                       `Also copied to ${retention.copyDir}`
                     ) : (
                       <>
-                        No second copy set up — add a folder in{" "}
+                        No second copy set up - add a folder in{" "}
                         <Link href="/settings" className="text-accent underline">
                           Server Settings
                         </Link>
@@ -350,7 +350,7 @@ export default function BackupsPage() {
           }
           description={
             pending?.kind === "restore"
-              ? `Restore the backup from ${formatDateTime(pending.entry.createdAtEpochMs)} (${formatBytes(pending.entry.sizeBytes)})? The world goes back to how it was then — anything built since is no longer in the live world. The current world is not deleted: it is kept next to it as a folder named '<world>.pre-restore-<time>'.`
+              ? `Restore the backup from ${formatDateTime(pending.entry.createdAtEpochMs)} (${formatBytes(pending.entry.sizeBytes)})? The world goes back to how it was then - anything built since is no longer in the live world. The current world is not deleted: it is kept next to it as a folder named '<world>.pre-restore-<time>'.`
               : `Delete ${pending?.entry.filename ?? ""}? This cannot be undone.`
           }
           confirmLabel={pending?.kind === "restore" ? "Restore" : "Delete"}

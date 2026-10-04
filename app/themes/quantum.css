@@ -1,10 +1,10 @@
 /* ============================================================
    Theme: Quantum Fluidity  (id: quantum)
-   I4C brand extension — deep-space black, cyan signal, violet
+   I4C brand extension - deep-space black, cyan signal, violet
    glow. Palette lifted from i4c.studio (globals.css +
-   lib/palette.ts); the portfolio is the source of truth —
+   lib/palette.ts); the portfolio is the source of truth -
    do not invent variants.
-   Spec: docs/aesthetic-directions.md — Direction 1.
+   Spec: docs/aesthetic-directions.md - Direction 1.
    ============================================================ */
 
 [data-theme="quantum"] {
@@ -36,10 +36,10 @@
   --danger: #c72c4c; /* fill/signal; per i4c, danger text = snow on fill */
   --danger-foreground: #f3f5f9;
   /* soft-chip text override: #c72c4c is only 3.6:1 as small text on
-     surface — soft variants read in a lighter, text-safe red instead */
+     surface - soft variants read in a lighter, text-safe red instead */
   --danger-soft-foreground: #f0718a;
 
-  /* Quantum-only decor tokens — undefined in other themes; never
+  /* Quantum-only decor tokens - undefined in other themes; never
      reference outside a [data-theme="quantum"] guard. */
   --quantum-violet: #7b2dff; /* glows/gradients/fills ONLY */
   --quantum-violet-text: #a082ff; /* text-safe violet, 7.1:1 */
@@ -127,7 +127,7 @@
 }
 
 /* ------------------------------------------------------------
-   Light mode — "Daybreak" (contract §10). Cool white ground,
+   Light mode - "Daybreak" (contract §10). Cool white ground,
    the cyan signal deepened to read as text, violet kept for
    glows and a text-safe variant. Glows are tinted, not black.
    ------------------------------------------------------------ */
@@ -150,7 +150,7 @@
   --success-foreground: #ffffff;
   --warning: #8a5c00;
   --warning-foreground: #ffffff;
-  --danger: #c72c4c; /* 5.4:1 as text on surface — no soft override needed */
+  --danger: #c72c4c; /* 5.4:1 as text on surface - no soft override needed */
   --danger-foreground: #ffffff;
   --danger-soft-foreground: #8f1f39;
 

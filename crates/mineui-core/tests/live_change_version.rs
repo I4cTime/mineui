@@ -1,5 +1,5 @@
 //! Live test for `change_instance_version` (contract §3.6, 2.10.0).
-//! **Opt-in** — `#[ignore]`; CI never runs it. Needs network (Mojang's
+//! **Opt-in** - `#[ignore]`; CI never runs it. Needs network (Mojang's
 //! manifest + two ~55 MB server jars) and Java 21 on PATH; no container.
 //! Everything lives in a temp dir.
 //!

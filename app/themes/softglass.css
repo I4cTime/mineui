@@ -1,12 +1,12 @@
 /* ============================================================
    Theme: Soft Glass  (id: softglass)
-   Calm, native-grade desktop utility — warm graphite, round
+   Calm, native-grade desktop utility - warm graphite, round
    corners, one warm apricot accent, layered soft shadows.
-   Spec: docs/aesthetic-directions.md — Direction 4.
+   Spec: docs/aesthetic-directions.md - Direction 4.
 
    SHIPS SOLID-SURFACE. Deferred follow-ups (see contract):
    - Tauri window vibrancy + translucent frosted surfaces
-     (backdrop-filter) — surfaces below are the mandated solid
+     (backdrop-filter) - surfaces below are the mandated solid
      fallbacks and become the translucency fallbacks later.
    - Light variant ("prefers-color-scheme" + manual override).
    ============================================================ */
@@ -90,7 +90,7 @@
      The one detached bar: 12px inset from the window's top/side
      edges, rounded, translucent over the app's own scrolled
      content (this backdrop-blur blurs page content, NOT the
-     desktop — it does not depend on the deferred Tauri vibrancy
+     desktop - it does not depend on the deferred Tauri vibrancy
      work). Active nav item = soft raised capsule. */
   --header-height: 56px;
   --header-inset: 0.75rem; /* 12px detach gap: top + sides + below */

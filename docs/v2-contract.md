@@ -4,18 +4,18 @@ Status: **LAW** for the v2-tauri migration. Rust backend agent and frontend port
 implement exactly what is written here. Deviations require a contract amendment in this
 file first.
 
-Architecture (fixed, decided by council — do not relitigate here):
+Architecture (fixed, decided by council - do not relitigate here):
 
 - Tauri v2. Next.js App Router frontend converted to static export (`output: 'export'`).
   All data flows through `invoke()` from `@tauri-apps/api/core` and Tauri events.
 - Rust workspace: `crates/mineui-core` (pure Rust, **no tauri dependency**) holds all
   logic; `src-tauri` holds thin `#[tauri::command]` wrappers + event emission only.
 - Two modes: **simple** (managed vanilla server, MineUI downloads jar + supervises Java
-  process) and **advanced** (attach to existing Podman/Docker container — the v1 feature
+  process) and **advanced** (attach to existing Podman/Docker container - the v1 feature
   set behind a runtime adapter).
 - **Multiple servers (2.6.0)**: MineUI manages N independent *server profiles* at
   once (§2.5). Each profile is a complete, isolated copy of everything in this
-  contract — its own settings file, mode, supervisor, log stream, scheduler, notes
+  contract - its own settings file, mode, supervisor, log stream, scheduler, notes
   and audit log. Every command in §3 targets one profile (§3.0); every event in §4
   names the profile it came from.
 
@@ -74,7 +74,7 @@ type ErrorCode =
 
 // Rust side (mineui-core::error):
 // #[derive(Debug, thiserror::Error, serde::Serialize)]
-// #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")] — or equivalent
+// #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")] - or equivalent
 // mapping producing {"code": "...", "message": "..."} exactly.
 ```
 
@@ -92,7 +92,7 @@ Rules:
 
 Stored as JSON at `<app-config-dir>/settings.json` (Tauri path resolver,
 `app_config_dir()`). File permissions `0o600` on Unix (RCON passwords are stored
-plaintext this phase; keyring is out of scope — the chmod is the mitigation).
+plaintext this phase; keyring is out of scope - the chmod is the mitigation).
 `mineui-core::settings` owns load/save/validate/migrate; `src-tauri` passes paths in.
 
 ### 2.1 TypeScript type (canonical wire shape)
@@ -266,14 +266,14 @@ pub struct AdvancedModeSettings {
 ```
 
 All `Option<T>` fields serialize as `null`, matching the TS `| null` types
-(no `skip_serializing_if` — the wire shape must be stable).
+(no `skip_serializing_if` - the wire shape must be stable).
 
 ### 2.3 Validation (enforced in `settings::validate`, error `SETTINGS_INVALID`)
 
 - Ports: 1–65535. `simple.serverPort != simple.rconPort`.
 - `simple.memoryMb >= 512`.
 - `advanced.containerName` matches `^[a-zA-Z0-9][a-zA-Z0-9_.-]*$` (container-runtime
-  name grammar — this plus argv-array exec is the injection defense).
+  name grammar - this plus argv-array exec is the injection defense).
 - `advanced.worldDir` is a single path segment: no `/`, `\`, `..`, not empty.
 - `advanced.serverUtilsUrl`, if non-null: parses as URL, scheme http/https.
 - `simple.instanceDir` absolute path.
@@ -337,7 +337,7 @@ type ServerIndex = {
 };
 ```
 
-Storage layout — the first profile keeps the pre-2.6.0 paths, so upgrading moves
+Storage layout - the first profile keeps the pre-2.6.0 paths, so upgrading moves
 nothing and a downgrade still finds its files:
 
 | Profile | Settings file | State dir (`scheduler-state.json`, `player-notes.json`, `audit-log.jsonl`, `tmp/`, default `instances/default`) |
@@ -380,7 +380,7 @@ Every command in §3.1–§3.11 accepts one extra optional argument, `serverId: 
 
 "Mode" and `activeMode` in every row below mean the **targeted profile's** mode.
 `src-tauri` resolves the profile with `hub.core(server_id)` and then delegates to
-the same core function as before; core functions keep their `&Core` signature — a
+the same core function as before; core functions keep their `&Core` signature - a
 `Core` *is* one profile. The frontend always sends the id (`app/lib/ipc.ts` keeps
 the current target, §7); the null fallback exists for robustness, not for use.
 
@@ -388,21 +388,21 @@ the current target, §7); the null fallback exists for robustness, not for use.
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_settings` | — | `Settings` | both | `settings::load` | GET /api/settings |
+| `get_settings` | - | `Settings` | both | `settings::load` | GET /api/settings |
 | `set_settings` | `{ settings: Settings }` | `Settings` (normalized) | both | `settings::save` | POST /api/settings |
-| `detect_runtimes` | — | `RuntimeProbe` | both | `runtime::detect` | — (new) |
-| `java_check` | — | `JavaCheck` | both | `java::check` | — (new) |
+| `detect_runtimes` | - | `RuntimeProbe` | both | `runtime::detect` | - (new) |
+| `java_check` | - | `JavaCheck` | both | `java::check` | - (new) |
 
 Notes:
 
-- `get_settings` returns the full settings **including** `rconPassword` fields — this is
+- `get_settings` returns the full settings **including** `rconPassword` fields - this is
   a local desktop app and the settings UI must round-trip them. Never log them.
 - `set_settings` validates (§2.3), persists atomically (write temp + rename), re-chmods
   0600, and returns the normalized result. Changing `activeMode` takes effect
   immediately for subsequent commands; it does not stop a running managed server.
 - Every subprocess the core spawns (runtime CLI, `java`, `wsl.exe`) goes
   through `util::prepare_child`: on Windows it is created without a console
-  window (`CREATE_NO_WINDOW`, 2.7.1 — a GUI app otherwise flashes one terminal
+  window (`CREATE_NO_WINDOW`, 2.7.1 - a GUI app otherwise flashes one terminal
   per call, and the status poll makes several a second); inside an AppImage
   (`APPIMAGE`/`APPDIR` set) the launcher's `LD_LIBRARY_PATH`, `LD_PRELOAD` and
   GTK/GIO/GStreamer overrides are removed from the child's environment (2.8.1:
@@ -412,7 +412,7 @@ Notes:
 - **Binary override on Auto (2.9.0)**: `advanced.runtimeBinary` is honored whatever
   `advanced.runtime` says. With `runtime: "podman"`/`"docker"` it replaces that CLI's
   name as before. With `runtime: "auto"` and an override set, the override is probed
-  **first** (`<override> --version`) and its kind is inferred from the version line —
+  **first** (`<override> --version`) and its kind is inferred from the version line -
   `podman version …` → podman, `Docker version …` → docker; when the line says
   neither, the file name decides (contains `docker` → docker, `podman` → podman),
   else the override is ignored. A working override is what `resolve` uses and what
@@ -422,8 +422,8 @@ Notes:
   app's PATH is shorter than their terminal's.)
 - **Installed but not responding (2.9.0)**: `RUNTIME_NOT_FOUND` means no usable CLI
   binary (`--version` fails or cannot be spawned). When the binary works but a
-  runtime call fails because its engine cannot be reached — Docker Desktop not
-  started, the Docker/Podman service down, `podman machine` stopped — commands reject
+  runtime call fails because its engine cannot be reached - Docker Desktop not
+  started, the Docker/Podman service down, `podman machine` stopped - commands reject
   with `RUNTIME_UNAVAILABLE` instead. Raised when `ps` fails (every state read goes
   through it), and when any other runtime call fails with a recognised "cannot
   connect" error. The message names the runtime, says it is installed but not
@@ -459,11 +459,11 @@ type JavaCheck = {
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_server_state` | — | `ServerState` | both | `lifecycle::state` | GET /api/server/state |
-| `start_server` | — | `void` | both | `lifecycle::start` | POST /api/server/start |
-| `stop_server` | — | `void` | both | `lifecycle::stop` | POST /api/server/stop |
-| `restart_server` | — | `void` | both | `lifecycle::restart` | POST /api/server/restart |
-| `get_server_status` | — | `ServerStatus` | both | `status::get` | GET /api/status |
+| `get_server_state` | - | `ServerState` | both | `lifecycle::state` | GET /api/server/state |
+| `start_server` | - | `void` | both | `lifecycle::start` | POST /api/server/start |
+| `stop_server` | - | `void` | both | `lifecycle::stop` | POST /api/server/stop |
+| `restart_server` | - | `void` | both | `lifecycle::restart` | POST /api/server/restart |
+| `get_server_status` | - | `ServerStatus` | both | `status::get` | GET /api/status |
 
 ```ts
 type ServerPhase =
@@ -526,16 +526,16 @@ Semantics:
   like v1 `GET /api/status` (max-players from properties, version from the
   `minecraft` mod entry). Otherwise/simple: Minecraft **server list ping** against
   `queryHost:queryPort` (advanced) or `127.0.0.1:simple.serverPort` (simple),
-  3 s timeout. Failure resolves `{ online: false, source: "none", error }` — it does
+  3 s timeout. Failure resolves `{ online: false, source: "none", error }` - it does
   **not** reject (matches v1 UX where offline is a normal state). On Windows with
   Podman, when the machine is the WSL provider **and rootful** (`podman machine
   inspect --format {{.Rootful}}`, 2.7.3), `error` is extended with why and what
   to do: a rootful machine publishes ports with NAT rules, not a listening
-  socket, and WSL's localhost relay mirrors listening sockets only — so Windows
+  socket, and WSL's localhost relay mirrors listening sockets only - so Windows
   never reaches them (verified on a tester's machine: `ss -nlt` in the VM shows
   no listener, the VM's own address answers). The note names the fix (`podman
   machine stop; podman machine set --rootful=false; podman machine start`, then
-  create the server again — the two modes have separate container stores) and,
+  create the server again - the two modes have separate container stores) and,
   when `wsl.exe -d <machine> hostname -I` yields one, the VM address the server
   answers at meanwhile. Machine facts are cached per profile for 60 s
   (`machine::facts`).
@@ -545,8 +545,8 @@ Semantics:
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
 | `get_logs` | `{ tail?: number }` | `{ lines: string[] }` | both | `logs::tail` | GET /api/logs |
-| `start_log_stream` | — | `void` | both | `logs::stream_start` | — (new) |
-| `stop_log_stream` | — | `void` | both | `logs::stream_stop` | — (new) |
+| `start_log_stream` | - | `void` | both | `logs::stream_start` | - (new) |
+| `stop_log_stream` | - | `void` | both | `logs::stream_stop` | - (new) |
 
 - `tail` default 200, clamped to [10, 1000] (v1 behavior).
 - Advanced: `runtime logs --tail N <name>` for `get_logs`; the stream spawns
@@ -561,8 +561,8 @@ Semantics:
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_players` | — | `PlayersResult` | both | `players::online` | GET /api/rcon/players |
-| `get_player_history` | — | `PlayerHistory` (2.9.0) | both | `players::history` | GET /api/rcon/users |
+| `get_players` | - | `PlayersResult` | both | `players::online` | GET /api/rcon/players |
+| `get_player_history` | - | `PlayerHistory` (2.9.0) | both | `players::history` | GET /api/rcon/users |
 | `run_rcon_command` | `{ command: string }` | `{ output: string }` | both | `rcon::run_allowlisted` | POST /api/rcon/command |
 
 ```ts
@@ -570,12 +570,12 @@ type PlayersResult = { players: string[]; raw: string };
 
 type PlayerHistoryRow = {
   username: string;
-  lastSeenEpochMs: number | null; // epoch ms; frontend formats (v1 sent a locale string — dropped)
+  lastSeenEpochMs: number | null; // epoch ms; frontend formats (v1 sent a locale string - dropped)
   ipAddress: string | null;
   isOnline: boolean;
 };
 
-/** 2.9.0 — was `{ users }` and rejected RCON_UNAVAILABLE when RCON was down. */
+/** 2.9.0 - was `{ users }` and rejected RCON_UNAVAILABLE when RCON was down. */
 type PlayerHistory = {
   users: PlayerHistoryRow[];
   /** false when RCON `list` failed: every row then has isOnline: false. */
@@ -591,7 +591,7 @@ Semantics:
 - `run_rcon_command`: trim, strip leading `/`, reject empty or > 200 chars
   (`INVALID_INPUT`); first whitespace-delimited token lowercased must be in
   `rconAllowlist` else `RCON_COMMAND_BLOCKED` (message includes the allowlist,
-  comma-joined). One connection per call (connect, auth, send, close) — same as v1.
+  comma-joined). One connection per call (connect, auth, send, close) - same as v1.
 - Response framing (2.6.0): after the exec packet the client sends an empty
   `SERVERDATA_RESPONSE_VALUE` (type 0) packet; every Minecraft server answers it
   with `Unknown request 0` under that packet's id, which marks the end of the
@@ -614,10 +614,10 @@ Semantics:
   classes. Timestamps: log lines carry `[HH:MM:SS]`; resolve against the local date
   (yesterday if > 60 s in the future) and return **epoch ms only**.
 - `get_player_history` without RCON (2.9.0): it **never rejects** because RCON is
-  unreachable (`RCON_UNAVAILABLE` from `list` — server stopped, still starting, wrong
+  unreachable (`RCON_UNAVAILABLE` from `list` - server stopped, still starting, wrong
   password). It then returns every row that does not need RCON, with
   `isOnline: false` and `rconAvailable: false`. Rows are the union of: the online set
-  (RCON), the log-derived history, and **every player with a stored note** (§3.11) —
+  (RCON), the log-derived history, and **every player with a stored note** (§3.11) -
   noted players are included whether or not RCON is up, so notes stay reachable for
   players who are not in the current logs (`lastSeenEpochMs`/`ipAddress` null unless
   the logs have them). Names are matched case-insensitively against notes (the note's
@@ -631,11 +631,11 @@ Semantics:
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_mods` | — | `ModsList` | both | `mods::list` | GET /api/mods |
+| `list_mods` | - | `ModsList` | both | `mods::list` | GET /api/mods |
 | `upload_mod` | `{ sourcePath: string; target: ModTarget }` | `{ filename: string }` | both | `mods::upload` | POST /api/mods/upload |
 | `download_mod` | `{ url: string; filename?: string; target: ModTarget }` | `{ filename: string; downloadId: string }` | both | `mods::download` | POST /api/mods/download |
 | `delete_mod` | `{ filename: string; target: ModTarget }` | `void` | both | `mods::delete` | POST /api/mods/delete |
-| `unpack_mod_archive` | `{ sourcePath?: string; url?: string; filename?: string; target: ModTarget }` | `UnpackedMods` | both | `mod_archive::unpack` | — (new, 2.7.0) |
+| `unpack_mod_archive` | `{ sourcePath?: string; url?: string; filename?: string; target: ModTarget }` | `UnpackedMods` | both | `mod_archive::unpack` | - (new, 2.7.0) |
 
 ```ts
 type ModTarget = "mods" | "plugins";
@@ -645,13 +645,13 @@ type ModEntry = {
   name: string;        // display name derived from filename (v1 rules)
   filename: string;
   sizeBytes: number;
-  updatedAtEpochMs: number; // epoch ms (v1 sent unix seconds — normalized to ms)
+  updatedAtEpochMs: number; // epoch ms (v1 sent unix seconds - normalized to ms)
   loader: ModLoader;
 };
 
 type ModsList = { mods: ModEntry[]; plugins: ModEntry[] };
 
-/** 2.7.0 — result of unpacking a zip of mods. */
+/** 2.7.0 - result of unpacking a zip of mods. */
 type UnpackedMods = {
   /** Filenames placed in the target folder, sorted. */
   installed: string[];
@@ -666,11 +666,11 @@ Semantics:
 
 - Roots: advanced → `/data/mods`, `/data/plugins` in the container; simple →
   `<instanceDir>/mods`, `<instanceDir>/plugins` on the host (created on demand).
-  Simple mode manages the files but a vanilla jar will not load mods — the frontend
+  Simple mode manages the files but a vanilla jar will not load mods - the frontend
   shows an informational note; the commands still work (`WRONG_MODE` is NOT used here).
 - `list_mods` advanced: `runtime exec <name> find /data/mods -maxdepth 1 -type f -printf %f|%s|%T@\n`
   is NOT portable; instead use two argv-array execs per dir: `ls -1 <dir>` then
-  `stat -c %n|%s|%Y` per batch — implementer's choice of exact exec strategy, but the
+  `stat -c %n|%s|%Y` per batch - implementer's choice of exact exec strategy, but the
   constraint is absolute: **argv arrays only, never `sh -c` with interpolated strings**.
   (Static, constant `sh -c` scripts with zero interpolation are permitted.)
 - `list_mods` / `delete_mod` advanced on a stopped container (2.9.0): `exec` only
@@ -679,7 +679,7 @@ Semantics:
   first: missing → `CONTAINER_NOT_FOUND`; running → `exec`; otherwise (stopped,
   created, paused…) the same argv runs in the stopped-container helper of §3.8
   (`run --rm --volumes-from`). One constant script lists both roots in one call. A
-  listing that fails (non-zero exit) rejects with `IO` — an empty list always means
+  listing that fails (non-zero exit) rejects with `IO` - an empty list always means
   the folders hold no files.
 - `upload_mod`: `sourcePath` is a host filesystem path obtained by the frontend via the
   Tauri dialog plugin (there is no multipart upload in v2). Validate the *basename* of
@@ -693,21 +693,21 @@ Semantics:
   copy uses the canonical path; the stored filename still derives from the
   user-picked basename per §6.2.
 - `download_mod`: URL validation per §6.3. **Download happens host-side in Rust
-  (reqwest) to a temp file** — never `curl` inside the container (this designs out the
+  (reqwest) to a temp file** - never `curl` inside the container (this designs out the
   v1 `sh -c` injection). Emits `mineui://download-progress` events with
   `kind: "mod"` (§4.3); on completion places the file like `upload_mod`. Size cap
   256 MB (`FILE_TOO_LARGE`).
 - `delete_mod`: filename per §6.2; advanced →
   `runtime exec <name> rm -f -- <root>/<filename>`; simple → `std::fs::remove_file`.
-- `unpack_mod_archive` (2.7.0): installs the `.jar` files **inside** a `.zip` — a
+- `unpack_mod_archive` (2.7.0): installs the `.jar` files **inside** a `.zip` - a
   folder of mods zipped up, or a "server pack". `upload_mod`/`download_mod` place a
   `.zip` as one file, which is right for a mod shipped as a zip and useless for a
   bundle; this is the bundle case. Exactly one of `sourcePath` / `url`
   (`INVALID_INPUT` otherwise). The archive is acquired exactly like an upload (same
   source hardening, must resolve to a `.zip`, 512 MiB cap) or like a download (§6.3
   in full, progress events with `kind: "mod"`, name from `filename` or the URL, must
-  end `.zip`, 512 MiB cap). It is unpacked **host-side** into a private temp dir —
-  never inside the container — and the jars are then placed like uploads
+  end `.zip`, 512 MiB cap). It is unpacked **host-side** into a private temp dir -
+  never inside the container - and the jars are then placed like uploads
   (advanced: one `runtime cp <tmp>/. <name>:<root>`; simple: file copies). Which
   entries count, and the limits, are §6.2a. Existing files with the same name are
   replaced. No jar selected → `INVALID_INPUT`, with a specific message when the zip
@@ -720,11 +720,11 @@ Semantics:
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_mc_versions` | `{ includeSnapshots?: boolean }` | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `mojang::list_versions` | — (new) |
-| `create_instance` | `CreateInstanceArgs` | `InstanceStatus` | simple | `instance::create` | — (new) |
-| `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | — (new) |
-| `instance_status` | — | `InstanceStatus` | simple | `instance::status` | — (new) |
-| `change_instance_version` | `{ mcVersion: string; allowDowngrade?: boolean }` | `ChangedInstanceVersion` (2.10.0) | simple | `instance::change_version` | — (new) |
+| `list_mc_versions` | `{ includeSnapshots?: boolean }` | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `mojang::list_versions` | - (new) |
+| `create_instance` | `CreateInstanceArgs` | `InstanceStatus` | simple | `instance::create` | - (new) |
+| `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | - (new) |
+| `instance_status` | - | `InstanceStatus` | simple | `instance::status` | - (new) |
+| `change_instance_version` | `{ mcVersion: string; allowDowngrade?: boolean }` | `ChangedInstanceVersion` (2.10.0) | simple | `instance::change_version` | - (new) |
 
 ```ts
 type McVersion = {
@@ -753,7 +753,7 @@ type InstanceStatus = {
   createdAt: string | null;       // ISO 8601
 };
 
-/** 2.10.0 — what change_instance_version returns. */
+/** 2.10.0 - what change_instance_version returns. */
 type ChangedInstanceVersion = {
   status: InstanceStatus;         // after the change
   fromVersion: string;
@@ -781,7 +781,7 @@ Semantics:
   3. Resolve version in manifest → `INVALID_INPUT` if unknown; fetch the per-version
      JSON; read `downloads.server.{url,sha1,size}` and `javaVersion.majorVersion`.
   4. `java_check` against that major → `JAVA_NOT_FOUND` / `JAVA_INCOMPATIBLE`.
-     (Report, don't bundle — no JRE download this phase.)
+     (Report, don't bundle - no JRE download this phase.)
   5. Download server jar to `<instanceDir>/server.jar` with
      `mineui://download-progress` events (`kind: "server-jar"`); verify sha1 →
      `CHECKSUM_MISMATCH` on mismatch (file removed).
@@ -839,7 +839,7 @@ Semantics:
   6. Safety backup: when `<instanceDir>/world/` exists, a normal `create_backup`
      runs (audited `backup.create`, retention applies; its filename is `backup`
      and what retention removed is `pruned`). A failed backup aborts the change
-     (temp jar removed) — the version never changes without that backup when there
+     (temp jar removed) - the version never changes without that backup when there
      is a world. No world yet → `backup: null`, `pruned: []`.
   7. Swap: the temp jar is renamed over `server.jar` (same directory);
      `mineui-instance.json` is rewritten atomically with the new `mcVersion`,
@@ -853,33 +853,33 @@ Semantics:
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_config_files` | — | `{ files: string[] }` | both | `config_files::list` | GET /api/config/list |
+| `list_config_files` | - | `{ files: string[] }` | both | `config_files::list` | GET /api/config/list |
 | `read_config_file` | `{ path: string }` | `{ content: string }` | both | `config_files::read` | POST /api/config/read |
 | `write_config_file` | `{ path: string; content: string }` | `void` | both | `config_files::write` | POST /api/config/write |
 
 - Paths in this API are **relative, forward-slash** (`server.properties`,
-  `config/foo/bar.toml`) — validated per §6.1. The v1 API used absolute `/data/...`
+  `config/foo/bar.toml`) - validated per §6.1. The v1 API used absolute `/data/...`
   paths; the frontend port must switch to relative (the UI only ever displayed them).
 - Roots: advanced → `/data` in the container; simple → `<instanceDir>` on the host.
   `list_config_files` returns `server.properties` (if present) plus every allowed file
   under `config/`, sorted.
-- Advanced I/O — **no shell, ever** (this is the v1 injection being designed out):
+- Advanced I/O - **no shell, ever** (this is the v1 injection being designed out):
   - list: `runtime exec <name> find /data/config -type f` (argv array), filter in Rust.
   - read: `runtime exec <name> cat <abs-path>` where `<abs-path>` is the validated,
     core-constructed absolute path passed as a single argv element.
   - write: write `content` to a host temp file, then
     `runtime cp <tmpfile> <name>:<abs-path>`. No base64-through-shell.
 - Simple I/O: plain `std::fs` under `instanceDir`, after the same §6.1 validation.
-- Write cap: 1,500,000 bytes (`FILE_TOO_LARGE`) — v1 parity.
+- Write cap: 1,500,000 bytes (`FILE_TOO_LARGE`) - v1 parity.
 
 ### 3.8 Backups
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `create_backup` | — | `CreatedBackup` (2.9.0) | both | `backups::create` | POST /api/backup |
-| `list_backups` | — | `BackupEntry[]` | both | `backups::list` | — (new) |
-| `restore_backup` | `{ filename: string }` | `void` | both | `backups::restore` | — (new) |
-| `delete_backup` | `{ filename: string }` | `void` | both | `backups::delete` | — (new) |
+| `create_backup` | - | `CreatedBackup` (2.9.0) | both | `backups::create` | POST /api/backup |
+| `list_backups` | - | `BackupEntry[]` | both | `backups::list` | - (new) |
+| `restore_backup` | `{ filename: string }` | `void` | both | `backups::restore` | - (new) |
+| `delete_backup` | `{ filename: string }` | `void` | both | `backups::delete` | - (new) |
 
 ```ts
 type BackupEntry = {
@@ -888,7 +888,7 @@ type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-/** 2.9.0 — what create_backup returns: the new archive plus what retention removed. */
+/** 2.9.0 - what create_backup returns: the new archive plus what retention removed. */
 type CreatedBackup = BackupEntry & {
   /** Filenames deleted by retention in this call (keepLast), oldest last; [] when none. */
   pruned: string[];
@@ -903,10 +903,10 @@ type CreatedBackup = BackupEntry & {
 - `create_backup`: advanced → argv-array execs `mkdir -p /data/backups` then
   `tar -czf /data/backups/<file> -C /data <worldDir>`; simple → host-side tar.gz via
   Rust (`tar` + `flate2`). Allowed while running (crash-consistent snapshot; frontend
-  may advise `save-all` first — not enforced).
+  may advise `save-all` first - not enforced).
 - `list_backups`: advanced → exec `ls`/`stat` argv pattern as in §3.5; simple → readdir.
 - **Stopped container (2.9.0)**: `list_backups` and `delete_backup` work whether the
-  container runs or not — restore *requires* it stopped, so the list must be there
+  container runs or not - restore *requires* it stopped, so the list must be there
   when it is. Advanced reads the container state first: missing →
   `CONTAINER_NOT_FOUND`; running → `exec`; anything else → the **stopped-container
   helper**: the same argv in a throwaway container sharing the target's volumes,
@@ -918,7 +918,7 @@ type CreatedBackup = BackupEntry & {
   current world dir to `<worldDir>.pre-restore-<timestamp>` (kept, not deleted), then
   extract the archive into the data root. Missing archive → `INVALID_INPUT`.
 - `delete_backup`: removes the archive file.
-- **Retention (2.5.0)**: after every successful `create_backup` — manual or scheduled —
+- **Retention (2.5.0)**: after every successful `create_backup` - manual or scheduled -
   core lists the backup dir and deletes the oldest archives beyond
   `settings.backups.keepLast` (0 = unlimited). The archive just written is never
   pruned. Each pruned file is recorded in the audit log (`backup.prune`); prune
@@ -937,7 +937,7 @@ type CreatedBackup = BackupEntry & {
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_metrics` | — | `Metrics` | both | `metrics::get` | GET /api/server/metrics |
+| `get_metrics` | - | `Metrics` | both | `metrics::get` | GET /api/server/metrics |
 
 ```ts
 type IoPair = { inputBytes: number | null; outputBytes: number | null };
@@ -956,7 +956,7 @@ type Metrics = {
   net: IoPair | null;           // container-only unless enriched
   block: IoPair | null;         // container-only unless enriched
   disk: { usedBytes: number | null; totalBytes: number | null; percent: number | null } | null;
-  startedAt: string | null;     // ISO 8601 (v1 sent raw podman StartedAt text — normalized)
+  startedAt: string | null;     // ISO 8601 (v1 sent raw podman StartedAt text - normalized)
   uptimeSeconds: number | null;
   tps: { one: number; five: number; fifteen: number; raw: string } | null;
   mspt: { one: number | null; five: number | null; fifteen: number | null } | null;
@@ -974,12 +974,12 @@ type Metrics = {
   + disk via argv exec of `df -k /data` (fixed argv, parse in Rust).
 - Simple base: process CPU%/RSS via `sysinfo` for the supervised pid; disk = usage of
   `instanceDir` volume; `startedAt` from supervisor.
-- Enrichment (advanced + `serverUtilsUrl` set): server-utils `/metrics` — tps, mspt,
+- Enrichment (advanced + `serverUtilsUrl` set): server-utils `/metrics` - tps, mspt,
   chunks, entities, dimensions, and container/system overrides exactly per v1
   precedence (container > system > runtime-stats). Unreachable server-utils degrades
   silently to base (matches v1).
 - TPS fallback (both modes, when not enriched): RCON `tps` parsed with
-  `TPS from last 1m, 5m, 15m: (\d+\.?\d*), (\d+\.?\d*), (\d+\.?\d*)` — note the v1
+  `TPS from last 1m, 5m, 15m: (\d+\.?\d*), (\d+\.?\d*), (\d+\.?\d*)` - note the v1
   parser's regex was double-escaped and never matched; v2 must use real character
   classes. Vanilla has no `tps` command → `tps: null` (not an error).
 
@@ -987,8 +987,8 @@ type Metrics = {
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_scheduler_status` | — | `SchedulerStatus` | both | `scheduler::status` | — (new) |
-| `run_scheduled_job_now` | `{ id: string }` | `JobRunResult` | both | `scheduler::run_now` | — (new) |
+| `get_scheduler_status` | - | `SchedulerStatus` | both | `scheduler::status` | - (new) |
+| `run_scheduled_job_now` | `{ id: string }` | `JobRunResult` | both | `scheduler::run_now` | - (new) |
 
 ```ts
 type JobRunResult = { epochMs: number; ok: boolean; message: string | null };
@@ -1022,7 +1022,7 @@ Semantics:
 - `backup`: calls `backups::create` (retention + copy included). Advanced mode
   requires the container running (exec), else recorded as skipped like above.
 - `broadcast`: requires phase `running`; sends `say <message>` via `rcon::run`
-  (internal path, no allowlist — the message is validated at settings save).
+  (internal path, no allowlist - the message is validated at settings save).
 - Every run appends an audit entry (§3.11) with `source: "scheduler"`.
 - `run_scheduled_job_now` runs the job immediately regardless of its schedule or
   `enabled` flag (the scheduler master switch is also ignored), records the result
@@ -1032,9 +1032,9 @@ Semantics:
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_player_notes` | — | `{ notes: PlayerNote[] }` | both | `notes::list` | — (new) |
-| `set_player_note` | `{ username: string; note: string }` | `PlayerNote \| null` | both | `notes::set` | — (new) |
-| `get_audit_log` | `{ limit?: number }` | `{ entries: AuditEntry[] }` | both | `audit::recent` | — (new) |
+| `get_player_notes` | - | `{ notes: PlayerNote[] }` | both | `notes::list` | - (new) |
+| `set_player_note` | `{ username: string; note: string }` | `PlayerNote \| null` | both | `notes::set` | - (new) |
+| `get_audit_log` | `{ limit?: number }` | `{ entries: AuditEntry[] }` | both | `audit::recent` | - (new) |
 
 ```ts
 type PlayerNote = { username: string; note: string; updatedAtEpochMs: number };
@@ -1086,12 +1086,12 @@ argument (§3.0 does not apply); where a row lists `id`, it is the profile acted
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_servers` | — | `ServerList` | both | `Hub::list` | — (new) |
-| `add_server` | `{ name: string; mode?: Mode }` | `ServerList` | both | `Hub::add` | — (new) |
-| `rename_server` | `{ id: string; name: string }` | `ServerList` | both | `Hub::rename` | — (new) |
-| `remove_server` | `{ id: string; confirm: true }` | `ServerList` | both | `Hub::remove` | — (new) |
-| `set_active_server` | `{ id: string }` | `ServerList` | both | `Hub::set_active` | — (new) |
-| `get_servers_overview` | — | `ServerOverview[]` | both | `Hub::overview` | — (new) |
+| `list_servers` | - | `ServerList` | both | `Hub::list` | - (new) |
+| `add_server` | `{ name: string; mode?: Mode }` | `ServerList` | both | `Hub::add` | - (new) |
+| `rename_server` | `{ id: string; name: string }` | `ServerList` | both | `Hub::rename` | - (new) |
+| `remove_server` | `{ id: string; confirm: true }` | `ServerList` | both | `Hub::remove` | - (new) |
+| `set_active_server` | `{ id: string }` | `ServerList` | both | `Hub::set_active` | - (new) |
+| `get_servers_overview` | - | `ServerOverview[]` | both | `Hub::overview` | - (new) |
 
 ```ts
 type ServerList = { activeServerId: string; servers: ServerProfile[] };
@@ -1106,7 +1106,7 @@ type ServerOverview = {
   status: ServerStatus;
   /** `ErrorCode: message` when the phase probe failed (e.g. no runtime). */
   error: string | null;
-  /* Identity — what this profile actually points at, so two servers with
+  /* Identity - what this profile actually points at, so two servers with
      similar names can be told apart at a glance. */
   /** Advanced: `advanced.containerName`. Simple: null. */
   containerName: string | null;
@@ -1144,7 +1144,7 @@ Semantics:
   `INVALID_INPUT`; a simple-mode server process still supervised → `SERVER_RUNNING`.
   Stops the profile's log stream, drops it from the list and deletes
   `<app-config-dir>/servers/<id>/` (its settings). The state dir
-  `<app-data-dir>/servers/<id>/` — which holds a simple-mode world by default — is
+  `<app-data-dir>/servers/<id>/` - which holds a simple-mode world by default - is
   **left on disk**; removing a profile never deletes a world, a container or a
   backup (deleting the container is a separate, separately confirmed command,
   §3.13). If the removed profile was active, `default` becomes active.
@@ -1152,7 +1152,7 @@ Semantics:
 - `get_servers_overview`: one entry per profile, in list order, probed
   concurrently. `phase` is the §3.2 phase (advanced: runtime `ps`; simple:
   supervisor/instance check); `status` is `status::get`. Never rejects for a
-  per-profile fault — the fault lands in that entry's `error`. `loader`/`mcVersion`
+  per-profile fault - the fault lands in that entry's `error`. `loader`/`mcVersion`
   of an advanced profile come from `runtime inspect` of the container's env,
   cached per container id (re-read only when the container is recreated).
 - Audit (§3.11): `server.add` (target = name) goes to the new profile's log,
@@ -1170,8 +1170,8 @@ for the targeted profile, with the loader the user picks.
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `create_container` | `{ args: CreateContainerArgs }` | `ServerState` | advanced | `provision::create` | — (new) |
-| `delete_container` | `{ confirm: true; deleteData: boolean }` | `DeletedContainer` | advanced | `provision::delete` | — (new, 2.7.0) |
+| `create_container` | `{ args: CreateContainerArgs }` | `ServerState` | advanced | `provision::create` | - (new) |
+| `delete_container` | `{ confirm: true; deleteData: boolean }` | `DeletedContainer` | advanced | `provision::delete` | - (new, 2.7.0) |
 
 ```ts
 type ContainerLoader =
@@ -1192,7 +1192,7 @@ type CreateContainerArgs = {
   /** true: the game port is published on every interface (LAN/internet play).
    *  false: on 127.0.0.1 only. */
   exposeToNetwork: boolean;
-  /** Must be true — the image refuses to start without EULA=TRUE. */
+  /** Must be true - the image refuses to start without EULA=TRUE. */
   acceptEula: boolean;
   /** 2.7.0. Create the server from a modpack instead of a bare loader; null
    *  or absent = no modpack. `loader` is ignored when set (the pack decides). */
@@ -1205,7 +1205,7 @@ type ModpackRef = {
   source: ModpackSource;
   /** The pack's slug or id, or its page URL
    *  (`https://modrinth.com/modpack/<slug>`,
-   *  `https://www.curseforge.com/minecraft/modpacks/<slug>`) — core reduces a
+   *  `https://www.curseforge.com/minecraft/modpacks/<slug>`) - core reduces a
    *  URL to the slug. */
   project: string;
 };
@@ -1220,16 +1220,16 @@ Sequence (first failure wins; nothing is created before step 7):
    `memoryMb` in 512–65536; ports 1–65535 and different from each other. With a
    `modpack` (2.7.0): `project`, after reducing a page URL of that source to its
    slug, must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`; and `mcVersion` must be a
-   concrete version, not `LATEST` — it is what selects the Java image tag in step 7
+   concrete version, not `LATEST` - it is what selects the Java image tag in step 7
    (for CurseForge it is used for nothing else), and a modpack on the wrong Java
    does not start.
 4. Resolve the runtime (`RUNTIME_NOT_FOUND`).
 5. A container with that name already exists → `CONTAINER_EXISTS` (attach to it in
-   settings instead — this command never touches an existing container).
+   settings instead - this command never touches an existing container).
 6. Either host port cannot be bound right now → `INVALID_INPUT` ("port N is already
    in use"). Checked host-side with a throwaway listener; the runtime's own check
    in step 7 remains the authority.
-7. Pick the image tag from the Java the version needs — `javaVersion.majorVersion`
+7. Pick the image tag from the Java the version needs - `javaVersion.majorVersion`
    of the Mojang version detail (the latest release for `LATEST`): ≤ 8 → `java8`,
    9–17 → `java17`, 18–21 → `java21`, 22–25 → `java25`, anything else or an
    unresolvable version → `latest`. Then one argv-array runtime call:
@@ -1251,7 +1251,7 @@ Sequence (first failure wins; nothing is created before step 7):
    ignored, the UI prefills it from `inspect_modpack_zip`) and picks the Java
    image as above; `minecraft.modLoaders` is informational. The env becomes
    `TYPE=AUTO_CURSEFORGE`, `CF_SLUG=<slug of the manifest name, or custom>` and
-   `CF_MODPACK_ZIP=/data/curseforge-modpack.zip` — the image installs the
+   `CF_MODPACK_ZIP=/data/curseforge-modpack.zip` - the image installs the
    listed files through its own CurseForge API key and extracts the overrides
    into `/data`. The zip must be in the container before its first start, so
    this path does `create` (same argv as `run -d` minus `-d`), `cp <zip>
@@ -1267,7 +1267,7 @@ Sequence (first failure wins; nothing is created before step 7):
    runtime would bind is a VM's, not the user's: Podman on Windows with the WSL
    provider (`podman machine info --format {{.Host.VMType}}` = `wsl`, 2.7.2)
    publishes inside the machine, and WSL's localhost relay only reaches ports
-   bound on all interfaces there — a `127.0.0.1` bind inside the VM is
+   bound on all interfaces there - a `127.0.0.1` bind inside the VM is
    unreachable from Windows, which showed as a running container with
    `online: false` and no RCON. Published without an address, the port is bound
    on the machine's interfaces and reaches the Windows host at `127.0.0.1`
@@ -1275,9 +1275,9 @@ Sequence (first failure wins; nothing is created before step 7):
    LAN). The Hyper-V provider and Docker Desktop bind on the Windows host itself
    and keep the explicit `127.0.0.1`. `queryHost`/`rconHost` stay `127.0.0.1`.
 
-   If that call fails because the runtime cannot apply its default pids limit —
+   If that call fails because the runtime cannot apply its default pids limit -
    crun: ``controller `pids` is not available under …/cgroup.controllers``, seen
-   with Podman machines on WSL whose cgroup tree has no `pids` delegation — the
+   with Podman machines on WSL whose cgroup tree has no `pids` delegation - the
    half-made container is removed and the same call is made once more with
    `--pids-limit=0` before the image (2.7.1): `0` makes the runtime write no pids
    limit at all, so the server runs without one, as it does under Docker. No
@@ -1287,7 +1287,7 @@ Sequence (first failure wins; nothing is created before step 7):
    The env file (`<app-data-dir>/tmp/`, `0o600`, deleted right after the call) holds
    `EULA=TRUE`, `TYPE=<LOADER>`, `VERSION=<mcVersion>`, `MEMORY=<memoryMb>M`,
    `ENABLE_RCON=true` and `RCON_PASSWORD=<generated>` (24-char alphanumeric, CSPRNG,
-   same generator as §3.6) — the password never appears in an argv. With a
+   same generator as §3.6) - the password never appears in an argv. With a
    `modpack` (2.7.0) the `TYPE`/`VERSION` pair is replaced:
    Modrinth → `TYPE=MODRINTH`, `MODRINTH_MODPACK=<slug>`, `VERSION=<mcVersion>` (the
    image installs the pack's newest release build for that Minecraft version);
@@ -1295,7 +1295,7 @@ Sequence (first failure wins; nothing is created before step 7):
    file fixes it; the image carries its own CurseForge API key). The runtime
    pulls the image if it is missing, so the first call can take minutes; the
    command resolves when the container has *started*, not when the server inside
-   is ready (the image installs the loader on first boot — watch the log stream).
+   is ready (the image installs the loader on first boot - watch the log stream).
    Non-zero exit → best-effort `rm -f <containerName>` of the half-made container
    (safe: step 5 proved it was not there before), then `CONTAINER_CREATE_FAILED`
    with the runtime's stderr. The `<containerName>-data` volume is never removed;
@@ -1316,7 +1316,7 @@ container (below) and create it again.
 #### `delete_container` (2.7.0)
 
 Until 2.7.0 MineUI never deleted a container. A half-built or failed server then
-had to be cleaned up by hand with the runtime CLI, so deletion is now offered —
+had to be cleaned up by hand with the runtime CLI, so deletion is now offered -
 only ever on an explicit, confirmed request, never as a side effect.
 
 ```ts
@@ -1337,13 +1337,13 @@ Sequence:
    → `CONTAINER_NOT_FOUND`.
 4. If `deleteData`: read the container's mounts (`runtime inspect`) and find what is
    mounted at `/data`. Only a **named volume** there is ever deleted. A bind mount
-   (a folder on the host) is never deleted — `dataKept` says so and names the folder.
+   (a folder on the host) is never deleted - `dataKept` says so and names the folder.
 5. Stop the profile's log stream, then `runtime rm -f <name>` (stops it if running).
    With `deleteData` the call is `rm -f -v`, which also drops the container's
    anonymous volumes.
 6. If step 4 found a named volume: `runtime volume rm <volume>`. A failure here
-   (typically: another container still uses the volume) does not fail the command —
-   the container is already gone — it is reported in `dataKept`.
+   (typically: another container still uses the volume) does not fail the command -
+   the container is already gone - it is reported in `dataKept`.
 7. The profile's settings are **left as they are** (container name, ports, RCON
    password), so the create flow reappears prefilled; `phase` becomes `not-created`.
 
@@ -1351,7 +1351,7 @@ Sequence:
 reuses its `<containerName>-data` volume. `deleteData: true` destroys the world and
 every backup stored in `/data/backups`; the frontend requires the container name to
 be typed before it sends that. This command applies to whatever container the
-profile points at, including one MineUI only attached to — the confirmation is the
+profile points at, including one MineUI only attached to - the confirmation is the
 guard, so the frontend must always show the container's name. Audited as
 `container.delete` (target = container name, detail = `data deleted: <volume>` or
 `data kept`).
@@ -1363,8 +1363,8 @@ guard, so the frontend must always show the container's name. Audited as
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `search_modpacks` | `{ query: string; limit?: number }` | `ModpackHit[]` | both | `modpacks::search` | — (new) |
-| `inspect_modpack_zip` | `{ sourcePath: string }` | `ModpackZipInfo` | both | `cfpack::inspect` | — (new, 2.8.0) |
+| `search_modpacks` | `{ query: string; limit?: number }` | `ModpackHit[]` | both | `modpacks::search` | - (new) |
+| `inspect_modpack_zip` | `{ sourcePath: string }` | `ModpackZipInfo` | both | `cfpack::inspect` | - (new, 2.8.0) |
 
 ```ts
 type ModpackHit = {
@@ -1386,7 +1386,7 @@ type ModpackHit = {
 
 - One GET to `https://api.modrinth.com/v2/search` (fixed host; the only thing the
   caller controls is the query text, sent as a URL-encoded parameter) with facets
-  `project_type:modpack` AND (`server_side:required` OR `server_side:optional`) —
+  `project_type:modpack` AND (`server_side:required` OR `server_side:optional`) -
   packs that cannot run on a server are not offered. An empty `query` returns the
   most downloaded. `limit` default 12, clamped to 1–30; `query` trimmed, ≤ 100
   chars (`INVALID_INPUT` beyond). 10 s timeout, a `User-Agent` naming MineUI and its
@@ -1395,7 +1395,7 @@ type ModpackHit = {
   pack is named by slug or page URL in `create_container` instead.
 - `inspect_modpack_zip` (2.8.0): reads `manifest.json` out of a CurseForge app
   export (host path from the dialog plugin, validated like an upload) without
-  extracting anything else — the manifest entry is capped at 4 MB. Returns the
+  extracting anything else - the manifest entry is capped at 4 MB. Returns the
   pack name, `minecraft.version`, the primary (else first) mod loader split into
   id and version (`forge-52.1.0` → `forge`, `52.1.0`), the number of listed
   files, and whether the zip has an overrides folder. `INVALID_INPUT` when there
@@ -1412,10 +1412,10 @@ which only matters for `which: "server"`.
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `get_app_info` | — | `AppInfo` | both | `Hub::app_info` → `appinfo::info` | — (new) |
-| `check_for_update` | — | `UpdateCheck` | both | `Hub::check_for_update` → `appinfo::check_for_update` | — (new) |
-| `open_url` | `{ url: string }` | `void` | both | `opener::open_url` | — (new) |
-| `open_app_dir` | `{ which: AppDir }` | `void` | both (`"server"`: simple) | `Hub::open_app_dir` → `opener::open_dir` | — (new) |
+| `get_app_info` | - | `AppInfo` | both | `Hub::app_info` → `appinfo::info` | - (new) |
+| `check_for_update` | - | `UpdateCheck` | both | `Hub::check_for_update` → `appinfo::check_for_update` | - (new) |
+| `open_url` | `{ url: string }` | `void` | both | `opener::open_url` | - (new) |
+| `open_app_dir` | `{ which: AppDir }` | `void` | both (`"server"`: simple) | `Hub::open_app_dir` → `opener::open_dir` | - (new) |
 
 ```ts
 type AppInfo = {
@@ -1444,7 +1444,7 @@ type AppDir = "data" | "config" | "server";
 
 - `get_app_info`: read-only, never rejects, not audited. `dataDir`/`configDir` are the
   roots the shell injected at startup (the `default` profile's dirs, §2.5).
-- `check_for_update`: **only ever on an explicit user action — MineUI never checks on
+- `check_for_update`: **only ever on an explicit user action - MineUI never checks on
   its own.** One GET to the fixed URL
   `https://api.github.com/repos/I4cTime/mineui/releases/latest` with
   `Accept: application/vnd.github+json`, a `User-Agent` naming MineUI and its version,
@@ -1455,7 +1455,7 @@ type AppDir = "data" | "config" | "server";
   it starts with `https://github.com/I4cTime/mineui/`, else
   `https://github.com/I4cTime/mineui/releases/latest`. Network failure, non-2xx, an
   unparseable body or an empty tag → `DOWNLOAD_FAILED` with a short message. Not
-  audited. MineUI never downloads or installs anything here — the UI offers the link.
+  audited. MineUI never downloads or installs anything here - the UI offers the link.
 - `open_url`: opens a link in the system browser (the webview's own
   `target="_blank"` handling is not reliable on every platform, and the app has no
   shell/opener plugin by design). The URL must parse, use `https`, carry no
@@ -1466,7 +1466,7 @@ type AppDir = "data" | "config" | "server";
   characters. Anything else → `INVALID_INPUT`. The normalized URL is handed to the
   platform opener as one argv element: Linux `xdg-open <url>`, macOS
   `open <url>`, Windows `explorer.exe <url>` (never `cmd /C start`), spawned
-  through `util::prepare_child`. Only the spawn is checked — the opener's exit
+  through `util::prepare_child`. Only the spawn is checked - the opener's exit
   status is not (`explorer.exe` exits 1 on success); a spawn failure → `INTERNAL`
   naming the opener. Not audited.
 - `open_app_dir`: opens a folder in the system file manager with the same opener.
@@ -1485,7 +1485,7 @@ Frontend subscribes with `listen()` from `@tauri-apps/api/event` via the typed h
 in `app/lib/ipc.ts` (§7).
 
 **Server scoping (2.6.0)**: every event payload below additionally carries
-`serverId: string` — the profile (§2.5) it came from — flattened into the payload
+`serverId: string` - the profile (§2.5) it came from - flattened into the payload
 object (`{ serverId, ...payload }`). Core emits `HubEvent { serverId, event }`;
 `src-tauri` serializes it as `ServerScoped<T>`. The `on*` helpers in §7 deliver only
 the events of the profile that was the IPC target when the helper was called;
@@ -1551,7 +1551,7 @@ type DownloadProgressEvent = {
 ```
 
 `download_mod` returns its `downloadId`; `create_instance` does not (its jar download
-is identified by `kind: "server-jar"` — only one can run at a time, enforced by
+is identified by `kind: "server-jar"` - only one can run at a time, enforced by
 `INSTANCE_EXISTS`).
 
 Subscription lifecycle (all events): `listen()` returns an unlisten fn; every page/hook
@@ -1566,10 +1566,10 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | start/stop/restart | supervisor (stdin `stop`, kill after 30 s) | runtime start/stop/restart |
 | Server state phases | full: starting/running/stopping/crashed | not-created/stopped/running only |
 | Status ping | SLP on `127.0.0.1:serverPort` | SLP on `queryHost:queryPort` |
-| server-utils enrichment (status/metrics) | — (setting is advanced-scoped) | when `serverUtilsUrl` set |
+| server-utils enrichment (status/metrics) | - (setting is advanced-scoped) | when `serverUtilsUrl` set |
 | Logs: initial fetch | supervisor ring buffer (2000 lines) | `runtime logs --tail` |
 | Logs: live stream | native (stdout/stderr pipes) | `runtime logs --follow` subprocess |
-| RCON (players, history, commands) | full — auto-configured at create/start | full — user-supplied credentials |
+| RCON (players, history, commands) | full - auto-configured at create/start | full - user-supplied credentials |
 | Player history log source | `<instanceDir>/logs/latest.log` | exec `tail` in container |
 | Mods/plugins management | file ops work; **vanilla jar loads none** (UI note) | full |
 | Config editor | host fs under `instanceDir` | exec/cp in container |
@@ -1580,7 +1580,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | Instance commands (§3.6) | full | `WRONG_MODE` |
 | `open_app_dir` `"server"` (§3.15, 2.10.0) | opens `instanceDir` | `WRONG_MODE` (no host folder) |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
-| Container create/pull | — | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
+| Container create/pull | - | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
 
 ---
 
@@ -1602,7 +1602,7 @@ Input is a relative, `/`-separated path. Accept iff ALL hold:
 5. Extension allowlist (case-insensitive): `.json .json5 .properties .txt .toml .ini
    .yml .yaml .conf .cfg .snbt` (v1 set + yaml/conf/cfg/snbt, added because modded
    servers use them; frontier files like `.jar` remain excluded).
-6. The path is passed to runtime exec/cp as a single argv element — never interpolated
+6. The path is passed to runtime exec/cp as a single argv element - never interpolated
    into a shell string. (Global rule: the only `sh -c` permitted anywhere in v2 is a
    compile-time-constant script with zero interpolation, and prefer plain argv even then.)
 
@@ -1628,7 +1628,7 @@ directories and `__MACOSX/` dropped:
 1. If every file sits under one top-level folder that is not itself `mods`/`plugins`,
    that wrapper is ignored (`MyPack/mods/x.jar` ≡ `mods/x.jar`).
 2. If the archive has a `mods/` (target `mods`) or `plugins/` (target `plugins`)
-   folder, exactly the `.jar` files directly inside it are selected — root-level
+   folder, exactly the `.jar` files directly inside it are selected - root-level
    jars are then server/installer jars and `libraries/**` are loader internals.
 3. Otherwise the root-level `.jar` files are selected (a flat zip of mods).
 4. A selected entry whose sanitized name fails §6.2 rule 3, or repeats an earlier
@@ -1643,7 +1643,7 @@ jar, ≤ 2 GiB in total. Encrypted or unreadable archives → `INVALID_INPUT`.
 1. Parses as URL; scheme `http` or `https` only. No credentials in URL
    (`user:pass@` rejected).
 2. Filename = explicit `filename` arg, else basename of URL path, else reject
-   (`INVALID_INPUT` — no `mod.jar` default; v1's silent default is dropped).
+   (`INVALID_INPUT` - no `mod.jar` default; v1's silent default is dropped).
    Then §6.2 applies.
 3. Download host-side (reqwest), follow ≤ 5 redirects, each redirect re-checked for
    http/https (and, when rule 5 applies, for public host), 60 s idle timeout, 256 MB
@@ -1652,8 +1652,8 @@ jar, ≤ 2 GiB in total. Encrypted or unreadable archives → `INVALID_INPUT`.
 4. Mojang manifest/jar downloads additionally verify the manifest-provided SHA-1
    (`CHECKSUM_MISMATCH`).
 5. SSRF hardening (`INVALID_INPUT`), skipped when
-   `settings.allowPrivateDownloadHosts` is true: the URL host must not be — or, for
-   hostnames, must not resolve exclusively to — a loopback/private/link-local/
+   `settings.allowPrivateDownloadHosts` is true: the URL host must not be - or, for
+   hostnames, must not resolve exclusively to - a loopback/private/link-local/
    unique-local/unspecified address (IPv4 127/8, 10/8, 172.16/12, 192.168/16,
    169.254/16, 0.0.0.0; IPv6 ::1, ::, fc00::/7, fe80::/10, plus IPv4-mapped forms).
    Hostname resolution happens at validation time (`ToSocketAddrs`); the
@@ -1670,7 +1670,7 @@ See §3.4: trim, strip one leading `/`, ≤ 200 chars, first token lowercased �
 
 ---
 
-## 7. `app/lib/ipc.ts` — single typed IPC module
+## 7. `app/lib/ipc.ts` - single typed IPC module
 
 One file, generated by the frontend agent **verbatim from this section**. It is the
 only file importing `@tauri-apps/api/core` / `@tauri-apps/api/event`. Everything above
@@ -1680,7 +1680,7 @@ is discovered, this section and the section above must be fixed together).
 ```ts
 // app/lib/ipc.ts
 //
-// Single typed IPC module — generated verbatim from docs/v2-contract.md §7.
+// Single typed IPC module - generated verbatim from docs/v2-contract.md §7.
 // This is the ONLY file that imports @tauri-apps/api/core or
 // @tauri-apps/api/event. Pages/components import types and wrappers from here;
 // no raw invoke(), no locally re-declared IPC types anywhere else.
@@ -1743,7 +1743,7 @@ let targetServerId: string | null = null;
 /**
  * The server profile (§2.5) every scoped wrapper and event helper below
  * addresses. Owned by ServerProvider (app/components/ServerProvider.tsx),
- * which only moves it while no page is mounted — pages never call this.
+ * which only moves it while no page is mounted - pages never call this.
  */
 export function setIpcTargetServer(id: string | null): void {
   targetServerId = id;
@@ -1978,7 +1978,7 @@ export type DeletedContainer = {
 };
 
 /**
- * Deletes a server's container — and, only with `deleteData`, the volume
+ * Deletes a server's container - and, only with `deleteData`, the volume
  * holding its world. The server profile itself stays. Always for a named
  * server: this is offered from lists as well as for the open server, and the
  * caller must have shown the container's name and got a confirmation.
@@ -1999,7 +1999,7 @@ export type ModpackRef = {
 export type ModpackZipInfo = {
   name: string;
   mcVersion: string;
-  /** forge, neoforge, fabric, quilt — from the primary mod loader, or null. */
+  /** forge, neoforge, fabric, quilt - from the primary mod loader, or null. */
   loader: string | null;
   loaderVersion: string | null;
   /** Files the manifest lists (the image downloads them). */
@@ -2025,7 +2025,7 @@ export type ModpackHit = {
 };
 
 /** Modrinth modpacks that can run on a server. Empty query = most
- *  downloaded. CurseForge has no keyless search — name those by slug/URL. */
+ *  downloaded. CurseForge has no keyless search - name those by slug/URL. */
 export const searchModpacks = (query: string, limit?: number) =>
   scoped<ModpackHit[]>("search_modpacks", { query, limit });
 
@@ -2035,7 +2035,7 @@ export const inspectModpackZip = (sourcePath: string) =>
   scoped<ModpackZipInfo>("inspect_modpack_zip", { sourcePath });
 
 /** Creates an itzg/minecraft-server container for the target server. Pulls
- *  the image when missing — the first call can take minutes. */
+ *  the image when missing - the first call can take minutes. */
 export const createContainer = (args: CreateContainerArgs) =>
   scoped<ServerState>("create_container", { args });
 
@@ -2058,7 +2058,7 @@ export type PlayerHistoryRow = {
 };
 
 export const getPlayers = () => scoped<PlayersResult>("get_players");
-/** 2.9.0 — resolves without RCON too: then rconAvailable is false and every row is offline. */
+/** 2.9.0 - resolves without RCON too: then rconAvailable is false and every row is offline. */
 export type PlayerHistory = {
   users: PlayerHistoryRow[];
   rconAvailable: boolean;
@@ -2110,7 +2110,7 @@ export type ModArchiveSource =
   | { url: string; filename?: string };
 
 /** Installs the .jar files inside a .zip (a zipped folder of mods, or a
- *  server pack) — unlike uploadMod/downloadMod, which place a .zip as one
+ *  server pack) - unlike uploadMod/downloadMod, which place a .zip as one
  *  file. */
 export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
   scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
@@ -2150,7 +2150,7 @@ export const deleteInstance = () =>
   scoped<void>("delete_instance", { confirm: true });
 export const instanceStatus = () => scoped<InstanceStatus>("instance_status");
 
-/** 2.10.0 — what changeInstanceVersion resolves with. */
+/** 2.10.0 - what changeInstanceVersion resolves with. */
 export type ChangedInstanceVersion = {
   status: InstanceStatus;
   fromVersion: string;
@@ -2161,7 +2161,7 @@ export type ChangedInstanceVersion = {
   pruned: string[];
 };
 
-/** 2.10.0 — server must be stopped; older (or unknown-direction) targets need
+/** 2.10.0 - server must be stopped; older (or unknown-direction) targets need
  *  allowDowngrade. Downloads a server jar and backs up the world first. */
 export const changeInstanceVersion = (mcVersion: string, allowDowngrade?: boolean) =>
   scoped<ChangedInstanceVersion>("change_instance_version", { mcVersion, allowDowngrade });
@@ -2187,7 +2187,7 @@ export type UpdateCheck = {
 export type AppDir = "data" | "config" | "server";
 
 export const getAppInfo = () => call<AppInfo>("get_app_info");
-/** Explicit user action only — MineUI never checks on its own. */
+/** Explicit user action only - MineUI never checks on its own. */
 export const checkForUpdate = () => call<UpdateCheck>("check_for_update");
 /** https only, allowlisted hosts (§3.15); anything else rejects INVALID_INPUT. */
 export const openUrl = (url: string) => call<void>("open_url", { url });
@@ -2210,7 +2210,7 @@ export type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-/** 2.9.0 — the new archive plus the filenames retention (keepLast) removed in this call. */
+/** 2.9.0 - the new archive plus the filenames retention (keepLast) removed in this call. */
 export type CreatedBackup = BackupEntry & { pruned: string[] };
 
 export const createBackup = () => scoped<CreatedBackup>("create_backup");
@@ -2322,7 +2322,7 @@ const NOOP_UNLISTEN: UnlistenFn = () => {};
 
 /**
  * Subscribe to one event channel for the server that is the IPC target
- * *now* — the binding is fixed at subscribe time, so a listener can never
+ * *now* - the binding is fixed at subscribe time, so a listener can never
  * start receiving another server's events after a switch.
  */
 function onScoped<E extends { serverId: string }>(
@@ -2365,7 +2365,7 @@ Frontend rules:
   id). That ordering is what lets a page's cleanup (`stopLogStream`, unlisten) reach
   the server it was opened for. Event helpers bind to the target at subscribe time.
 - v1 shape changes the port must absorb: timestamps are now epoch-ms numbers
-  (`lastSeenEpochMs`, `updatedAtEpochMs`, `createdAtEpochMs`) — format client-side;
+  (`lastSeenEpochMs`, `updatedAtEpochMs`, `createdAtEpochMs`) - format client-side;
   config paths are relative; players/users routes merged shapes as in §3.4;
   offline status/metrics are values, not thrown errors.
 
@@ -2377,7 +2377,7 @@ Frontend rules:
 | --- | --- |
 | `error` | `Error` enum + serde serialization to `{code,message}` (§1) |
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
-| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio — **no shell strings anywhere in the crate** |
+| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio - **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
 | `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
@@ -2405,7 +2405,7 @@ Frontend rules:
 | `appinfo` | `get_app_info` + `check_for_update` (§3.15, 2.10.0): version/OS facts, the one GitHub latest-release GET, tag normalization and dotted-version comparison |
 | `opener` | `open_url` + `open_app_dir` (§3.15, 2.10.0): the https host allowlist, the per-OS opener argv (`xdg-open` / `open` / `explorer.exe`), detached spawn via `util::prepare_child` |
 
-`src-tauri` contains: one command fn per §3 row (thin delegation — resolve the
+`src-tauri` contains: one command fn per §3 row (thin delegation - resolve the
 targeted profile's `Core` via `hub.core(server_id)`, §3.0, then call the listed core
 fn), event forwarding (`HubEvent` → `app.emit` of `ServerScoped<T>`), the 2 s
 advanced-mode state poller (`Hub::poll_all`), the 30 s scheduler tick

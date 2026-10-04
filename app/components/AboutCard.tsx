@@ -109,7 +109,7 @@ export default function AboutCard() {
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm">
             Version{" "}
-            <span className="font-pixel-num text-base font-semibold">{info?.version ?? "—"}</span>
+            <span className="font-pixel-num text-base font-semibold">{info?.version ?? "-"}</span>
           </span>
           {info && (
             <span className="text-xs text-muted">
@@ -141,7 +141,7 @@ export default function AboutCard() {
             <span className="flex items-center gap-2">
               <ArrowUpCircle size={16} className="text-accent" />
               <span>
-                MineUI <span className="font-pixel-num">{update.latest}</span> is available — you
+                MineUI <span className="font-pixel-num">{update.latest}</span> is available - you
                 have <span className="font-pixel-num">{update.current}</span>.
               </span>
             </span>
@@ -157,7 +157,7 @@ export default function AboutCard() {
           </p>
         )}
         <p className="-mt-3 text-xs text-muted">
-          MineUI never checks on its own — only when you press the button. It asks GitHub for
+          MineUI never checks on its own - only when you press the button. It asks GitHub for
           the newest release and sends nothing about you or your servers.
         </p>
 
@@ -172,7 +172,7 @@ export default function AboutCard() {
               >
                 <div className="grid min-w-0 gap-0.5">
                   <span className="text-sm">
-                    {folder.label} <span className="text-xs text-muted">— {folder.hint}</span>
+                    {folder.label} <span className="text-xs text-muted">- {folder.hint}</span>
                   </span>
                   <span className="break-all font-mono text-xs text-muted">{folder.path}</span>
                 </div>

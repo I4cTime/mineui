@@ -3,7 +3,7 @@ import { MotionConfig } from "motion/react";
 import { Toast } from "@heroui/react";
 
 // Fonts are self-hosted via @fontsource (offline-safe for the Tauri
-// desktop build — zero runtime network fetches). Which family renders
+// desktop build - zero runtime network fetches). Which family renders
 // is decided per-theme by the CSS vars in app/themes/*.css.
 // Contract: docs/theme-contract.md.
 import "@fontsource-variable/inter"; // deepslate + quantum sans

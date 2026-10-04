@@ -1,8 +1,8 @@
 "use client";
 
 // The open server, named properly (docs/theme-contract.md §9 page header):
-// status dot, the name the user gave it, then what it actually is — loader
-// and version, container, address — so "Forge" and "Forge test" are never
+// status dot, the name the user gave it, then what it actually is - loader
+// and version, container, address - so "Forge" and "Forge test" are never
 // confused. Data comes from ServerProvider's live overview.
 import {
   identityLine,
@@ -18,7 +18,7 @@ export default function ServerIdentity({ className = "" }: { className?: string 
   return (
     <span
       className={`flex min-w-0 items-center gap-2 ${className}`}
-      title={detail ? `${active.name} — ${detail}` : active.name}
+      title={detail ? `${active.name} - ${detail}` : active.name}
     >
       <span
         role="img"

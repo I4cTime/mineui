@@ -1,7 +1,7 @@
 "use client";
 
 // Server Settings → Advanced mode card footer: delete this server's container (contract
-// §3.13 delete_container) — to clean up a failed server, or to create it
+// §3.13 delete_container) - to clean up a failed server, or to create it
 // again with a different loader or modpack. The server stays in MineUI and
 // its dashboard goes back to the create form.
 import { useState } from "react";
@@ -48,7 +48,7 @@ export default function DeleteContainerButton() {
       } else if (done.deletedVolume) {
         toast.success(`${done.containerName} and its world data deleted`);
       } else {
-        toast.success(`${done.containerName} deleted — the world is kept`);
+        toast.success(`${done.containerName} deleted - the world is kept`);
       }
       close();
       await refreshOverview();
@@ -81,7 +81,7 @@ export default function DeleteContainerButton() {
       <ConfirmDialog
         isOpen={open}
         title="Delete container"
-        description={`This stops and deletes the container "${containerName}". The server stays in MineUI, and you can create its container again — with another loader or modpack if you like.`}
+        description={`This stops and deletes the container "${containerName}". The server stays in MineUI, and you can create its container again - with another loader or modpack if you like.`}
         confirmLabel={deleteData ? "Delete container and world" : "Delete container"}
         variant="danger"
         isLoading={busy}

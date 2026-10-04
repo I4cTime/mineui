@@ -1,6 +1,6 @@
 "use client";
 
-// "This page needs the server running / stopped — and here is the button."
+// "This page needs the server running / stopped - and here is the button."
 // Pages that only work in one state used to show raw backend errors or an
 // empty list instead (UX review 2026-10, findings on Players, RCON, Backups).
 // The phase comes from ServerProvider's live overview, the same source the
@@ -52,7 +52,7 @@ export default function ServerStateNotice({ need, what }: ServerStateNoticeProps
   let message: string;
   let action: React.ReactNode = null;
   if (phase === null) {
-    message = `MineUI can't reach ${active.name} right now — ${entry.error ?? "its state is unknown"}.`;
+    message = `MineUI can't reach ${active.name} right now - ${entry.error ?? "its state is unknown"}.`;
     action = (
       <Button size="sm" variant="secondary" onPress={() => router.push("/")}>
         Open the dashboard
@@ -68,8 +68,8 @@ export default function ServerStateNotice({ need, what }: ServerStateNoticeProps
   } else if (phase === "starting" || phase === "stopping") {
     message =
       phase === "starting"
-        ? `${active.name} is starting — it has to be ${need} ${what}. This updates by itself.`
-        : `${active.name} is stopping — it has to be ${need} ${what}. This updates by itself.`;
+        ? `${active.name} is starting - it has to be ${need} ${what}. This updates by itself.`
+        : `${active.name} is stopping - it has to be ${need} ${what}. This updates by itself.`;
   } else if (need === "running") {
     message = `${active.name} is ${phase === "crashed" ? "not running (it crashed)" : "stopped"}. It has to be running ${what}.`;
     action = (

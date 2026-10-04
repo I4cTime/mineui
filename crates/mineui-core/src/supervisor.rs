@@ -167,7 +167,7 @@ impl Supervisor {
         };
         drop(stdin_slot);
         if !wrote {
-            // stdin unavailable — go straight to kill.
+            // stdin unavailable - go straight to kill.
             self.shared.kill_notify.notify_one();
             return Ok(());
         }

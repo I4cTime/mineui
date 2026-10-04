@@ -160,7 +160,7 @@ pub fn log_time_to_epoch_ms(hh: u32, mm: u32, ss: u32) -> Option<i64> {
 }
 
 /// Parse RCON `tps` output with real character classes (the v1 regex was
-/// double-escaped and never matched — contract §3.9).
+/// double-escaped and never matched - contract §3.9).
 pub fn parse_tps(output: &str) -> Option<Tps> {
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(
@@ -184,7 +184,7 @@ pub fn is_done_line(line: &str) -> bool {
 }
 
 /// Normalize a runtime-reported timestamp to RFC 3339, best effort.
-/// Podman inspect: "2026-07-23 10:00:00.123456789 +0000 UTC" — but the zone
+/// Podman inspect: "2026-07-23 10:00:00.123456789 +0000 UTC" - but the zone
 /// abbreviation follows the host's local zone (live 4.9.3:
 /// "2026-07-24 15:50:31.847979382 -0500 CDT"), so any trailing alphabetic
 /// zone name is stripped (the numeric offset is what gets parsed).
@@ -197,7 +197,7 @@ pub fn normalize_timestamp(raw: &str) -> Option<String> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(trimmed) {
         return Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
     }
-    // Strip a trailing zone abbreviation ("UTC", "CDT", ...) — chrono's %z
+    // Strip a trailing zone abbreviation ("UTC", "CDT", ...) - chrono's %z
     // parses the numeric offset only.
     let without_zone_name = match trimmed.rsplit_once(' ') {
         Some((head, tail)) if !tail.is_empty() && tail.chars().all(|c| c.is_ascii_alphabetic()) => {
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn normalize_timestamp_local_zone_abbreviation() {
         // Verbatim podman 4.9.3 `inspect -f {{.State.StartedAt}}` output on a
-        // host in America/Chicago — the old parser only stripped " UTC" and
+        // host in America/Chicago - the old parser only stripped " UTC" and
         // returned None for this.
         let normalized = normalize_timestamp("2026-07-24 15:50:31.847979382 -0500 CDT").unwrap();
         assert_eq!(normalized, "2026-07-24T15:50:31.847-05:00");

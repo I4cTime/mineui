@@ -1,9 +1,9 @@
 /* ============================================================
-   Theme: Deepslate & Emerald  (id: deepslate) — DEFAULT
+   Theme: Deepslate & Emerald  (id: deepslate) - DEFAULT
    "The tool the game would ship if Mojang made professional
    server software." Deepslate stone, emerald signal, redstone
    alarm, one pixel-font wink (Monocraft, numerals only).
-   Spec: docs/aesthetic-directions.md — Direction 2.
+   Spec: docs/aesthetic-directions.md - Direction 2.
    Contract: docs/theme-contract.md.
 
    This block doubles as the :root fallback, so unknown/legacy
@@ -33,7 +33,7 @@
   /* -- Brand / status ------------------------------------ */
   --accent: #3ddc84;
   --accent-foreground: #08110c;
-  /* success IS the accent — deliberate: "green means the server lives" */
+  /* success IS the accent - deliberate: "green means the server lives" */
   --success: #3ddc84;
   --success-foreground: #08110c;
   --warning: #f7b733;
@@ -64,7 +64,7 @@
   --page-wash: color-mix(in oklab, var(--accent) 18%, transparent);
 
   /* -- Shape ---------------------------------------------- */
-  --radius: 0.25rem; /* 4px — blocky, not literal squares */
+  --radius: 0.25rem; /* 4px - blocky, not literal squares */
 
   /* -- Shadows: flat; depth = bg steps + the MC slot bevel - */
   --surface-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -114,7 +114,7 @@
 }
 
 /* ------------------------------------------------------------
-   Light mode — "Calcite & Emerald" (contract §10). Same stone,
+   Light mode - "Calcite & Emerald" (contract §10). Same stone,
    daylight: cool off-white ground, white slabs, emerald deepened
    until it reads as text. Only color, shadow and header-color
    tokens change; shape, type and motion are the style's own.

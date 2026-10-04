@@ -1,6 +1,6 @@
 // app/lib/ipc.ts
 //
-// Single typed IPC module — generated verbatim from docs/v2-contract.md §7.
+// Single typed IPC module - generated verbatim from docs/v2-contract.md §7.
 // This is the ONLY file that imports @tauri-apps/api/core or
 // @tauri-apps/api/event. Pages/components import types and wrappers from here;
 // no raw invoke(), no locally re-declared IPC types anywhere else.
@@ -63,7 +63,7 @@ let targetServerId: string | null = null;
 /**
  * The server profile (§2.5) every scoped wrapper and event helper below
  * addresses. Owned by ServerProvider (app/components/ServerProvider.tsx),
- * which only moves it while no page is mounted — pages never call this.
+ * which only moves it while no page is mounted - pages never call this.
  */
 export function setIpcTargetServer(id: string | null): void {
   targetServerId = id;
@@ -298,7 +298,7 @@ export type DeletedContainer = {
 };
 
 /**
- * Deletes a server's container — and, only with `deleteData`, the volume
+ * Deletes a server's container - and, only with `deleteData`, the volume
  * holding its world. The server profile itself stays. Always for a named
  * server: this is offered from lists as well as for the open server, and the
  * caller must have shown the container's name and got a confirmation.
@@ -319,7 +319,7 @@ export type ModpackRef = {
 export type ModpackZipInfo = {
   name: string;
   mcVersion: string;
-  /** forge, neoforge, fabric, quilt — from the primary mod loader, or null. */
+  /** forge, neoforge, fabric, quilt - from the primary mod loader, or null. */
   loader: string | null;
   loaderVersion: string | null;
   /** Files the manifest lists (the image downloads them). */
@@ -345,7 +345,7 @@ export type ModpackHit = {
 };
 
 /** Modrinth modpacks that can run on a server. Empty query = most
- *  downloaded. CurseForge has no keyless search — name those by slug/URL. */
+ *  downloaded. CurseForge has no keyless search - name those by slug/URL. */
 export const searchModpacks = (query: string, limit?: number) =>
   scoped<ModpackHit[]>("search_modpacks", { query, limit });
 
@@ -355,7 +355,7 @@ export const inspectModpackZip = (sourcePath: string) =>
   scoped<ModpackZipInfo>("inspect_modpack_zip", { sourcePath });
 
 /** Creates an itzg/minecraft-server container for the target server. Pulls
- *  the image when missing — the first call can take minutes. */
+ *  the image when missing - the first call can take minutes. */
 export const createContainer = (args: CreateContainerArgs) =>
   scoped<ServerState>("create_container", { args });
 
@@ -378,7 +378,7 @@ export type PlayerHistoryRow = {
 };
 
 export const getPlayers = () => scoped<PlayersResult>("get_players");
-/** 2.9.0 — resolves without RCON too: then rconAvailable is false and every row is offline. */
+/** 2.9.0 - resolves without RCON too: then rconAvailable is false and every row is offline. */
 export type PlayerHistory = {
   users: PlayerHistoryRow[];
   rconAvailable: boolean;
@@ -430,7 +430,7 @@ export type ModArchiveSource =
   | { url: string; filename?: string };
 
 /** Installs the .jar files inside a .zip (a zipped folder of mods, or a
- *  server pack) — unlike uploadMod/downloadMod, which place a .zip as one
+ *  server pack) - unlike uploadMod/downloadMod, which place a .zip as one
  *  file. */
 export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
   scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
@@ -470,7 +470,7 @@ export const deleteInstance = () =>
   scoped<void>("delete_instance", { confirm: true });
 export const instanceStatus = () => scoped<InstanceStatus>("instance_status");
 
-/** 2.10.0 — what changeInstanceVersion resolves with. */
+/** 2.10.0 - what changeInstanceVersion resolves with. */
 export type ChangedInstanceVersion = {
   status: InstanceStatus;
   fromVersion: string;
@@ -481,7 +481,7 @@ export type ChangedInstanceVersion = {
   pruned: string[];
 };
 
-/** 2.10.0 — server must be stopped; older (or unknown-direction) targets need
+/** 2.10.0 - server must be stopped; older (or unknown-direction) targets need
  *  allowDowngrade. Downloads a server jar and backs up the world first. */
 export const changeInstanceVersion = (mcVersion: string, allowDowngrade?: boolean) =>
   scoped<ChangedInstanceVersion>("change_instance_version", { mcVersion, allowDowngrade });
@@ -507,7 +507,7 @@ export type UpdateCheck = {
 export type AppDir = "data" | "config" | "server";
 
 export const getAppInfo = () => call<AppInfo>("get_app_info");
-/** Explicit user action only — MineUI never checks on its own. */
+/** Explicit user action only - MineUI never checks on its own. */
 export const checkForUpdate = () => call<UpdateCheck>("check_for_update");
 /** https only, allowlisted hosts (§3.15); anything else rejects INVALID_INPUT. */
 export const openUrl = (url: string) => call<void>("open_url", { url });
@@ -530,7 +530,7 @@ export type BackupEntry = {
   createdAtEpochMs: number;
 };
 
-/** 2.9.0 — the new archive plus the filenames retention (keepLast) removed in this call. */
+/** 2.9.0 - the new archive plus the filenames retention (keepLast) removed in this call. */
 export type CreatedBackup = BackupEntry & { pruned: string[] };
 
 export const createBackup = () => scoped<CreatedBackup>("create_backup");
@@ -642,7 +642,7 @@ const NOOP_UNLISTEN: UnlistenFn = () => {};
 
 /**
  * Subscribe to one event channel for the server that is the IPC target
- * *now* — the binding is fixed at subscribe time, so a listener can never
+ * *now* - the binding is fixed at subscribe time, so a listener can never
  * start receiving another server's events after a switch.
  */
 function onScoped<E extends { serverId: string }>(

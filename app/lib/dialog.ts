@@ -1,5 +1,5 @@
 // Thin wrapper around the Tauri dialog plugin (contract §3.5: upload_mod takes
-// a host filesystem path obtained via the dialog plugin — no multipart upload
+// a host filesystem path obtained via the dialog plugin - no multipart upload
 // in v2). Kept out of ipc.ts so that file stays verbatim to the contract spec.
 import { open } from "@tauri-apps/plugin-dialog";
 import { isTauri, IpcError } from "@/app/lib/ipc";

@@ -104,7 +104,7 @@ export default function ChangeVersionDialog({
     <ConfirmDialog
       isOpen={isOpen}
       title="Change Minecraft version"
-      description={`${serverName} runs Minecraft ${currentVersion}. MineUI downloads the server for the version you pick, makes a backup of the world, and switches — the world, settings and backups stay. Players need the same version to join.`}
+      description={`${serverName} runs Minecraft ${currentVersion}. MineUI downloads the server for the version you pick, makes a backup of the world, and switches - the world, settings and backups stay. Players need the same version to join.`}
       confirmLabel={busy ? "Working…" : target ? `Change to ${target}` : "Change version"}
       cancelLabel="Cancel"
       variant={direction === "down" ? "danger" : "default"}
@@ -169,7 +169,7 @@ export default function ChangeVersionDialog({
                 <TriangleAlert size={14} className="mt-0.5 shrink-0" />
                 <span>
                   <ArrowDown size={12} className="inline" /> Older than {currentVersion}. An older
-                  Minecraft usually cannot open a world saved by a newer one — it may refuse to
+                  Minecraft usually cannot open a world saved by a newer one - it may refuse to
                   start or damage the world. Only do this if the world was created on {target} or
                   earlier, or you plan to start a new world.
                 </span>
@@ -182,13 +182,13 @@ export default function ChangeVersionDialog({
                   disabled={busy}
                   onChange={(event) => setAllowDowngrade(event.target.checked)}
                 />
-                <span>I understand — switch to the older version anyway</span>
+                <span>I understand - switch to the older version anyway</span>
               </label>
             </>
           )}
           {busy && (
             <p className="text-xs text-muted">
-              Downloading the server and backing up the world — this can take a minute. Keep
+              Downloading the server and backing up the world - this can take a minute. Keep
               MineUI open.
             </p>
           )}

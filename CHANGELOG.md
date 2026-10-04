@@ -14,8 +14,8 @@ All notable changes to MineUI are documented here. Format follows
   *older* version needs an extra tick, because an older Minecraft usually
   cannot open a world saved by a newer one.
 - **Sounds card in App Settings:** a volume slider and a choice of four sound
-  sets — the original *Classic* plus *Blocks* (chiptune), *Glass* (soft
-  bells) and *Terminal* (relay ticks and beeps) — each with a Preview button.
+  sets - the original *Classic* plus *Blocks* (chiptune), *Glass* (soft
+  bells) and *Terminal* (relay ticks and beeps) - each with a Preview button.
   The new sets are synthesized (no samples) and matched in loudness to the
   original, so switching sets does not make the app louder or quieter.
 - **About card in App Settings:** the version and platform, where MineUI
@@ -31,8 +31,8 @@ All notable changes to MineUI are documented here. Format follows
 ### Changed
 
 - Links that leave the app (EULA, install guides, the About links) now open
-  through an allowlisted command in the system browser — `https` only, a
-  fixed list of hosts — instead of relying on the webview's handling of
+  through an allowlisted command in the system browser - `https` only, a
+  fixed list of hosts - instead of relying on the webview's handling of
   `target="_blank"`, which is not dependable on every platform.
 
 ## [2.9.0] - 2026-10-03
@@ -43,15 +43,15 @@ settings or worlds.
 
 ### Added
 
-- **Light mode.** App Settings → Appearance has a new *Mode* choice — Dark,
-  Light, or Match system — that works with every style: Deepslate becomes
+- **Light mode.** App Settings → Appearance has a new *Mode* choice - Dark,
+  Light, or Match system - that works with every style: Deepslate becomes
   *Calcite & Emerald*, Phosphor a warm *paper console*, Quantum *Daybreak*,
   Soft Glass warm paper and terracotta. Each light palette was checked
   numerically for text contrast (WCAG AA or better everywhere, including
   status chips). An accent override that would be unreadable on a light
   ground is shown darker in light mode; your pick is kept for dark mode.
   Dark stays the default, so nothing changes until you choose it.
-- **"The server is stopped — Start it" where it matters.** Players, Console,
+- **"The server is stopped - Start it" where it matters.** Players, Console,
   Status and Backups say what state the server has to be in and carry the
   button, instead of an empty list or a raw connection error.
 - **Unsaved-changes protection.** Server Settings and the config editor ask
@@ -62,19 +62,19 @@ settings or worlds.
 - **The Simple/Advanced toggle is gone from the header.** One unlabelled click
   re-pointed a server at the other kind, which looked exactly like the server
   had been deleted. How a server is run now lives under *Advanced* in Server
-  Settings, is refused while the server is running, and asks first — saying
+  Settings, is refused while the server is running, and asks first - saying
   that nothing is deleted or moved.
 - **Server Settings is reorganised by how often things are needed:** This
   server (rename it right there), Performance & network, Scheduled tasks,
   Backups, a collapsed *Advanced* section (connection details, console
   command rules, downloads from your own network, how the server is run) and
   a Danger zone. Every field says what it does in plain words. One *Unsaved
-  changes — Discard / Save* bar replaces the Save buttons that sat in
+  changes - Discard / Save* bar replaces the Save buttons that sat in
   unrelated cards; it names what is wrong before you save. The container name
   is locked behind *Change…* (editing it silently pointed MineUI at nothing),
   and the RCON password can be revealed.
 - **Dashboard status is one statement:** Online, Starting up… (running but
-  not answering yet — the minutes a modpack needs on first start), Starting…,
+  not answering yet - the minutes a modpack needs on first start), Starting…,
   Stopping…, Stopped or Crashed, with a sentence saying what to expect and the
   address players join at. Start/Stop/Restart are only enabled when they make
   sense, say what actually happened ("is starting…", not "Start completed"),
@@ -106,7 +106,7 @@ settings or worlds.
 
 ### Fixed
 
-- **Backups and mods of a stopped container server were invisible** — the
+- **Backups and mods of a stopped container server were invisible** - the
   page said "No backups yet" although restoring *requires* the server to be
   stopped. Listing and deleting now work while the container is stopped, and
   a listing that fails is shown as an error, never as an empty list.
@@ -136,7 +136,7 @@ settings or worlds.
 ### Added
 
 - **CurseForge modpacks from a zip**: the create-container flow's *A modpack*
-  step has a third source, *CurseForge zip* — the file the CurseForge app
+  step has a third source, *CurseForge zip* - the file the CurseForge app
   makes with *Export profile* (`manifest.json` + `overrides/`). MineUI reads
   the pack's name, Minecraft version and loader from the manifest
   (`inspect_modpack_zip`), copies the zip into the container before its first
@@ -151,10 +151,10 @@ settings or worlds.
 - **Windows + Podman (WSL) in rootful mode: the server stays Offline even on
   2.7.2.** A rootful machine publishes ports with NAT rules rather than a
   listening socket, and WSL's localhost relay mirrors listening sockets only,
-  so Windows never reaches them — confirmed on a tester's machine. MineUI now
+  so Windows never reaches them - confirmed on a tester's machine. MineUI now
   detects a rootful WSL machine and the Status page says so, with the fix
   (`podman machine stop; podman machine set --rootful=false; podman machine
-  start`, then create the server again — the two modes have separate
+  start`, then create the server again - the two modes have separate
   container stores) and the VM address the server answers at meanwhile.
 
 ## [2.7.2] - 2026-10-02
@@ -167,7 +167,7 @@ settings or worlds.
   `/`-separated.
 - **Windows + Podman (WSL): the server stayed "Offline" with no RCON although
   the log said Done.** A "keep on this computer" server was published on
-  `127.0.0.1` *inside the Podman machine*, which Windows cannot reach — WSL's
+  `127.0.0.1` *inside the Podman machine*, which Windows cannot reach - WSL's
   localhost relay only forwards ports bound on all of the machine's
   interfaces. On the WSL provider the ports are now published without a host
   address and arrive on the Windows host's own `127.0.0.1`. Hyper-V and
@@ -206,23 +206,23 @@ settings or worlds.
 - **Unpack a zip of mods** (Mods → Add mod or plugin): when the file you
   pick or link to is a `.zip`, the dialog asks whether it is several mods or
   one. For several, MineUI unpacks the `.jar` files inside and installs them
-  in one go — from a zipped folder of mods, or from the `mods` folder of a
-  server pack — and lists what went in and how many other files were left
+  in one go - from a zipped folder of mods, or from the `mods` folder of a
+  server pack - and lists what went in and how many other files were left
   out. This is how to put a set of mods onto a server that already exists.
   Configs in the zip are not installed. A launcher modpack file (Modrinth
   `.mrpack`-style or a CurseForge export) is recognized and pointed at
   *create from a modpack* instead. Limits: 500 jars, 256 MiB each, 2 GiB in
   total, counted on what the zip actually unpacks to.
 - **Install instructions for Podman and Docker**: wherever a container
-  runtime is needed and neither is installed — the create-container flow,
-  the dashboard of a container server, Server Settings — MineUI shows the
+  runtime is needed and neither is installed - the create-container flow,
+  the dashboard of a container server, Server Settings - MineUI shows the
   steps for Linux, Windows and macOS with copyable commands, opening on your
   OS, and a *Check again* button. Previously the dashboard showed a generic
   "Backend unavailable" error. The same steps are in the README.
 - **Delete a container from MineUI**: a failed or unwanted container server
   no longer has to be cleaned up with the runtime CLI. *Delete container* in
   Server Settings removes the container and keeps the server, so you can
-  create it again — the way to switch loader or modpack. *Remove server* in
+  create it again - the way to switch loader or modpack. *Remove server* in
   App Settings can take the container along with a tick box. Both keep the
   world unless you tick *Also delete its world data* and type the
   container's name; then the data volume (world, configs, mods, backups) is
@@ -259,7 +259,7 @@ settings or worlds.
 ### Added
 
 - **Several servers at once**: MineUI now manages any number of server
-  profiles (up to 16) simultaneously — for example a Forge and a Fabric
+  profiles (up to 16) simultaneously - for example a Forge and a Fabric
   container side by side. Each profile has its own mode, connection settings,
   RCON allowlist, scheduled tasks, backup policy, player notes and activity
   log, and scheduled tasks run for every server whether or not it is on
@@ -269,15 +269,15 @@ settings or worlds.
   list in App Settings → Servers. Removing a server only removes it from
   MineUI; its container, world and backups stay.
 - **Create containers from MineUI**: adding a server now offers *New
-  container* — MineUI creates an `itzg/minecraft-server` container (Vanilla,
+  container* - MineUI creates an `itzg/minecraft-server` container (Vanilla,
   Paper, Purpur, Fabric, Quilt, Forge or NeoForge; any Minecraft version;
   memory; ports; LAN or local-only), chooses the image tag with the Java that
   version needs, generates the RCON password and attaches to it. Attaching to
   an existing container and the managed vanilla server remain.
 - **App Settings** page (sliders button in the header) for what is not about
   one server: the server list, theme and accent.
-- Page headers and the server switcher now say what each server actually is —
-  "Forge 1.21.1 · mc-forge · 127.0.0.1:25566" — read from the container itself.
+- Page headers and the server switcher now say what each server actually is -
+  "Forge 1.21.1 · mc-forge · 127.0.0.1:25566" - read from the container itself.
 - Seven new IPC commands (`list_servers`, `add_server`, `rename_server`,
   `remove_server`, `set_active_server`, `get_servers_overview`,
   `create_container`), an optional `serverId` on every existing command,
@@ -289,7 +289,7 @@ settings or worlds.
 
 - **RCON on Forge**: a command with no output (`say`, and with it scheduled
   broadcasts and restart warnings) waited 5 s and was reported as
-  `RCON read timed out` even though it ran — Forge sends no reply packet for
+  `RCON read timed out` even though it ran - Forge sends no reply packet for
   empty output where vanilla and Fabric send an empty one. The client now
   frames every command with a terminator packet.
 - RCON output longer than 4096 bytes (large mod or player lists) was cut off
@@ -335,8 +335,8 @@ settings or worlds.
   backups; a failed copy never fails the backup.
 - **Player notes** (Players): a private note per player, edited inline.
 - **Activity log** (Status): an append-only audit trail of every action taken
-  from the app or by the scheduler — server start/stop/restart, player
-  actions, RCON commands, backups, config edits, mod changes, settings saves —
+  from the app or by the scheduler - server start/stop/restart, player
+  actions, RCON commands, backups, config edits, mod changes, settings saves -
   with source, target, outcome and error.
 - Five new IPC commands (`get_scheduler_status`, `run_scheduled_job_now`,
   `get_player_notes`, `set_player_note`, `get_audit_log`); contract §3.10,
@@ -356,12 +356,12 @@ settings or worlds.
 
 - The theme picker moved out of the header into Settings → Appearance, next
   to the accent override, as a card grid with a description per theme.
-- Header tooltips now say what each page is for ("Players — Who's on, history
+- Header tooltips now say what each page is for ("Players - Who's on, history
   and notes") and only appear at widths where the nav is icon-only; at full
   width the visible label speaks for itself.
 - Tauri 2.12 (tao 0.37 restores GTK's own Wayland decorations; the old
   overlay left title-bar buttons dead), `@tauri-apps/api` / `cli` 2.12.
-- Settings gained `scheduler` and `backups` sections with serde defaults —
+- Settings gained `scheduler` and `backups` sections with serde defaults -
   existing `settings.json` files load unchanged (no schema bump).
 
 ## [2.1.2] - 2026-09-26
@@ -383,7 +383,7 @@ settings or worlds.
 ### Security
 
 - Dependency refresh clearing every open advisory: Next.js 16.3.5 (two
-  critical RCE advisories in the image-optimization API — not reachable in
+  critical RCE advisories in the image-optimization API - not reachable in
   the static-export desktop build, but no longer shipped), Tiptap 3.31.3
   (Markdown ReDoS, `mergeAttributes` prototype key), MapLibre GL 6.10
   (sanitizer XSS bypass), and pinned floors for the transitive sharp,
@@ -401,19 +401,19 @@ settings or worlds.
 ### Added
 
 - **Accent color override**: Settings → Appearance now lets you override the
-  theme's accent everywhere in the app — 8 preset swatches plus a full
+  theme's accent everywhere in the app - 8 preset swatches plus a full
   custom color picker, persisted locally. Text on accent fills picks
   whichever of the theme's own background/foreground tokens contrasts
   better, so every theme stays readable with any accent.
 
 ### Changed
 
-- **New brand**: the app icon and in-app logo are now the "Ore Cube" mark —
-  a neon isometric voxel with a glowing core — replacing the old boxed
+- **New brand**: the app icon and in-app logo are now the "Ore Cube" mark -
+  a neon isometric voxel with a glowing core - replacing the old boxed
   pixel-cross icon, matching the refreshed mineui.i4c.studio site.
 - The Simple/Advanced mode switch in Settings is now an accessible radio
   group of rich option cards (keyboard arrows flip modes).
-- UI sounds re-encoded — same cues, much smaller files.
+- UI sounds re-encoded - same cues, much smaller files.
 
 ### Fixed
 
@@ -426,15 +426,15 @@ settings or worlds.
 ### Added
 
 - **Simple mode**: MineUI can now create and run its own vanilla Minecraft
-  server — pick a version, accept the EULA, and MineUI downloads the
+  server - pick a version, accept the EULA, and MineUI downloads the
   official server jar (SHA-1 verified) and supervises the Java process.
   No container required. Requires Java on your system, version-checked
   automatically against the Minecraft release you pick.
 - **Docker support** alongside Podman in Advanced mode, with runtime
   auto-detection (Podman tried first, then Docker) and a manual override in
   Settings.
-- Four selectable themes — Deepslate & Emerald (default), Phosphor Amber,
-  Quantum Fluidity, and Soft Glass — switchable from Settings and persisted
+- Four selectable themes - Deepslate & Emerald (default), Phosphor Amber,
+  Quantum Fluidity, and Soft Glass - switchable from Settings and persisted
   locally.
 - Toast notifications for background actions (downloads, backups, RCON
   results) via HeroUI's Toast.
@@ -443,7 +443,7 @@ settings or worlds.
 
 - **Rebuilt on Tauri v2**, replacing the Electron + Next.js API-route
   architecture. The app is now a native Rust binary calling into a
-  Next.js static-export frontend over Tauri IPC — smaller install, no
+  Next.js static-export frontend over Tauri IPC - smaller install, no
   bundled Chromium runtime, no local HTTP API server.
 - Player join/leave history parsing now correctly matches `[Not Secure]`
   chat-signing log lines (previously silently skipped due to a regex bug).
@@ -463,7 +463,7 @@ settings or worlds.
 
 - Container/host command execution no longer shells out through
   `sh -c` with interpolated strings anywhere in the mod, config-editor, or
-  backup code paths — every subprocess call now uses argv arrays, closing
+  backup code paths - every subprocess call now uses argv arrays, closing
   a class of shell-injection risk that existed in the v1 implementation.
 
 ## [1.0.0] - 2026-01

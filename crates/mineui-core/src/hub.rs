@@ -139,7 +139,7 @@ fn index_file(config_dir: &Path) -> PathBuf {
 }
 
 /// Validate a parsed index (§2.5): strict on ids (they are path segments),
-/// self-healing on the two things a hand edit plausibly breaks — a missing
+/// self-healing on the two things a hand edit plausibly breaks - a missing
 /// `default` profile and a dangling `activeServerId`.
 fn normalize_index(mut index: ServerIndex) -> Result<ServerIndex> {
     let inv = |msg: String| Err(Error::SettingsInvalid(msg));

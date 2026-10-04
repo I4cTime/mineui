@@ -1,6 +1,6 @@
 "use client";
 
-// App Settings → Sounds: the interface sounds — on/off, how loud, and which
+// App Settings → Sounds: the interface sounds - on/off, how loud, and which
 // set. App-wide and stored on this machine, like the appearance. The header's
 // speaker button stays as the quick mute.
 import { useRef } from "react";
@@ -17,7 +17,7 @@ export default function SoundsCard() {
   const choose = (next: SoundSetId) => {
     if (next === set) return;
     setSet(next);
-    // Hear what you picked — at the current volume, even when muted would
+    // Hear what you picked - at the current volume, even when muted would
     // make no sense, so only when sounds are on.
     if (enabled) previewSoundSet(next, volume);
   };

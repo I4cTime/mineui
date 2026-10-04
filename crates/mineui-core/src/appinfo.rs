@@ -1,6 +1,6 @@
 //! App facts and the manual update check (contract §3.15, 2.10.0).
 //!
-//! `check_for_update` runs only when the user asks for it — MineUI never
+//! `check_for_update` runs only when the user asks for it - MineUI never
 //! checks on its own, and never downloads or installs anything here.
 
 use std::cmp::Ordering;

@@ -166,7 +166,7 @@ function playFrom(set: SoundSetId, type: UISoundType, volume: number) {
 }
 
 /** Audition a set regardless of the mute switch: a click, then the success
- *  chime — the two sounds heard most. */
+ *  chime - the two sounds heard most. */
 export function previewSoundSet(set: SoundSetId, volume: number) {
   void preloadSounds(set).then(() => {
     playFrom(set, "click_confirm", volume);

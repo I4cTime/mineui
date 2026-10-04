@@ -59,7 +59,7 @@ const MAX_LOG_LINES = 1000;
 // One statement of how the server is doing, from the two facts the backend
 // gives: the process/container phase and whether the game answers a ping.
 // "running" without an answer is the minutes between Start and "Done" (a
-// modpack's first start installs the pack then) — showing "running" next to
+// modpack's first start installs the pack then) - showing "running" next to
 // "Offline" made that look broken (UX review 2026-10).
 type Condition = "online" | "warming" | "starting" | "stopping" | "stopped" | "crashed" | "unknown";
 
@@ -116,7 +116,7 @@ export default function Home() {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [mods, setMods] = useState<ModsList | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
-  // Which action is in flight — the spinner goes on that button only.
+  // Which action is in flight - the spinner goes on that button only.
   const [busyAction, setBusyAction] = useState<DashAction | null>(null);
   const busy = busyAction !== null;
   const [confirmAction, setConfirmAction] = useState<"stop" | "restart" | null>(null);
@@ -125,11 +125,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [backendError, setBackendError] = useState<string | null>(null);
   // Advanced mode with neither Podman nor Docker installed is not a broken
-  // backend — it gets install instructions instead of the generic error.
+  // backend - it gets install instructions instead of the generic error.
   const [runtimeMissing, setRuntimeMissing] = useState(false);
   const logsRef = useRef<HTMLDivElement>(null);
   const { play } = useUISound();
-  // Shared app-wide mode (app/components/ModeProvider.tsx) — not derived from
+  // Shared app-wide mode (app/components/ModeProvider.tsx) - not derived from
   // this page's own `settings` fetch anymore, so a navbar toggle updates this
   // page live instead of only on next remount. `settings` below is kept only
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
@@ -172,7 +172,7 @@ export default function Home() {
     } catch (error) {
       setRuntimeMissing(error instanceof IpcError && error.code === "RUNTIME_NOT_FOUND");
       // Installed but not responding (Docker Desktop closed, podman machine
-      // stopped) — not the same thing as "install a runtime".
+      // stopped) - not the same thing as "install a runtime".
       setRuntimeDown(error instanceof IpcError && error.code === "RUNTIME_UNAVAILABLE");
       setBackendError(
         error instanceof IpcError ? error.message : String(error),
@@ -187,7 +187,7 @@ export default function Home() {
     bootstrap();
   }, [bootstrap]);
 
-  // Pull data (status ping + mods list) — no events for these, poll lightly.
+  // Pull data (status ping + mods list) - no events for these, poll lightly.
   const refreshPolled = useCallback(async () => {
     const [statusResult, modsResult] = await Promise.allSettled([
       getServerStatus(),
@@ -267,7 +267,7 @@ export default function Home() {
     }
   }, [logLines]);
 
-  // What each action says when the *request* went through — which for Start
+  // What each action says when the *request* went through - which for Start
   // and Restart is not yet "the server is up".
   const runAction = async (kind: DashAction) => {
     play("click_confirm");
@@ -276,18 +276,18 @@ export default function Home() {
     try {
       if (kind === "start") {
         await startServer();
-        toast(`${name} is starting — it is ready when the status turns Online.`);
+        toast(`${name} is starting - it is ready when the status turns Online.`);
       } else if (kind === "stop") {
         await stopServer();
         toast.success(`${name} stopped`);
       } else if (kind === "restart") {
         await restartServer();
-        toast(`${name} is restarting — it is ready when the status turns Online.`);
+        toast(`${name} is restarting - it is ready when the status turns Online.`);
       } else {
         const { pruned } = await createBackup();
         toast.success(
           pruned.length > 0
-            ? `Backup created. The oldest backup (${pruned[0]}) was removed — see Backups for how many are kept.`
+            ? `Backup created. The oldest backup (${pruned[0]}) was removed - see Backups for how many are kept.`
             : "Backup created",
         );
       }
@@ -407,7 +407,7 @@ export default function Home() {
                 <p>
                   Launch MineUI with{" "}
                   <code className="font-mono">pnpm tauri dev</code> or the packaged
-                  app — the web preview has no backend.
+                  app - the web preview has no backend.
                 </p>
               )}
             </Card.Content>
@@ -448,7 +448,7 @@ export default function Home() {
           </span>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="relative">
-              {/* Static glow — was an infinite 4s pulse loop; the contract
+              {/* Static glow - was an infinite 4s pulse loop; the contract
                   forbids ambient loops (docs/theme-contract.md §6), and the
                   dashboard only budgets one (the online-status dot below).
                   Shape is "ellipse farthest-side" (not the previous bare
@@ -481,7 +481,7 @@ export default function Home() {
                   {/* One chip says how the server is doing. Signature moment:
                       a brief scale/glow whenever the condition changes,
                       keyed to --motion-base (remount drives the enter
-                      animation — no loop). */}
+                      animation - no loop). */}
                   <motion.span
                     key={condition}
                     className="inline-flex"
@@ -556,7 +556,7 @@ export default function Home() {
                 mount for the first time well after the page's initial
                 containerMotion stagger already resolved (previously this
                 only ever mounted at first paint or after a full-page
-                setLoading(true) remount) — must drive its own enter
+                setLoading(true) remount) - must drive its own enter
                 animation per the same fix as commit 1090c51. */}
             <motion.section
               variants={cardMotion}
@@ -573,7 +573,7 @@ export default function Home() {
                   </div>
                   {/* Was an infinite 2s pulse loop; now a finite flash that
                       fires only when a new log batch actually arrives
-                      (remounts via `key`), then settles — state-change-
+                      (remounts via `key`), then settles - state-change-
                       triggered per the audit, not ambient. */}
                   <motion.div
                     key={logLines.length}
@@ -609,7 +609,7 @@ export default function Home() {
               </Card>
             </motion.section>
 
-            {/* Same late-mount rule as the Server Logs section above — this
+            {/* Same late-mount rule as the Server Logs section above - this
                 stagger container itself must re-fire its entrance so its
                 cardMotion children animate in instead of inheriting a
                 long-settled parent state. */}
@@ -641,22 +641,22 @@ export default function Home() {
                             </div>
                           )}
                           <div className="text-muted">Version: {status?.version ?? "unknown"}</div>
-                          <div className="text-muted">MOTD: {status?.motd ?? "—"}</div>
+                          <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
                           <div className="text-muted font-pixel-num">
-                            Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "—"}
+                            Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "-"}
                           </div>
                         </>
                       )}
                       {condition === "warming" && (
                         <p className="text-muted" title={status?.error ?? undefined}>
                           The server is running but not taking players yet. The first
-                          start of a modded server or modpack can take several minutes —
+                          start of a modded server or modpack can take several minutes -
                           watch the log above; it is ready when a line says{" "}
                           <span className="font-mono">Done</span>.
                         </p>
                       )}
                       {condition === "starting" && (
-                        <p className="text-muted">Starting — this updates by itself.</p>
+                        <p className="text-muted">Starting - this updates by itself.</p>
                       )}
                       {condition === "stopping" && (
                         <p className="text-muted">Saving the world and shutting down.</p>

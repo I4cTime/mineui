@@ -1,7 +1,7 @@
 "use client";
 
 // App Settings: everything that is about MineUI itself rather than about one
-// server — the server list, the look and sound of the app, and what version
+// server - the server list, the look and sound of the app, and what version
 // this is. Per-server settings
 // (mode, connection, schedule, backups, RCON) live on /settings. Reached from
 // the header's controls zone, not the nav (docs/theme-contract.md §9.1).

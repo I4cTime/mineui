@@ -2,7 +2,7 @@
 """Synthesize MineUI's extra UI sound sets (public/sounds/<set>/ui_*.mp3).
 
 The sets are original, generated from first principles (oscillators, noise,
-envelopes) — no samples, nothing to license. "classic" (public/sounds/ui) is
+envelopes) - no samples, nothing to license. "classic" (public/sounds/ui) is
 the hand-made original set and is not produced by this script.
 
     python3 scripts/gen-ui-sounds.py            # all sets
@@ -10,7 +10,7 @@ the hand-made original set and is not produced by this script.
 
 Needs numpy and ffmpeg (libmp3lame). Loudness follows the classic set sound
 by sound: each file's average level (RMS) is matched to its classic
-counterpart, with the peak capped at -3.5 dBFS — so the per-sound volumes in
+counterpart, with the peak capped at -3.5 dBFS - so the per-sound volumes in
 app/lib/audio-constants.ts apply to every set alike and switching sets does
 not change how loud the app is.
 """
@@ -110,7 +110,7 @@ def note(n):
 
 
 # --------------------------------------------------------------------------
-# blocks — chiptune: pulse and triangle waves, stepped pitches. Pairs with
+# blocks - chiptune: pulse and triangle waves, stepped pitches. Pairs with
 # the Deepslate style. (Original voicing; not Minecraft's own sounds.)
 # --------------------------------------------------------------------------
 def blocks():
@@ -134,7 +134,7 @@ def blocks():
 
 
 # --------------------------------------------------------------------------
-# glass — soft FM bells and rounded sines, longer tails, nothing sharp.
+# glass - soft FM bells and rounded sines, longer tails, nothing sharp.
 # Pairs with Soft Glass and Quantum.
 # --------------------------------------------------------------------------
 def glass():
@@ -158,7 +158,7 @@ def glass():
 
 
 # --------------------------------------------------------------------------
-# terminal — relay ticks, short noise clicks and terse low beeps: a machine
+# terminal - relay ticks, short noise clicks and terse low beeps: a machine
 # room, not a melody. Pairs with Phosphor.
 # --------------------------------------------------------------------------
 def terminal():

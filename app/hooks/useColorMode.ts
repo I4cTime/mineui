@@ -64,7 +64,7 @@ function setStoredColorMode(preference: ColorModePreference) {
 function subscribe(callback: () => void) {
   listeners.add(callback);
   // The OS flipping light/dark matters only under "system", but the
-  // resolved value is recomputed either way — cheap, and always right.
+  // resolved value is recomputed either way - cheap, and always right.
   const media = typeof window !== "undefined" ? window.matchMedia(LIGHT_QUERY) : null;
   const onSystemChange = () => {
     applyColorMode(getStoredColorMode());

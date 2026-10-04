@@ -1,6 +1,6 @@
 // Stamps the stored style and color mode on <html> before first paint, so a
 // light-mode user never sees a dark flash. Mirrors app/hooks/useTheme.ts and
-// app/hooks/useColorMode.ts (same keys, same fallbacks) — keep them in step.
+// app/hooks/useColorMode.ts (same keys, same fallbacks) - keep them in step.
 // A file, not an inline script: the app's CSP is script-src 'self'.
 (function () {
   try {

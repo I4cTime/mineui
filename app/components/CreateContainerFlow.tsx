@@ -1,7 +1,7 @@
 "use client";
 
 // Dashboard onboarding for an advanced-mode server that has no container
-// yet: create one from the itzg/minecraft-server image (contract §3.13) —
+// yet: create one from the itzg/minecraft-server image (contract §3.13) -
 // pick a server type or a modpack, MineUI does the `run` and wires the
 // server up. Without Podman or Docker it explains how to get one instead.
 // The simple-mode counterpart is CreateServerFlow.
@@ -125,7 +125,7 @@ export default function CreateContainerFlow({
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    // The list is a convenience — "Latest release" works without it.
+    // The list is a convenience - "Latest release" works without it.
     listMcVersions()
       .then(setVersions)
       .catch(() => setVersions([]));
@@ -180,14 +180,14 @@ export default function CreateContainerFlow({
   const versionIds = packVersions ?? versions.map((item) => item.id);
   const versionHint =
     kind === "type"
-      ? "Mod loaders can trail the newest release — for a modded server, pick the version your mods are built for."
+      ? "Mod loaders can trail the newest release - for a modded server, pick the version your mods are built for."
       : modpack === null
         ? "Choose the modpack first."
         : modpack.source === "modrinth"
           ? "The versions this pack has builds for. MineUI installs its newest release for the one you pick."
           : modpack.source === "curseforge-zip"
             ? "From the pack's manifest."
-            : "The Minecraft version the pack is made for — it decides which Java the server gets, and a pack on the wrong Java does not start.";
+            : "The Minecraft version the pack is made for - it decides which Java the server gets, and a pack on the wrong Java does not start.";
 
   const loaderMeta = LOADERS.find((item) => item.id === loader);
   const workloadReady =
@@ -221,7 +221,7 @@ export default function CreateContainerFlow({
             : null,
       });
       play("success");
-      toast.success(`${containerName.trim()} created — the server is installing`);
+      toast.success(`${containerName.trim()} created - the server is installing`);
       onCreated();
     } catch (error) {
       play("error");
@@ -463,7 +463,7 @@ export default function CreateContainerFlow({
               {exposeToNetwork
                 ? `The game port (${gamePort}) is opened on every network interface of this machine.`
                 : "Only this computer can connect. Choose this for a test server."}{" "}
-              RCON — the channel MineUI itself uses to send commands — always stays
+              RCON - the channel MineUI itself uses to send commands - always stays
               on this computer, with a password MineUI generates.
             </span>
 
@@ -485,7 +485,7 @@ export default function CreateContainerFlow({
                 </OutLink>
                 .{" "}
                 <span className="text-muted">
-                  Mojang&apos;s rules for running a server — every Minecraft server has to
+                  Mojang&apos;s rules for running a server - every Minecraft server has to
                   agree to them.
                 </span>
               </span>

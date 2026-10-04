@@ -86,8 +86,8 @@ async fn wsl_address(machine: &str) -> Option<String> {
 pub fn rootful_wsl_note(ip: Option<&str>, port: u16) -> String {
     let mut note = String::from(
         "Windows cannot reach ports published by a rootful Podman machine (WSL). \
-         Switch it to rootless — podman machine stop; podman machine set --rootful=false; \
-         podman machine start — then create the server again",
+         Switch it to rootless - podman machine stop; podman machine set --rootful=false; \
+         podman machine start - then create the server again",
     );
     if let Some(ip) = ip {
         note.push_str(&format!(". Until then the server answers at {ip}:{port}"));

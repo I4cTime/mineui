@@ -1,4 +1,4 @@
-//! One `#[tauri::command]` per contract §3 row — thin delegation only.
+//! One `#[tauri::command]` per contract §3 row - thin delegation only.
 //! No business logic, no validation, no subprocess calls here (contract §8).
 //!
 //! Every §3.1–§3.11 command takes `server_id` (§3.0) and runs against that

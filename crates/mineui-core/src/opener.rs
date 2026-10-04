@@ -12,7 +12,7 @@ use crate::model::AppDir;
 use crate::settings::{Mode, Settings};
 use crate::Paths;
 
-/// Exact hosts `open_url` accepts — no subdomain matching.
+/// Exact hosts `open_url` accepts - no subdomain matching.
 pub const ALLOWED_HOSTS: &[&str] = &[
     "mineui.i4c.studio",
     "github.com",

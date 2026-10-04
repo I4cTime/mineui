@@ -30,7 +30,7 @@ When reporting, please provide:
 - **Description** of the vulnerability and its potential impact.
 - **Steps to reproduce** or a proof of concept.
 - **Affected version(s)** of MineUI.
-- **Environment** details (OS, mode — Simple/Advanced, container runtime and version if applicable).
+- **Environment** details (OS, mode - Simple/Advanced, container runtime and version if applicable).
 - **Suggested fix**, if you have one.
 
 ## Response Timeline
@@ -46,40 +46,40 @@ When reporting, please provide:
 
 The following areas are in scope for security reports:
 
-- **Subprocess execution** — command injection via Docker/Podman CLI calls,
+- **Subprocess execution** - command injection via Docker/Podman CLI calls,
   the managed Java process (Simple mode), or any other shell-out. All
   subprocess calls must build an argv array; shell-string interpolation is
   a reportable bug (see `CONTRIBUTING.md` § Scope boundaries).
-- **Server jar download and verification** — bypass or weakening of the
+- **Server jar download and verification** - bypass or weakening of the
   SHA-1 verification MineUI performs before running an official Minecraft
   server jar in Simple mode.
-- **RCON console** — command injection or allowlist bypass in the RCON
+- **RCON console** - command injection or allowlist bypass in the RCON
   command panel.
-- **Mods & Plugins** — path traversal or unsafe file handling in upload,
+- **Mods & Plugins** - path traversal or unsafe file handling in upload,
   URL download, or delete flows.
-- **Configuration editor** — path traversal outside the intended
+- **Configuration editor** - path traversal outside the intended
   `server.properties` / `config/` scope.
-- **World backups** — path traversal or archive extraction issues
+- **World backups** - path traversal or archive extraction issues
   (zip-slip style) in backup create/restore.
-- **Tauri IPC surface** — any command reachable from the frontend that
+- **Tauri IPC surface** - any command reachable from the frontend that
   bypasses intended capability/permission scoping in
   `src-tauri/capabilities/`, or a mismatch between `docs/v2-contract.md`
   and the actual IPC implementation that grants excess access.
-- **Container attachment (Advanced mode)** — unauthorized access to a
+- **Container attachment (Advanced mode)** - unauthorized access to a
   container's filesystem or Docker/Podman socket beyond the attached
   server.
-- **Container creation (Advanced mode)** — argument or environment
+- **Container creation (Advanced mode)** - argument or environment
   injection into the runtime `run` call, the generated RCON password
   reaching an argv or a log, or the create flow touching a container or
   volume it did not just create.
-- **Container deletion (Advanced mode)** — a container or data volume
+- **Container deletion (Advanced mode)** - a container or data volume
   removed without the explicit confirmed request, a volume removed although
   only the container was to go, a host folder deleted, or deletion reaching
   a container other than the one the server points at.
-- **Server profiles** — one profile's commands, events or files reaching
+- **Server profiles** - one profile's commands, events or files reaching
   another profile (a `serverId` resolving outside `servers/<id>/`, or
   events delivered under the wrong server).
-- **Secrets and credentials** — RCON passwords or other locally stored
+- **Secrets and credentials** - RCON passwords or other locally stored
   credentials leaking to logs, disk in plaintext where avoidable, or the
   frontend bundle.
 

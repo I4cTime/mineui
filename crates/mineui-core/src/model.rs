@@ -690,7 +690,7 @@ pub struct ModpackRef {
 pub struct ModpackZipInfo {
     pub name: String,
     pub mc_version: String,
-    /// "forge", "neoforge", "fabric", "quilt" — from the primary mod loader.
+    /// "forge", "neoforge", "fabric", "quilt" - from the primary mod loader.
     pub loader: Option<String>,
     pub loader_version: Option<String>,
     /// Files the manifest lists (the image downloads them).

@@ -1,10 +1,10 @@
 /**
- * Shared Motion presets for MineUI — reads the per-theme `--motion-*` CSS
+ * Shared Motion presets for MineUI - reads the per-theme `--motion-*` CSS
  * custom properties (docs/theme-contract.md §6) instead of hardcoding
  * durations/easings per component.
  *
  * Themes switch at runtime via `data-theme` on <html> (see Navbar.tsx), so
- * these are **functions**, not module-level constants — call them at
+ * these are **functions**, not module-level constants - call them at
  * render time (or inside an effect keyed on theme) to pick up the value
  * that is current for whatever theme is active *right now*. Module-level
  * constants would freeze in whatever theme happened to be active when the
@@ -30,7 +30,7 @@ export interface MotionTokens {
   ease: Easing;
 }
 
-/** Deepslate's values — the `:root` default theme (theme-contract.md §4). */
+/** Deepslate's values - the `:root` default theme (theme-contract.md §4). */
 const FALLBACK_MS: Record<DurationName, number> = {
   fast: 120,
   base: 180,
@@ -64,7 +64,7 @@ function parseEase(raw: string, fallback: Easing): Easing {
 /**
  * Read the *currently active* theme's motion tokens straight off
  * `document.documentElement`. Safe to call during SSR (returns the
- * deepslate fallback) and safe to call on every render — it's a handful of
+ * deepslate fallback) and safe to call on every render - it's a handful of
  * `getPropertyValue` calls, not a subscription.
  */
 export function getMotionTokens(): MotionTokens {
@@ -96,7 +96,7 @@ export function transition(
  * spring ("true springs (stiffness ~220, damping ~26) welcome in Motion
  * presets") rather than a tween approximating overshoot. Everywhere else,
  * fall back to the themed tween. Use for interactive/gesture-driven moves
- * (shared layout, active-nav pill, sheet-style entrances) — not for
+ * (shared layout, active-nav pill, sheet-style entrances) - not for
  * ambient/decorative motion.
  */
 export function interactiveTransition(overrides: Partial<Transition> = {}): Transition {
@@ -108,13 +108,13 @@ export function interactiveTransition(overrides: Partial<Transition> = {}): Tran
   return transition("base", overrides);
 }
 
-/** Zero-duration transition — the reduced-motion collapse target. */
+/** Zero-duration transition - the reduced-motion collapse target. */
 export const REDUCED: Transition = { duration: 0 };
 
 /**
  * Collapse a transition when the user prefers reduced motion. Most Motion
  * components in this app rely on the global `<MotionConfig
- * reducedMotion="user">` in app/layout.tsx and don't need this — reach for
+ * reducedMotion="user">` in app/layout.tsx and don't need this - reach for
  * it only where a transform/scale animation is load-bearing enough that
  * you want an explicit, deliberate reduced-motion branch (e.g. a signature
  * moment) rather than relying on MotionConfig's automatic transform-strip.
@@ -131,7 +131,7 @@ export function fadeIn(speed: DurationName = "base"): Variants {
   };
 }
 
-/** Fade + rise — the standard content entrance (page sections, cards). */
+/** Fade + rise - the standard content entrance (page sections, cards). */
 export function fadeUp(speed: DurationName = "base", distance = 16): Variants {
   return {
     hidden: { opacity: 0, y: distance },
@@ -140,11 +140,11 @@ export function fadeUp(speed: DurationName = "base", distance = 16): Variants {
 }
 
 /**
- * Fade + rise + scale — for card/KPI mounts and signature "settle" moments
+ * Fade + rise + scale - for card/KPI mounts and signature "settle" moments
  * (deepslate's contract calls this out by name: "0.96→1 place-pop"). The
  * per-theme easing curve is what actually differentiates the four themes'
  * character here (deepslate: crisp snap; quantum: fluid bloom; softglass:
- * springy overshoot; phosphor: opacity/clip only — see scaleIn's phosphor
+ * springy overshoot; phosphor: opacity/clip only - see scaleIn's phosphor
  * guard below).
  */
 export function scaleIn(speed: DurationName = "base", fromScale = 0.96): Variants {
@@ -162,7 +162,7 @@ export function scaleIn(speed: DurationName = "base", fromScale = 0.96): Variant
 /**
  * Stagger container for lists/grids of cards. Children should use
  * `fadeUp()`/`scaleIn()` (or their own `hidden`/`show` variants) and need
- * no transition of their own — timing flows from this parent.
+ * no transition of their own - timing flows from this parent.
  *
  * @example
  * <motion.section initial="hidden" animate="show" variants={listStagger()}>
@@ -185,7 +185,7 @@ export function listStagger(stagger: DurationName = "fast", delayChildren = 0): 
 /**
  * Standard page-enter pair used by every page: a staggering container and a
  * scale-in card variant. Recomputed on every render so a runtime theme
- * switch is picked up (docs/theme-contract.md §6) — same rule as calling
+ * switch is picked up (docs/theme-contract.md §6) - same rule as calling
  * listStagger()/scaleIn() inline, now in one place.
  */
 export function usePageMotion() {

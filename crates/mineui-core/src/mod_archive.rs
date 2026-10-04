@@ -1,5 +1,5 @@
 //! `unpack_mod_archive` (contract §3.5, §6.2a): install the `.jar` files that
-//! are *inside* a `.zip` — a zipped folder of mods, or a server pack.
+//! are *inside* a `.zip` - a zipped folder of mods, or a server pack.
 //!
 //! The archive is unpacked host-side into a private temp dir, never inside
 //! the container. Entry names are never used as paths: only a selected
@@ -43,7 +43,7 @@ fn is_jar(name: &str) -> bool {
     name.to_ascii_lowercase().ends_with(".jar")
 }
 
-/// §6.2a selection — pure, on entry names only (index = position in `names`).
+/// §6.2a selection - pure, on entry names only (index = position in `names`).
 pub fn select_entries(names: &[String], target: ModTarget) -> Selection {
     // Files only, `\` read as `/`, macOS resource forks dropped.
     let files: Vec<(usize, Vec<&str>)> = names
@@ -167,7 +167,7 @@ fn extract_with_limits(
                 "this is a {source} modpack file: it lists mods to download instead of containing them. Add a new server and create it from the modpack instead."
             ),
             None => format!(
-                "no .jar files found in the archive — expected them at the top level or in a {}/ folder",
+                "no .jar files found in the archive - expected them at the top level or in a {}/ folder",
                 target.dir_name()
             ),
         }));
@@ -242,7 +242,7 @@ async fn place_dir(
     }
 }
 
-/// Where the archive comes from — exactly one of the two.
+/// Where the archive comes from - exactly one of the two.
 enum Source<'a> {
     File(&'a str),
     Url(&'a str),
@@ -285,7 +285,7 @@ async fn acquire(
             let name = crate::validate::download_filename(&parsed, filename)?;
             if !name.to_ascii_lowercase().ends_with(".zip") {
                 return Err(Error::InvalidInput(
-                    "only a .zip archive can be unpacked — the link (or the file name given) must end in .zip".into(),
+                    "only a .zip archive can be unpacked - the link (or the file name given) must end in .zip".into(),
                 ));
             }
             let download_id = uuid::Uuid::new_v4().to_string();
@@ -497,7 +497,7 @@ mod tests {
             ModTarget::Mods,
         );
         // `../../evil.jar` and `/abs/root.jar` are nested entries, not root
-        // jars — and had they been picked, only the basename would be used.
+        // jars - and had they been picked, only the basename would be used.
         assert_eq!(picked(&s), ["we_ird_name.jar", "a.jar"]);
         assert!(s.picked.iter().all(|p| !p.filename.contains(['/', '\\'])));
     }

@@ -34,13 +34,13 @@ import {
 } from "@/app/lib/ipc";
 
 const formatPercent = (value: number | null) =>
-  value === null ? "—" : `${value.toFixed(1)}%`;
+  value === null ? "-" : `${value.toFixed(1)}%`;
 
 const formatMspt = (value: number | null) =>
-  value === null ? "—" : `${value.toFixed(2)} ms`;
+  value === null ? "-" : `${value.toFixed(2)} ms`;
 
 const formatUptime = (metrics: Metrics | null) => {
-  if (!metrics) return "—";
+  if (!metrics) return "-";
   let seconds = metrics.uptimeSeconds;
   if (seconds === null && metrics.startedAt) {
     const started = new Date(metrics.startedAt);
@@ -48,7 +48,7 @@ const formatUptime = (metrics: Metrics | null) => {
       seconds = Math.max(0, Math.floor((Date.now() - started.getTime()) / 1000));
     }
   }
-  if (seconds === null) return "—";
+  if (seconds === null) return "-";
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${minutes}m`;
@@ -57,13 +57,13 @@ const formatUptime = (metrics: Metrics | null) => {
 // Composes core ProgressCircle at a ~110px size with a centered value/sublabel
 // overlay. HeroUI's ProgressCircle keeps a fixed internal 36x36 viewBox/radius
 // (see progress-circle.tsx: CENTER/RADIUS/CIRCUMFERENCE are module constants)
-// and scales purely via the `.progress-circle__track` CSS box size — the
+// and scales purely via the `.progress-circle__track` CSS box size - the
 // FillCircle's stroke-dasharray/dashoffset are computed from that fixed
 // radius, so overriding cx/cy/r/strokeWidth/viewBox to arbitrary values (as
 // this previously did) desyncs the dash math from the actual rendered
 // circle, producing tiny broken arc fragments. Enlarge via a Tailwind size
 // class on Track only, per the documented "Sizes"/"Passing Tailwind CSS
-// classes" pattern — never touch the SVG geometry props.
+// classes" pattern - never touch the SVG geometry props.
 type RingTone = "accent" | "success" | "warning" | "danger";
 
 const TONE_TEXT: Record<RingTone, string> = {
@@ -173,7 +173,7 @@ export default function StatusPage() {
   const { overview, activeId } = useServers();
   const serverEntry = overview.find((item) => item.id === activeId);
   // Shared app-wide mode (app/components/ModeProvider.tsx), not the
-  // payload's own `serverState.mode` — this is what makes the "Container:"/
+  // payload's own `serverState.mode` - this is what makes the "Container:"/
   // "Process:" labeling below (and the network/disk-IO fallback copy)
   // update the instant a navbar toggle fires instead of waiting on the next
   // 30s poll or state event to notice the backend agrees.
@@ -239,7 +239,7 @@ export default function StatusPage() {
   }, [serverState, mode]);
 
   const tpsDisplay = useMemo(() => {
-    if (!metrics?.tps) return metrics && serverState?.phase === "running" ? NOT_REPORTED : "—";
+    if (!metrics?.tps) return metrics && serverState?.phase === "running" ? NOT_REPORTED : "-";
     if (!Number.isFinite(metrics.tps.one)) return metrics.tps.raw;
     return `${metrics.tps.one.toFixed(1)} / ${metrics.tps.five.toFixed(1)} / ${metrics.tps.fifteen.toFixed(1)}`;
   }, [metrics, serverState]);
@@ -258,10 +258,10 @@ export default function StatusPage() {
     if (phase === null) return `MineUI can't read the server's state: ${serverEntry.error ?? "unknown error"}`;
     if (phase === "not-created") return "Not set up yet.";
     if (phase === "stopped") return "Stopped.";
-    if (phase === "crashed") return "Stopped — it crashed.";
-    if (phase === "starting") return "Starting — players can join when this turns green.";
+    if (phase === "crashed") return "Stopped - it crashed.";
+    if (phase === "starting") return "Starting - players can join when this turns green.";
     if (phase === "stopping") return "Stopping.";
-    if (status?.online) return `Running — players can join at ${address}.`;
+    if (status?.online) return `Running - players can join at ${address}.`;
     return `Running, but MineUI can't reach it at ${address}: ${status?.error ?? statusError ?? "no answer"}`;
   })();
   const reachable = phase === "running" && status?.online === true;
@@ -349,7 +349,7 @@ export default function StatusPage() {
               />
               <MetricRing
                 value={Math.min((metrics?.tps?.one ?? 0) * 5, 100)}
-                label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "—"}
+                label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "-"}
                 title="Game speed (TPS)"
                 tone={ringsTone.tps}
               />
@@ -381,7 +381,7 @@ export default function StatusPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Version:</span>
-                  <span>{status?.version ?? "—"}</span>
+                  <span>{status?.version ?? "-"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Players:</span>
@@ -391,16 +391,16 @@ export default function StatusPage() {
                 </div>
                 <div className="flex justify-between">
                   <span>Ping:</span>
-                  <span className="font-pixel-num">{status?.pingMs != null ? `${status.pingMs}ms` : "—"}</span>
+                  <span className="font-pixel-num">{status?.pingMs != null ? `${status.pingMs}ms` : "-"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>MOTD:</span>
-                  <span className="truncate max-w-37.5">{status?.motd ?? "—"}</span>
+                  <span className="truncate max-w-37.5">{status?.motd ?? "-"}</span>
                 </div>
                 <Details>
                   <div className="flex justify-between">
                     <span>Answered through:</span>
-                    <span>{status?.source ?? "—"}</span>
+                    <span>{status?.source ?? "-"}</span>
                   </div>
                 </Details>
               </Card.Content>
@@ -438,7 +438,7 @@ export default function StatusPage() {
                         ? `${formatMspt(metrics.mspt.one)} / ${formatMspt(metrics.mspt.five)} / ${formatMspt(metrics.mspt.fifteen)}`
                         : phase === "running"
                           ? NOT_REPORTED
-                          : "—"}
+                          : "-"}
                     </span>
                   </div>
                   {metrics?.mspt && (
@@ -495,7 +495,7 @@ export default function StatusPage() {
                     <span>
                       {metrics
                         ? `${metrics.base}${metrics.enriched ? " + utils" : ""}`
-                        : "—"}
+                        : "-"}
                     </span>
                   </div>
                 </Details>
@@ -528,7 +528,7 @@ export default function StatusPage() {
                   <span className="text-xs">
                     {isSimple
                       ? "Container network stats are available in Advanced mode."
-                      : "—"}
+                      : "-"}
                   </span>
                 )}
               </Card.Content>
@@ -558,7 +558,7 @@ export default function StatusPage() {
                   <span className="text-xs">
                     {isSimple
                       ? "Container block-IO stats are available in Advanced mode."
-                      : "—"}
+                      : "-"}
                   </span>
                 )}
               </Card.Content>
@@ -599,7 +599,7 @@ export default function StatusPage() {
                     <div key={dimension} className="flex justify-between gap-3">
                       <span className="truncate max-w-35">{dimension}</span>
                       <span className="text-xs">
-                        {values.chunks ?? "—"} chunks / {values.entities ?? "—"} entities
+                        {values.chunks ?? "-"} chunks / {values.entities ?? "-"} entities
                       </span>
                     </div>
                   ))}
@@ -648,10 +648,10 @@ export default function StatusPage() {
                               {auditPhrase(entry.action)}
                             </Chip>
                           </Table.Cell>
-                          <Table.Cell className="max-w-48 truncate">{entry.target ?? "—"}</Table.Cell>
+                          <Table.Cell className="max-w-48 truncate">{entry.target ?? "-"}</Table.Cell>
                           <Table.Cell className="max-w-72 text-muted">
                             <span className="block truncate" title={entry.error ?? entry.detail ?? undefined}>
-                              {entry.error ?? entry.detail ?? "—"}
+                              {entry.error ?? entry.detail ?? "-"}
                             </span>
                           </Table.Cell>
                           <Table.Cell className="text-muted">

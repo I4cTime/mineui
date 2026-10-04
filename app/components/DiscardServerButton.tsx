@@ -1,7 +1,7 @@
 "use client";
 
 // On a create flow: back out of a server that was added but never created.
-// Removing it only drops the profile (contract §3.12) — and at this point
+// Removing it only drops the profile (contract §3.12) - and at this point
 // there is no container, instance or world behind it to worry about.
 // The first ("default") server cannot be removed, so it gets no button.
 import { useState } from "react";

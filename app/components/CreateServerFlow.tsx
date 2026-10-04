@@ -244,7 +244,7 @@ export default function CreateServerFlow({
                       >
                         {version.id}
                         {version.latest ? " (latest)" : ""}
-                        {version.type !== "release" ? ` — ${version.type}` : ""}
+                        {version.type !== "release" ? ` - ${version.type}` : ""}
                         <ListBox.ItemIndicator />
                       </ListBox.Item>
                     ))}
@@ -359,7 +359,7 @@ export default function CreateServerFlow({
                   </OutLink>
                   .{" "}
                   <span className="text-muted">
-                    Mojang&apos;s rules for running a server — every Minecraft server has to
+                    Mojang&apos;s rules for running a server - every Minecraft server has to
                     agree to them.
                   </span>
                 </span>
@@ -372,7 +372,7 @@ export default function CreateServerFlow({
               <div className="grid gap-2 rounded-lg border border-border p-4 text-xs text-muted">
                 <div className="flex justify-between">
                   <span>Version</span>
-                  <span className="text-foreground">{selectedVersion ?? "—"}</span>
+                  <span className="text-foreground">{selectedVersion ?? "-"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Memory</span>
@@ -394,7 +394,7 @@ export default function CreateServerFlow({
                       {progress
                         ? `Downloading ${progress.filename}`
                         : "Preparing download..."}
-                      {/* Completion tick — HeroUI's own CSS already animates
+                      {/* Completion tick - HeroUI's own CSS already animates
                           the fill's width (progress-bar.css), so this is a
                           separate element rather than layering a second
                           animation onto that same property. */}

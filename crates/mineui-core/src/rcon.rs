@@ -92,7 +92,7 @@ impl RconClient {
     ///
     /// The command is followed by an empty `TYPE_RESPONSE` packet, which
     /// every Minecraft server echoes back as "Unknown request 0" under its
-    /// own id — a terminator (§3.4). Reading up to it is what makes two
+    /// own id - a terminator (§3.4). Reading up to it is what makes two
     /// loader differences invisible: Forge sends **nothing** for a command
     /// with no output (`say`, `save-all` on some versions), where vanilla and
     /// Fabric send one empty packet; and output over 4096 bytes arrives as
@@ -170,7 +170,7 @@ impl RconClient {
 }
 
 /// Resolve the RCON endpoint for the active mode (§3.4) and run one command
-/// (no allowlist check — callers that accept user input use `run_allowlisted`).
+/// (no allowlist check - callers that accept user input use `run_allowlisted`).
 pub async fn run(core: &crate::Core, command: &str) -> Result<String> {
     let settings = core.settings().await;
     let (host, port, password) = match settings.active_mode {

@@ -1,5 +1,5 @@
 //! Security-relevant validators (contract §6). Pure functions, heavily
-//! tested — except [`ensure_public_download_host`], which resolves DNS for
+//! tested - except [`ensure_public_download_host`], which resolves DNS for
 //! hostname URLs.
 
 use std::net::{IpAddr, ToSocketAddrs};
@@ -198,7 +198,7 @@ pub fn download_url(url: &str) -> Result<reqwest::Url> {
 }
 
 /// True when `ip` is loopback, RFC1918-private, link-local, unique-local,
-/// or unspecified — i.e. never a legitimate public download host (§6.3
+/// or unspecified - i.e. never a legitimate public download host (§6.3
 /// rule 5). IPv4: 127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, 0.0.0.0.
 /// IPv6: ::1, ::, fc00::/7, fe80::/10, plus IPv4-mapped forms of the above.
 pub fn is_private_ip(ip: IpAddr) -> bool {
@@ -207,7 +207,7 @@ pub fn is_private_ip(ip: IpAddr) -> bool {
             v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
         }
         IpAddr::V6(v6) => {
-            // ::ffff:a.b.c.d — apply the IPv4 rules to the mapped address.
+            // ::ffff:a.b.c.d - apply the IPv4 rules to the mapped address.
             if let Some(mapped) = v6.to_ipv4_mapped() {
                 return is_private_ip(IpAddr::V4(mapped));
             }
@@ -379,7 +379,7 @@ mod tests {
             "config/..",
             "config\\a.toml",
             "config/a\\b.toml",
-            "config/$(reboot).toml", // allowed chars-wise? no: rule 4/5 pass but argv-only exec keeps it inert; path itself is fine — see below
+            "config/$(reboot).toml", // allowed chars-wise? no: rule 4/5 pass but argv-only exec keeps it inert; path itself is fine - see below
         ]
         .iter()
         .take(10)
@@ -390,7 +390,7 @@ mod tests {
             );
         }
         // Shell metacharacters are NOT shell-interpreted (argv arrays only), and the
-        // path is still confined to the root — the validator accepts them by design.
+        // path is still confined to the root - the validator accepts them by design.
         assert!(validate_config_rel_path("config/$(cmd).toml").is_ok());
         // But they can never escape the root:
         let root = Path::new("/data");
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn public_host_check_rejects_private_literals() {
-        // IPv4 private/loopback/link-local/unspecified literals — no DNS.
+        // IPv4 private/loopback/link-local/unspecified literals - no DNS.
         for bad in [
             "http://127.0.0.1/mod.jar",
             "http://127.8.9.1:8080/mod.jar",
@@ -548,7 +548,7 @@ mod tests {
     #[test]
     fn public_host_check_resolves_hostnames() {
         // "localhost" resolves to loopback (via /etc/hosts / the stub
-        // resolver — no external DNS needed) → rejected.
+        // resolver - no external DNS needed) → rejected.
         let url = download_url("http://localhost:8080/mod.jar").unwrap();
         let err = ensure_public_download_host(&url, false).unwrap_err();
         assert_eq!(err.code(), "INVALID_INPUT");

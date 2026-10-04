@@ -7,7 +7,7 @@
 // mounts a page with the previous server's mode.
 //
 // Backs onto the same backend settings store every page used to fetch
-// independently (app/lib/ipc.ts get_settings/set_settings) — this component
+// independently (app/lib/ipc.ts get_settings/set_settings) - this component
 // is the single source of truth so every page agrees on the current mode
 // without a remount, instead of each page discovering it on its own mount.
 //
@@ -43,7 +43,7 @@ interface ModeContextValue {
   /** True until get_settings() has resolved (or failed soft) for the server
    *  that is currently open. */
   loading: boolean;
-  /** True while a setMode() call is in flight — gate mode controls on this. */
+  /** True while a setMode() call is in flight - gate mode controls on this. */
   switching: boolean;
   /** Optimistically switches mode and persists it; reverts + toasts on failure. */
   setMode: (mode: Mode) => Promise<void>;
@@ -66,11 +66,11 @@ export default function ModeProvider({
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const loading = !serversReady || loadedFor !== activeId;
   const [switching, setSwitching] = useState(false);
-  // Only the latest refresh() may commit — a slow read for the previous
+  // Only the latest refresh() may commit - a slow read for the previous
   // server must not overwrite the current server's mode.
   const refreshId = useRef(0);
   // Guards against out-of-order resolution when setMode() is called again
-  // (e.g. a fast double toggle) before the first call's round trip finishes —
+  // (e.g. a fast double toggle) before the first call's round trip finishes -
   // only the most recent call is allowed to commit its result.
   const requestId = useRef(0);
 
@@ -114,7 +114,7 @@ export default function ModeProvider({
       try {
         // Re-read current settings first (not the optimistic local mode) so
         // this can't stomp an edit made elsewhere (e.g. the Settings page
-        // draft) between our last read and now — only activeMode changes.
+        // draft) between our last read and now - only activeMode changes.
         const current = await getSettings();
         const normalized = await saveSettingsIpc({
           ...current,

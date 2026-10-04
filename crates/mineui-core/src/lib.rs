@@ -1,4 +1,4 @@
-//! mineui-core — all MineUI v2 business logic (contract §8).
+//! mineui-core - all MineUI v2 business logic (contract §8).
 //!
 //! Pure Rust, no Tauri dependency. The Tauri shell (`src-tauri`) injects
 //! platform paths, forwards `CoreEvent`s to the webview, and delegates every

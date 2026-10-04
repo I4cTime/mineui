@@ -1,6 +1,6 @@
 "use client";
 
-// How to install Podman or Docker — shown wherever advanced mode needs a
+// How to install Podman or Docker - shown wherever advanced mode needs a
 // container runtime and `detect_runtimes` found neither. Opens on the
 // visitor's own OS; the other two are a tab away. Commands are copyable;
 // nothing here runs anything.
@@ -167,7 +167,7 @@ export default function RuntimeInstallHelp({ onRecheck, checking = false }: Runt
         <div className="grid gap-1">
           <span className="font-semibold">Podman or Docker is needed, and neither was found</span>
           <span className="text-xs text-muted">
-            A container server runs inside one of them. Install either — MineUI
+            A container server runs inside one of them. Install either - MineUI
             finds it by itself and uses Podman when both are there. Nothing
             below is run for you; copy the commands into a terminal.
           </span>

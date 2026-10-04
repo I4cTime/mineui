@@ -1,5 +1,5 @@
 //! Live test for listings on a **stopped** container (contract §3.4, §3.5,
-//! §3.8, 2.9.0). **Opt-in** — `#[ignore]`; CI never runs it. Needs podman on
+//! §3.8, 2.9.0). **Opt-in** - `#[ignore]`; CI never runs it. Needs podman on
 //! PATH and the `itzg/minecraft-server:java21` image (pulled if missing). It
 //! creates its own `mineui-live-stopped` container + volume (no Minecraft
 //! server runs: the entrypoint is `sleep`) and removes both afterwards.
