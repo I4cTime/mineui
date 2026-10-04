@@ -652,6 +652,71 @@ pub struct CreateContainerArgs {
     /// Create from a modpack instead of a bare loader (2.7.0).
     #[serde(default)]
     pub modpack: Option<ModpackRef>,
+    /// Extra published ports for mods (2.11.0).
+    #[serde(default)]
+    pub extra_ports: Vec<ExtraPort>,
+}
+
+/// Transport protocol of a published port (2.11.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PortProtocol {
+    Tcp,
+    Udp,
+}
+
+impl PortProtocol {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PortProtocol::Tcp => "tcp",
+            PortProtocol::Udp => "udp",
+        }
+    }
+}
+
+/// An extra published port for a mod; host port = container port (§3.13, 2.11.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtraPort {
+    pub port: u16,
+    pub protocol: PortProtocol,
+}
+
+/// Who can reach a published port (§3.16, 2.11.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PortReach {
+    ThisComputer,
+    Network,
+    Unknown,
+}
+
+/// One extra port of `JoinInfo`, with its reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReachablePort {
+    pub port: u16,
+    pub protocol: PortProtocol,
+    pub reach: PortReach,
+}
+
+/// Result of `get_join_info` (§3.16, 2.11.0).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinInfo {
+    pub port: u16,
+    pub reach: PortReach,
+    pub lan_addresses: Vec<String>,
+    pub extra_ports: Vec<ReachablePort>,
+    pub can_change_ports: bool,
+    pub why_not: Option<String>,
+    pub wsl_nat: bool,
+}
+
+/// Result of `get_public_address` (§3.16, 2.11.0).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicAddress {
+    pub ip: String,
 }
 
 /// Result of `delete_container` (§3.13).

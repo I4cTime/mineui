@@ -261,7 +261,7 @@ export default function StatusPage() {
     if (phase === "crashed") return "Stopped - it crashed.";
     if (phase === "starting") return "Starting - players can join when this turns green.";
     if (phase === "stopping") return "Stopping.";
-    if (status?.online) return `Running - players can join at ${address}.`;
+    if (status?.online) return "Running - players can join. The Dashboard shows the address to give them.";
     return `Running, but MineUI can't reach it at ${address}: ${status?.error ?? statusError ?? "no answer"}`;
   })();
   const reachable = phase === "running" && status?.online === true;

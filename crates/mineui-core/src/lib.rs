@@ -17,6 +17,7 @@ pub mod hub;
 pub mod identity;
 pub mod instance;
 pub mod java;
+pub mod joininfo;
 pub mod lifecycle;
 pub mod logs;
 pub mod machine;

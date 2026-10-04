@@ -1,17 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { FileCode2, Loader2, RefreshCcw, Save, Search } from "lucide-react";
-import {
-  Button,
-  Card,
-  Label,
-  ListBox,
-  TextField,
-  Input,
-  toast,
-} from "@heroui/react";
+import { FileCode2 } from "lucide-react";
+import { Card, toast } from "@heroui/react";
+import ConfigEditor from "@/app/components/ConfigEditor";
+import ConfigFileTree from "@/app/components/ConfigFileTree";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
 import { useServers } from "@/app/components/ServerProvider";
@@ -102,11 +96,12 @@ export default function ConfigPage() {
     return () => setLeaveGuard(null);
   }, [dirty]);
 
-  const filteredFiles = useMemo(() => {
-    const needle = query.toLowerCase().trim();
-    if (!needle) return files;
-    return files.filter((file) => file.toLowerCase().includes(needle));
-  }, [files, query]);
+  const selectFile = (file: string) => {
+    if (file === selected) return;
+    play("click_confirm");
+    if (dirty) setPendingFile(file);
+    else openFile(file);
+  };
 
   const saveFile = async () => {
     if (!selected || !ready || !dirty) return;
@@ -145,8 +140,8 @@ export default function ConfigPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 md:px-6">
+      <div className="min-h-[calc(100dvh-var(--navbar-height))] bg-background">
+        <main className="mx-auto flex min-h-[calc(100dvh-var(--navbar-height))] max-w-[1600px] flex-col gap-6 px-4 py-10 md:px-6">
           <div className="h-16" />
           <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
             <Skeleton height={400} className="rounded-xl" />
@@ -159,132 +154,58 @@ export default function ConfigPage() {
 
   return (
     <div
-      className="min-h-screen"
+      className="min-h-[calc(100dvh-var(--navbar-height))]"
       style={{
         background: `radial-gradient(circle at top, var(--page-wash), transparent 60%), var(--background)`,
       }}
     >
       <motion.main
-        className="page-main mx-auto flex max-w-6xl flex-col gap-6 px-4 pt-5 pb-10 md:px-6"
+        className="page-main mx-auto flex max-w-[1600px] flex-col gap-6 px-4 pt-5 pb-6 md:px-6"
         initial="hidden"
         animate="show"
         variants={containerMotion}
       >
         <PageHeader title="Server Config Editor" icon={FileCode2} />
 
-        <motion.section className="grid gap-6 lg:grid-cols-[320px_1fr]" variants={containerMotion}>
-          <motion.div variants={cardMotion}>
-            <Card className="flex flex-col gap-4 p-5 h-full">
-              <div className="flex items-center gap-2">
-                <Search size={16} className="text-muted" />
-                <TextField className="w-full">
-                  <Label className="sr-only">Search files</Label>
-                  <Input
-                    placeholder="Search files"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                </TextField>
-              </div>
-              <div className="max-h-[520px] overflow-auto text-sm">
-                {filteredFiles.length ? (
-                  <ListBox
-                    aria-label="Config files"
-                    selectionMode="single"
-                    selectedKeys={selected ? new Set([selected]) : new Set()}
-                    onSelectionChange={(keys) => {
-                      const next = Array.from(keys as Set<string>)[0];
-                      if (!next || String(next) === selected) return;
-                      play("click_confirm");
-                      if (dirty) {
-                        setPendingFile(String(next));
-                      } else {
-                        openFile(String(next));
-                      }
-                    }}
-                  >
-                    {filteredFiles.map((file) => (
-                      <ListBox.Item key={file} id={file} textValue={file}>
-                        {file}
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
-                    ))}
-                  </ListBox>
-                ) : (
-                  <span className="text-muted">
-                    {files.length
-                      ? `No files match “${query.trim()}”.`
-                      : "No config files yet - start the server once to create them."}
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-muted">
-                Shows server.properties and the text files in the server&apos;s config
-                folder. Other files are not editable here.
-              </span>
+        <motion.section
+          className="grid min-h-0 gap-6 lg:h-[calc(100dvh-var(--navbar-height)-8.5rem)] lg:min-h-[420px] lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
+          variants={containerMotion}
+        >
+          <motion.div variants={cardMotion} className="flex min-h-0 flex-col">
+            <Card className="flex max-h-[360px] min-h-0 flex-1 flex-col gap-4 p-5 lg:max-h-none">
+              <ConfigFileTree
+                files={files}
+                selected={selected}
+                dirty={dirty}
+                query={query}
+                onQueryChange={setQuery}
+                onSelect={selectFile}
+              />
             </Card>
           </motion.div>
 
-          <motion.div variants={cardMotion}>
-            <Card className="flex flex-col gap-4 p-5">
-              <Card.Header className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-pixel text-xs tracking-wide text-accent">
-                    {selected ?? "Select a file"}
-                  </span>
-                  {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onPress={saveFile}
-                    isDisabled={saving || !dirty}
-                    onMouseEnter={() => play("hover")}
-                  >
-                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    {saving ? "Saving..." : "Save"}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onPress={() => {
-                      play("click_confirm");
-                      setConfirmOpen(true);
-                    }}
-                    isDisabled={restarting || !running}
-                    onMouseEnter={() => play("hover")}
-                  >
-                    <RefreshCcw size={16} />
-                    Restart to apply
-                  </Button>
-                </div>
-              </Card.Header>
-              <Card.Content className="grid gap-3">
-                {fileError && selected && (
-                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger p-3 text-sm">
-                    <span>
-                      Could not open {selected}: {fileError}
-                    </span>
-                    <Button size="sm" variant="secondary" onPress={() => openFile(selected)}>
-                      Try again
-                    </Button>
-                  </div>
-                )}
-                <textarea
-                  aria-label={selected ? `Contents of ${selected}` : "File contents"}
-                  className="min-h-[520px] w-full resize-y rounded-lg border border-field-border bg-field p-3 font-mono text-xs text-foreground disabled:opacity-60"
-                  value={content}
-                  disabled={!ready}
-                  onChange={(event) => setContent(event.target.value)}
-                  placeholder={
-                    !selected
-                      ? "Select a file to load its contents."
-                      : fileError
-                        ? ""
-                        : ready
-                          ? "This file is empty."
-                          : `Opening ${selected}…`
-                  }
-                />
-              </Card.Content>
+          <motion.div variants={cardMotion} className="flex min-h-0 flex-col">
+            <Card className="h-[calc(100dvh-12rem)] min-h-[480px] flex-1 p-5 lg:h-auto lg:min-h-0">
+              <ConfigEditor
+                selected={selected}
+                content={content}
+                onContentChange={setContent}
+                ready={ready}
+                dirty={dirty}
+                saving={saving}
+                restarting={restarting}
+                running={running}
+                fileError={fileError}
+                onSave={saveFile}
+                onRevert={() => {
+                  if (loaded) setContent(loaded.content);
+                }}
+                onRestart={() => {
+                  play("click_confirm");
+                  setConfirmOpen(true);
+                }}
+                onRetry={() => selected && openFile(selected)}
+              />
             </Card>
           </motion.div>
         </motion.section>

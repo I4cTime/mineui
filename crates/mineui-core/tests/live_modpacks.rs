@@ -45,6 +45,7 @@ fn args(name: &str, port: u16, source: ModpackSource, project: &str) -> CreateCo
             source,
             project: project.into(),
         }),
+        extra_ports: vec![],
     }
 }
 

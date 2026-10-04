@@ -24,6 +24,7 @@ import { useMode } from "@/app/components/ModeProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
+import JoinInfoCard from "@/app/components/JoinInfoCard";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import ServerIdentity from "@/app/components/ServerIdentity";
 import ServersOverview from "@/app/components/ServersOverview";
@@ -135,8 +136,7 @@ export default function Home() {
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
-  const { active: activeServer, activeId, overview } = useServers();
-  const address = overview.find((item) => item.id === activeId)?.address ?? null;
+  const { active: activeServer } = useServers();
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
@@ -635,11 +635,6 @@ export default function Home() {
                       <div className="text-lg font-semibold">{CONDITION_LABEL[condition]}</div>
                       {condition === "online" && (
                         <>
-                          {address && (
-                            <div className="text-muted">
-                              Players join at <span className="font-mono">{address}</span>
-                            </div>
-                          )}
                           <div className="text-muted">Version: {status?.version ?? "unknown"}</div>
                           <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
                           <div className="text-muted font-pixel-num">
@@ -805,6 +800,10 @@ export default function Home() {
                   </KPI.Footer>
                 </KPI>
               </motion.div>
+            </motion.section>
+
+            <motion.section variants={cardMotion} initial="hidden" animate="show">
+              <JoinInfoCard online={serverOnline} />
             </motion.section>
           </>
         )}

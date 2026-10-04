@@ -1172,6 +1172,7 @@ for the targeted profile, with the loader the user picks.
 | --- | --- | --- | --- | --- | --- |
 | `create_container` | `{ args: CreateContainerArgs }` | `ServerState` | advanced | `provision::create` | - (new) |
 | `delete_container` | `{ confirm: true; deleteData: boolean }` | `DeletedContainer` | advanced | `provision::delete` | - (new, 2.7.0) |
+| `update_container_ports` | `{ exposeToNetwork: boolean; extraPorts: ExtraPort[]; confirm: true }` | `ServerState` | advanced | `provision::update_ports` | - (new, 2.11.0) |
 
 ```ts
 type ContainerLoader =
@@ -1197,7 +1198,13 @@ type CreateContainerArgs = {
   /** 2.7.0. Create the server from a modpack instead of a bare loader; null
    *  or absent = no modpack. `loader` is ignored when set (the pack decides). */
   modpack?: ModpackRef | null;
+  /** 2.11.0. Extra published ports for mods; absent = none. */
+  extraPorts?: ExtraPort[];
 };
+
+type PortProtocol = "tcp" | "udp";
+/** 2.11.0. An extra published port for a mod; host port = container port. */
+type ExtraPort = { port: number; protocol: PortProtocol };
 
 type ModpackSource = "modrinth" | "curseforge";
 
@@ -1222,11 +1229,15 @@ Sequence (first failure wins; nothing is created before step 7):
    slug, must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`; and `mcVersion` must be a
    concrete version, not `LATEST` - it is what selects the Java image tag in step 7
    (for CurseForge it is used for nothing else), and a modpack on the wrong Java
-   does not start.
+   does not start. Extra ports (2.11.0, "the extra-port rules", also used by
+   `update_container_ports`): at most 16; each port 1-65535; no two with the same
+   port and protocol; a `tcp` extra port may not equal the game port or the RCON
+   port (a `udp` port with the game port's number is allowed - other protocol).
 4. Resolve the runtime (`RUNTIME_NOT_FOUND`).
 5. A container with that name already exists → `CONTAINER_EXISTS` (attach to it in
    settings instead - this command never touches an existing container).
-6. Either host port cannot be bound right now → `INVALID_INPUT` ("port N is already
+6. Either host port (the game and RCON ports; extra ports are left to the
+   runtime) cannot be bound right now → `INVALID_INPUT` ("port N is already
    in use"). Checked host-side with a throwaway listener; the runtime's own check
    in step 7 remains the authority.
 7. Pick the image tag from the Java the version needs - `javaVersion.majorVersion`
@@ -1237,11 +1248,19 @@ Sequence (first failure wins; nothing is created before step 7):
    ```
    run -d --name <containerName>
        --env-file <tmpfile>
+       --label studio.i4c.mineui.managed=1           # 2.11.0
        -p [<bind>:]<gamePort>:25565    # bind = 0.0.0.0 (exposeToNetwork) or 127.0.0.1
        -p [127.0.0.1:]<rconPort>:25575
+       -p [<bind>:]<port>:<port>[/udp]               # 2.11.0, once per extra port
        -v <containerName>-data:/data
        docker.io/itzg/minecraft-server:<tag>
    ```
+
+   Extra ports (2.11.0) follow the game port's bind rule, including the
+   no-address case below, and are published with host port = container port;
+   `udp` ones carry the `/udp` suffix. The label (2.11.0) marks the container as
+   one MineUI made, so `update_container_ports` may rebuild it; containers made
+   before 2.11.0 do not have it (see the shape check in §3.16).
 
    **A CurseForge pack from a zip** (2.8.0): `modpack.source = "curseforge-zip"`
    with `project` = the host path of a zip exported by the CurseForge app
@@ -1359,6 +1378,58 @@ guard, so the frontend must always show the container's name. Audited as
 `remove_server` (§3.12) still never deletes anything by itself; the frontend offers
 "also delete its container" by calling `delete_container` first.
 
+#### `update_container_ports` (2.11.0)
+
+A container's published ports are fixed when it is created, so a server made
+"this computer only" could never be opened to the LAN, and a mod that needs its
+own port (Simple Voice Chat: 24454/udp) could not be reached. This command
+rebuilds the profile's container with other ports and keeps everything else:
+image, environment, data volume.
+
+Sequence (first failure wins; nothing changes before step 9):
+
+1. Profile not in advanced mode → `WRONG_MODE`.
+2. `confirm !== true` → `INVALID_INPUT`.
+3. `extraPorts` per the extra-port rules (§3.13 step 3), against the profile's
+   `queryPort` (game) and `rconPort` → `INVALID_INPUT`.
+4. Resolve the runtime (`RUNTIME_NOT_FOUND`); the profile's container does not
+   exist → `CONTAINER_NOT_FOUND`; it is not stopped (running, paused, starting) →
+   `SERVER_RUNNING` ("Stop the server before changing its ports.").
+5. `canChangePorts` (§3.16) false → `INVALID_INPUT` with the `whyNot` text.
+6. A container named `<containerName>-mineui-old` already exists →
+   `INVALID_INPUT` naming it (a leftover of an interrupted change; MineUI never
+   deletes it on its own - the user inspects and removes it).
+7. Read from the existing container: its image reference (`.Config.Image`), its
+   environment (`inspect_env`), and its `/data` named volume. Variables the image
+   itself defines with the same value (`image inspect` of that image, e.g. `PATH`,
+   `JAVA_HOME`) are dropped so the new container takes them from the image again;
+   everything else - `EULA`, `TYPE`, `VERSION`, `MEMORY`, `RCON_PASSWORD`, modpack
+   variables - is written to an env file exactly like creation (`<app-data-dir>/tmp/`,
+   `0o600`, deleted right after) and never appears in an argv. No named volume at
+   `/data` → `INVALID_INPUT` (the world could not follow).
+8. The new bindings must be bindable right now: a host-side throwaway listener
+   (TCP, or UDP for a `udp` extra port) on the bind address, for the game port and
+   every extra port → `INVALID_INPUT` ("port N is already in use"). `create` does
+   not check bindings, so without this a taken port would only show at the
+   first start.
+9. Stop the profile's log stream. `rename <containerName>
+   <containerName>-mineui-old`, then `create` (not started - the user starts it) with the same name, the env file, the label, the
+   volume at `/data`, the image, and the ports: game `queryPort`→25565 and every
+   extra port with the bind of `exposeToNetwork` (the §3.13 rule, including the
+   WSL no-address case), RCON `rconPort`→25575 local. A pids-limit failure is
+   retried once with `--pids-limit=0` as in §3.13.
+10. Success → `rm -f <containerName>-mineui-old` (its volume is the new
+   container's volume and is never removed). Any failure in step 9 → remove the
+   half-made new container, rename the old one back, then `CONTAINER_CREATE_FAILED`
+   with the runtime's stderr. If even the rename back fails the message names
+   `<containerName>-mineui-old` so the user can recover it.
+11. Return `lifecycle::state` (phase `stopped`).
+
+The profile's settings are not changed (game and RCON ports stay what they were;
+only the publication changes). Audited as `container.ports` (target = container
+name, detail = `network` or `this computer`, then `; +<port>/<protocol>` per extra
+port).
+
 ### 3.14 Modpack search (2.7.0)
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
@@ -1462,7 +1533,7 @@ type AppDir = "data" | "config" | "server";
   user name or password, use the default port, and have a host exactly equal to one
   of: `mineui.i4c.studio`, `github.com`, `aka.ms`, `podman.io`,
   `podman-desktop.io`, `docs.docker.com`, `adoptium.net`, `modrinth.com`,
-  `www.curseforge.com`, `ko-fi.com` (no subdomain matching); at most 2048
+  `www.curseforge.com`, `ko-fi.com`, `learn.microsoft.com` (2.11.0) (no subdomain matching); at most 2048
   characters. Anything else → `INVALID_INPUT`. The normalized URL is handed to the
   platform opener as one argv element: Linux `xdg-open <url>`, macOS
   `open <url>`, Windows `explorer.exe <url>` (never `cmd /C start`), spawned
@@ -1474,6 +1545,79 @@ type AppDir = "data" | "config" | "server";
   profile's `settings.simple.instanceDir` in simple mode, `WRONG_MODE` in advanced
   mode (a container has no host folder). The directory must exist
   (`INVALID_INPUT` otherwise, e.g. before an instance is created). Not audited.
+
+### 3.16 Ports and how players join (2.11.0)
+
+`get_public_address` is app-wide (no `serverId`, like §3.15); `get_join_info` takes
+the usual targeting (§3.0).
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `get_join_info` | - | `JoinInfo` | both | `joininfo::join_info` | - (new) |
+| `get_public_address` | - | `{ ip: string }` | both | `Hub::public_address` → `joininfo::public_address` | - (new) |
+
+```ts
+/** Who can reach a published port. */
+type PortReach = "this-computer" | "network" | "unknown";
+
+type JoinInfo = {
+  /** The port players type after the address. */
+  port: number;
+  reach: PortReach;
+  /** This computer's LAN IPv4 addresses, primary first; may be empty. */
+  lanAddresses: string[];
+  extraPorts: (ExtraPort & { reach: PortReach })[];
+  /** True when MineUI can recreate this container with other ports. */
+  canChangePorts: boolean;
+  /** Why not, in the user's words; null when canChangePorts is true. */
+  whyNot: string | null;
+  /** Windows + Podman machine on WSL: the LAN cannot reach WSL ports without
+   *  extra Windows setup. */
+  wslNat: boolean;
+};
+```
+
+`get_join_info` - read-only, never touches the container, not audited:
+
+- **Advanced mode.** `port` = `advanced.queryPort`. The container's published
+  ports are read with `inspect -f` over `.HostConfig.PortBindings` (the
+  configured bindings, present on a stopped container too - `.NetworkSettings.Ports`
+  is empty until it runs), one `<containerPort>/<proto> <hostIp> <hostPort>` line
+  per binding; malformed lines are skipped. Reach per binding: host ip `0.0.0.0`,
+  `::` or empty → `network`; `127.0.0.1` / `::1` → `this-computer`; anything else
+  (one specific interface) → `network`. `reach` is the binding of container port
+  25565/tcp (else of host port `queryPort`/tcp); none found or no container →
+  `unknown`. `extraPorts` = every other binding except RCON (container
+  25575/tcp or host port `rconPort`), sorted by port then protocol, with host port
+  as `port`.
+- `canChangePorts` is true only for a container MineUI can rebuild faithfully: it
+  exists, and it either carries the label `studio.i4c.mineui.managed=1` or has the
+  pre-2.11.0 shape - image repository `itzg/minecraft-server` (optionally under
+  `docker.io/`, any tag) and exactly one mount, the named volume
+  `<containerName>-data` at `/data`. Otherwise `whyNot` says why ("There is no
+  container yet." / "This container was not created by MineUI, so MineUI cannot
+  rebuild it with other ports. Change its ports where you created it." / the
+  runtime error when it cannot be inspected).
+- **Simple mode.** `port` = `simple.serverPort`; `reach` from the instance's
+  `server.properties` `server-ip`: missing, empty or `0.0.0.0`/`::` → `network`, a
+  loopback address → `this-computer`, another address → `network`, no instance →
+  `unknown`. `extraPorts` = `[]`, `canChangePorts` = false, `whyNot` = "A plain
+  server listens on this computer directly - there is nothing to publish. A
+  firewall may still need to allow the port."
+- `lanAddresses`: the primary IPv4 address of this machine, found without sending a
+  packet (a UDP socket bound to `0.0.0.0:0` and `connect`ed to the TEST-NET address
+  `192.0.2.1:9`, then its local address). Loopback (`127/8`), link-local
+  (`169.254/16`), unspecified and broadcast addresses are never returned; no
+  network → `[]`. (Std only; other interfaces are not enumerated.)
+- `wslNat`: Windows, and the Podman machine's provider is `wsl` (`machine::facts`).
+  Always false on Linux/macOS and with Docker.
+
+`get_public_address`: **only ever on an explicit user action - MineUI never asks on
+its own.** One GET to the fixed URL `https://api.ipify.org` (plain-text body = the
+caller's public IPv4 as the internet sees it), 10 s timeout, a `User-Agent` naming
+MineUI and its version (as `check_for_update`). The trimmed body must parse as an IP
+address (≤ 64 bytes); network failure, non-2xx or anything else →
+`DOWNLOAD_FAILED` with a short message. Not audited.
 
 ---
 
@@ -1581,6 +1725,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | `open_app_dir` `"server"` (§3.15, 2.10.0) | opens `instanceDir` | `WRONG_MODE` (no host folder) |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
 | Container create/pull | - | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
+| Ports and joining (§3.16, 2.11.0) | `get_join_info`: `serverPort`, reach from `server-ip`, nothing to publish | `get_join_info` from the container's bindings; `update_container_ports` rebuilds a stopped MineUI container with other ports, on explicit confirmation |
 
 ---
 
@@ -1966,6 +2111,9 @@ export type CreateContainerArgs = {
   /** Create from a modpack instead of a bare loader; `loader` is then
    *  ignored and `mcVersion` must be a concrete version. */
   modpack?: ModpackRef | null;
+  /** 2.11.0. Extra published ports for mods (e.g. Simple Voice Chat 24454/udp);
+   *  at most 16, published like the game port. */
+  extraPorts?: ExtraPort[];
 };
 
 /** Result of delete_container (§3.13). */
@@ -2038,6 +2186,37 @@ export const inspectModpackZip = (sourcePath: string) =>
  *  the image when missing - the first call can take minutes. */
 export const createContainer = (args: CreateContainerArgs) =>
   scoped<ServerState>("create_container", { args });
+
+/* ---------- ports and join info (§3.16, 2.11.0) ---------- */
+
+export type PortProtocol = "tcp" | "udp";
+/** An extra published port for a mod; host port = container port. */
+export type ExtraPort = { port: number; protocol: PortProtocol };
+/** Who can reach a published port. */
+export type PortReach = "this-computer" | "network" | "unknown";
+
+export type JoinInfo = {
+  /** The port players type after the address. */
+  port: number;
+  reach: PortReach;
+  /** This computer's LAN IPv4 addresses, primary first; may be empty. */
+  lanAddresses: string[];
+  extraPorts: (ExtraPort & { reach: PortReach })[];
+  /** True when MineUI can recreate this container with other ports. */
+  canChangePorts: boolean;
+  /** Why not, in the user's words; null when canChangePorts is true. */
+  whyNot: string | null;
+  /** Windows + Podman machine on WSL: the LAN cannot reach WSL ports without extra Windows setup. */
+  wslNat: boolean;
+};
+
+export const getJoinInfo = () => scoped<JoinInfo>("get_join_info");
+/** Explicit user action only. */
+export const getPublicAddress = () => call<{ ip: string }>("get_public_address");
+/** Recreates the stopped container with other published ports; world,
+ *  env and image stay. The caller must have asked the user first. */
+export const updateContainerPorts = (exposeToNetwork: boolean, extraPorts: ExtraPort[]) =>
+  scoped<ServerState>("update_container_ports", { exposeToNetwork, extraPorts, confirm: true });
 
 /* ---------- logs ---------- */
 
@@ -2377,7 +2556,7 @@ Frontend rules:
 | --- | --- |
 | `error` | `Error` enum + serde serialization to `{code,message}` (§1) |
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
-| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, run_detached, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio - **no shell strings anywhere in the crate** |
+| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, inspect_ports, inspect_labels, inspect_image, image_env, rename, run_detached, create, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio - **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
 | `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
@@ -2397,11 +2576,12 @@ Frontend rules:
 | `scheduler` | job engine: due-time math, 30 s tick, run state file, `status`/`run_now` (§3.10) |
 | `audit` | append-only JSONL audit log + rotation, `recent` (§3.11) |
 | `notes` | per-player notes store (§3.11) |
-| `provision` | `create_container` (§3.13): validation, Java → image tag, env file (loader or modpack), run, settings write-back; `delete_container`: confirmed removal, data volume only on request |
+| `provision` | `create_container` (§3.13): validation, Java → image tag, env file (loader or modpack), extra ports and the managed label (2.11.0), run, settings write-back; `delete_container`: confirmed removal, data volume only on request; `update_container_ports` (2.11.0): rename, recreate with new ports, roll back on failure |
 | `modpacks` | `search_modpacks` (§3.14): Modrinth search for server-capable modpacks; modpack reference normalization |
 | `cfpack` | CurseForge pack zips (§3.13, §3.14): manifest reading (`inspect_modpack_zip`), name → slug, the in-container path |
 | `identity` | per-profile identity for the overview (§3.12): one `ps` for the phase + cached container `TYPE`/`VERSION` |
-| `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview`; the app-level roots for §3.15 (`app_info`, `check_for_update`, `open_app_dir`) |
+| `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview`; the app-level roots for §3.15 (`app_info`, `check_for_update`, `open_app_dir`) and §3.16 (`public_address`) |
+| `joininfo` | `get_join_info` + `get_public_address` (§3.16, 2.11.0): published-port reach, the pre-2.11.0 shape check (`can_change_ports`), LAN address discovery, the one ipify GET |
 | `appinfo` | `get_app_info` + `check_for_update` (§3.15, 2.10.0): version/OS facts, the one GitHub latest-release GET, tag normalization and dotted-version comparison |
 | `opener` | `open_url` + `open_app_dir` (§3.15, 2.10.0): the https host allowlist, the per-OS opener argv (`xdg-open` / `open` / `explorer.exe`), detached spawn via `util::prepare_child` |
 

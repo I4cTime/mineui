@@ -11,7 +11,7 @@ contribution process; this file is conventions and constraints only.
 - `pnpm lint` - ESLint
 - `pnpm tauri dev` - full app (Next.js dev server + Tauri window)
 - `pnpm tauri build` - production desktop bundle
-- `cargo test -p mineui-core` - Rust unit tests (222 tests, must stay green)
+- `cargo test -p mineui-core` - Rust unit tests (240 tests, must stay green)
 - `cargo fmt` / `cargo clippy` - run before committing any Rust change
 
 pnpm only. Do not use npm/yarn/bun.
@@ -53,6 +53,9 @@ Do not change either contract as a side effect of unrelated work.
   `deleteData`, and never a bind-mounted host folder. Never remove a
   container or volume as a side effect of anything else - `remove_server`,
   errors, cleanup - except the half-made container a failed create leaves.
+  One more removal exists: `provision::update_ports` (confirmed, server
+  stopped) rebuilds a container with other published ports and removes the
+  old container only after the new one exists - never its volume.
   The UI must show the container's name and require it typed before sending
   `deleteData: true`.
 

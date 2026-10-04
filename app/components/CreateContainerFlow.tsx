@@ -8,10 +8,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Boxes, Container, HardDrive, Loader2, Package, Rocket, type LucideIcon } from "lucide-react";
+import {
+  Boxes,
+  ChevronDown,
+  Container,
+  HardDrive,
+  Loader2,
+  Package,
+  Rocket,
+  type LucideIcon,
+} from "lucide-react";
 import {
   Button,
   Card,
+  Disclosure,
   Input,
   Label,
   ListBox,
@@ -24,6 +34,8 @@ import {
 } from "@heroui/react";
 import DiscardServerButton from "@/app/components/DiscardServerButton";
 import ModpackPicker, { type ModpackChoice } from "@/app/components/ModpackPicker";
+import PortsEditor, { portsProblems } from "@/app/components/PortsEditor";
+import { exposeConsequence } from "@/app/components/NetworkPortsCard";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import OutLink from "@/app/components/OutLink";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -34,6 +46,7 @@ import {
   listMcVersions,
   IpcError,
   type ContainerLoader,
+  type ExtraPort,
   type McVersion,
   type RuntimeProbe,
   type Settings,
@@ -121,6 +134,8 @@ export default function CreateContainerFlow({
   const [gamePort, setGamePort] = useState(settings.advanced.queryPort);
   const [rconPort, setRconPort] = useState(settings.advanced.rconPort);
   const [exposeToNetwork, setExposeToNetwork] = useState(true);
+  const [extraPorts, setExtraPorts] = useState<ExtraPort[]>([]);
+  const [portsOpen, setPortsOpen] = useState(false);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -192,8 +207,10 @@ export default function CreateContainerFlow({
   const loaderMeta = LOADERS.find((item) => item.id === loader);
   const workloadReady =
     kind === "type" || (modpack !== null && version !== "" && version !== LATEST);
+  const portProblems = portsProblems(extraPorts, gamePort, rconPort);
   const canCreate =
     eulaAccepted &&
+    portProblems.length === 0 &&
     containerName.trim() !== "" &&
     gamePort > 0 &&
     rconPort > 0 &&
@@ -214,6 +231,7 @@ export default function CreateContainerFlow({
         gamePort,
         rconPort,
         exposeToNetwork,
+        extraPorts,
         acceptEula: true,
         modpack:
           kind === "modpack" && modpack
@@ -460,12 +478,42 @@ export default function CreateContainerFlow({
               </Switch.Content>
             </Switch>
             <span className="text-xs text-muted">
-              {exposeToNetwork
-                ? `The game port (${gamePort}) is opened on every network interface of this machine.`
-                : "Only this computer can connect. Choose this for a test server."}{" "}
+              {exposeConsequence(exposeToNetwork, gamePort)}{" "}
               RCON - the channel MineUI itself uses to send commands - always stays
               on this computer, with a password MineUI generates.
             </span>
+
+            <Disclosure
+              isExpanded={portsOpen}
+              onExpandedChange={(open) => {
+                play(open ? "toggle_on" : "toggle_off");
+                setPortsOpen(open);
+              }}
+            >
+              <Disclosure.Heading>
+                <Disclosure.Trigger
+                  className="flex w-fit items-center gap-1.5 text-xs text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ outlineColor: "var(--focus)" }}
+                >
+                  Extra ports for mods
+                  {extraPorts.length > 0 && ` (${extraPorts.length})`}
+                  <Disclosure.Indicator className="ms-0 size-auto">
+                    <ChevronDown size={13} />
+                  </Disclosure.Indicator>
+                </Disclosure.Trigger>
+              </Disclosure.Heading>
+              <Disclosure.Content>
+                <Disclosure.Body style={{ padding: "0.5rem 0 0" }}>
+                  <PortsEditor
+                    value={extraPorts}
+                    onChange={setExtraPorts}
+                    gamePort={gamePort}
+                    rconPort={rconPort}
+                    isDisabled={creating}
+                  />
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
 
             <label className="flex items-start gap-3 text-sm">
               <input
@@ -536,7 +584,9 @@ export default function CreateContainerFlow({
                       ? "Give the container a name."
                       : !eulaAccepted
                         ? "Accept the EULA to continue."
-                        : "Check the ports."}
+                        : portProblems.length > 0
+                          ? `Extra ports: ${portProblems[0]}`
+                          : "Check the ports."}
               </span>
             )}
           <Button

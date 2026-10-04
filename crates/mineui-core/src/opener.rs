@@ -24,6 +24,7 @@ pub const ALLOWED_HOSTS: &[&str] = &[
     "modrinth.com",
     "www.curseforge.com",
     "ko-fi.com",
+    "learn.microsoft.com",
 ];
 pub const MAX_URL_CHARS: usize = 2048;
 

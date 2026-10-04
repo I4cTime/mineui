@@ -41,6 +41,7 @@ import {
 import ChangeVersionDialog from "@/app/components/ChangeVersionDialog";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import DeleteContainerButton from "@/app/components/DeleteContainerButton";
+import NetworkPortsCard from "@/app/components/NetworkPortsCard";
 import PageHeader from "@/app/components/PageHeader";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import { formatDateTime } from "@/app/lib/format";
@@ -790,6 +791,14 @@ export default function SettingsPage() {
             </Card.Content>
           </Card>
         </motion.section>
+
+        {/* 1b. Network and ports - Advanced only; has its own Apply because
+            changing ports rebuilds the container (not part of the draft). */}
+        {!isSimple && (
+          <motion.section variants={cardMotion}>
+            <NetworkPortsCard rconPort={draft.advanced.rconPort} />
+          </motion.section>
+        )}
 
         {/* 2. Performance & network - Simple only (a container's are fixed
             at creation, see the note above). */}

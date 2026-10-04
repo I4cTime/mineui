@@ -287,6 +287,7 @@ async fn live_create_container_end_to_end() {
         expose_to_network: false,
         accept_eula: true,
         modpack: None,
+        extra_ports: vec![],
     };
     let state = mineui_core::provision::create(&core, &args).await.unwrap();
     assert_eq!(state.phase, ServerPhase::Running);
