@@ -262,6 +262,47 @@ pub struct InstanceMeta {
     pub created_at: String,
 }
 
+/// `change_instance_version` result (§3.6, 2.10.0).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedInstanceVersion {
+    pub status: InstanceStatus,
+    pub from_version: String,
+    pub to_version: String,
+    pub backup: Option<String>,
+    pub pruned: Vec<String>,
+}
+
+/* ---------- §3.15 app info / updates / opener (2.10.0) ---------- */
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    pub version: String,
+    pub os: String,
+    pub arch: String,
+    pub data_dir: String,
+    pub config_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCheck {
+    pub current: String,
+    pub latest: String,
+    pub newer: bool,
+    pub url: String,
+    pub published_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AppDir {
+    Data,
+    Config,
+    Server,
+}
+
 /* ---------- §3.7 config files ---------- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

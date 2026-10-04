@@ -470,6 +470,49 @@ export const deleteInstance = () =>
   scoped<void>("delete_instance", { confirm: true });
 export const instanceStatus = () => scoped<InstanceStatus>("instance_status");
 
+/** 2.10.0 — what changeInstanceVersion resolves with. */
+export type ChangedInstanceVersion = {
+  status: InstanceStatus;
+  fromVersion: string;
+  toVersion: string;
+  /** Safety backup filename (§3.8); null when there was no world yet. */
+  backup: string | null;
+  /** Archives retention removed while making that backup. */
+  pruned: string[];
+};
+
+/** 2.10.0 — server must be stopped; older (or unknown-direction) targets need
+ *  allowDowngrade. Downloads a server jar and backs up the world first. */
+export const changeInstanceVersion = (mcVersion: string, allowDowngrade?: boolean) =>
+  scoped<ChangedInstanceVersion>("change_instance_version", { mcVersion, allowDowngrade });
+
+/* ---------- app info / updates / opening outside the app (§3.15, 2.10.0) ---------- */
+
+export type AppInfo = {
+  version: string;
+  os: string;
+  arch: string;
+  dataDir: string;
+  configDir: string;
+};
+
+export type UpdateCheck = {
+  current: string;
+  latest: string;
+  newer: boolean;
+  url: string;
+  publishedAt: string | null;
+};
+
+export type AppDir = "data" | "config" | "server";
+
+export const getAppInfo = () => call<AppInfo>("get_app_info");
+/** Explicit user action only — MineUI never checks on its own. */
+export const checkForUpdate = () => call<UpdateCheck>("check_for_update");
+/** https only, allowlisted hosts (§3.15); anything else rejects INVALID_INPUT. */
+export const openUrl = (url: string) => call<void>("open_url", { url });
+export const openAppDir = (which: AppDir) => scoped<void>("open_app_dir", { which });
+
 /* ---------- config files ---------- */
 
 export const listConfigFiles = () =>

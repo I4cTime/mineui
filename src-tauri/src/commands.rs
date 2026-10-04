@@ -10,12 +10,12 @@
 use std::sync::Arc;
 
 use mineui_core::model::{
-    AuditLog, BackupEntry, ConfigFileContent, ConfigFileList, CreateContainerArgs,
-    CreateInstanceArgs, CreatedBackup, DeletedContainer, DownloadedMod, InstanceStatus, JavaCheck,
-    JobRunResult, LogsTail, McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList,
-    PlayerHistory, PlayerNote, PlayerNotes, PlayersResult, RconOutput, RuntimeProbe,
-    SchedulerStatus, ServerList, ServerOverview, ServerState, ServerStatus, UnpackedMods,
-    UploadedMod,
+    AppDir, AppInfo, AuditLog, BackupEntry, ChangedInstanceVersion, ConfigFileContent,
+    ConfigFileList, CreateContainerArgs, CreateInstanceArgs, CreatedBackup, DeletedContainer,
+    DownloadedMod, InstanceStatus, JavaCheck, JobRunResult, LogsTail, McVersion, Metrics,
+    ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory, PlayerNote, PlayerNotes,
+    PlayersResult, RconOutput, RuntimeProbe, SchedulerStatus, ServerList, ServerOverview,
+    ServerState, ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
 };
 use mineui_core::settings::Mode;
 use mineui_core::{Core, Error, Hub, Settings};
@@ -263,6 +263,18 @@ pub async fn instance_status(
     mineui_core::instance::status(&core).await
 }
 
+#[tauri::command]
+pub async fn change_instance_version(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    mc_version: String,
+    allow_downgrade: Option<bool>,
+) -> CmdResult<ChangedInstanceVersion> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::instance::change_version(&core, &mc_version, allow_downgrade.unwrap_or(false))
+        .await
+}
+
 /* ---------- §3.7 config files ---------- */
 
 #[tauri::command]
@@ -477,4 +489,30 @@ pub async fn set_active_server(hub: HubState<'_>, id: String) -> CmdResult<Serve
 #[tauri::command]
 pub async fn get_servers_overview(hub: HubState<'_>) -> CmdResult<Vec<ServerOverview>> {
     Ok(hub.overview().await)
+}
+
+/* ---------- §3.15 app info / updates / opening outside the app (2.10.0) ---------- */
+
+#[tauri::command]
+pub async fn get_app_info(hub: HubState<'_>) -> CmdResult<AppInfo> {
+    Ok(hub.app_info())
+}
+
+#[tauri::command]
+pub async fn check_for_update(hub: HubState<'_>) -> CmdResult<UpdateCheck> {
+    hub.check_for_update().await
+}
+
+#[tauri::command]
+pub async fn open_url(url: String) -> CmdResult<()> {
+    mineui_core::opener::open_url(&url).await
+}
+
+#[tauri::command]
+pub async fn open_app_dir(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    which: AppDir,
+) -> CmdResult<()> {
+    hub.open_app_dir(server_id.as_deref(), which).await
 }

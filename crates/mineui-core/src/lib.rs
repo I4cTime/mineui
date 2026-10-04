@@ -6,6 +6,7 @@
 //! subprocesses use argv arrays; the only `sh -c` scripts are compile-time
 //! constants with zero interpolation.
 
+pub mod appinfo;
 pub mod audit;
 pub mod backups;
 pub mod cfpack;
@@ -26,6 +27,7 @@ pub mod modpacks;
 pub mod mods;
 pub mod mojang;
 pub mod notes;
+pub mod opener;
 pub mod players;
 pub mod provision;
 pub mod query;

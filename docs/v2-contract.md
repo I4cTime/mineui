@@ -724,6 +724,7 @@ Semantics:
 | `create_instance` | `CreateInstanceArgs` | `InstanceStatus` | simple | `instance::create` | — (new) |
 | `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | — (new) |
 | `instance_status` | — | `InstanceStatus` | simple | `instance::status` | — (new) |
+| `change_instance_version` | `{ mcVersion: string; allowDowngrade?: boolean }` | `ChangedInstanceVersion` (2.10.0) | simple | `instance::change_version` | — (new) |
 
 ```ts
 type McVersion = {
@@ -750,6 +751,17 @@ type InstanceStatus = {
   rconConfigured: boolean;        // server.properties has enable-rcon + port + password
   worldExists: boolean;
   createdAt: string | null;       // ISO 8601
+};
+
+/** 2.10.0 — what change_instance_version returns. */
+type ChangedInstanceVersion = {
+  status: InstanceStatus;         // after the change
+  fromVersion: string;
+  toVersion: string;
+  /** Filename of the safety backup (§3.8); null when there was no world yet. */
+  backup: string | null;
+  /** Archives retention (keepLast) removed while making that backup. */
+  pruned: string[];
 };
 ```
 
@@ -802,6 +814,40 @@ Semantics:
   stopped (`SERVER_RUNNING`). Recursively deletes `instanceDir` **only if** it contains
   `mineui-instance.json` (safety latch against deleting an arbitrary configured dir);
   otherwise `INSTANCE_NOT_FOUND`. Clears `settings.simple.mcVersion` to `""`.
+- `change_instance_version` (2.10.0): changes the Minecraft version of the existing
+  instance in place, keeping the world. Sequence (each failure uses the listed code;
+  nothing in `instanceDir` changes before step 6):
+  1. Simple mode only (`WRONG_MODE`); instance initialized (has a readable
+     `mineui-instance.json`, `INSTANCE_NOT_FOUND` otherwise); server stopped
+     (`SERVER_RUNNING`, the same supervisor check as `delete_instance`).
+  2. `mcVersion` (trimmed) equal to the instance's current version →
+     `INVALID_INPUT` ("already on …"). Resolve it in the manifest and fetch its
+     per-version JSON as `create_instance` step 3 → `INVALID_INPUT` if unknown or
+     without a server download.
+  3. Direction: the two versions' `releaseTime` from the manifest. Target newer →
+     upgrade. Target older, the same instant, or either time missing/unparseable
+     (e.g. the current version is no longer listed) → treated as a downgrade:
+     without `allowDowngrade: true` → `INVALID_INPUT` saying a world saved by a
+     newer version usually cannot be opened by an older one and that
+     `allowDowngrade` must be set.
+  4. `java_check` against the target's required major → `JAVA_NOT_FOUND` /
+     `JAVA_INCOMPATIBLE`, exactly as `create_instance` step 4.
+  5. Download the target's server jar to a temp file in `instanceDir`
+     (`server.jar.<random>.download`) with `mineui://download-progress` events
+     (`kind: "server-jar"`) and sha1 verification (`CHECKSUM_MISMATCH`). Any failure
+     removes the temp file and leaves the instance untouched.
+  6. Safety backup: when `<instanceDir>/world/` exists, a normal `create_backup`
+     runs (audited `backup.create`, retention applies; its filename is `backup`
+     and what retention removed is `pruned`). A failed backup aborts the change
+     (temp jar removed) — the version never changes without that backup when there
+     is a world. No world yet → `backup: null`, `pruned: []`.
+  7. Swap: the temp jar is renamed over `server.jar` (same directory);
+     `mineui-instance.json` is rewritten atomically with the new `mcVersion`,
+     `jarSha1` and `requiredJavaMajor` (`createdAt` kept); `settings.simple.mcVersion`
+     is persisted. `status` is the `instance_status` after the swap.
+
+  Audited as `instance.change-version` (target = `"<from> → <to>"`, detail = the
+  backup filename), success or failure (§3.11).
 
 ### 3.7 Config file editor
 
@@ -1027,7 +1073,8 @@ type AuditEntry = {
   `deop`/`whitelist` issued through `run_rcon_command` (target = username),
   `backup.create`, `backup.restore`, `backup.delete`, `backup.prune`, `backup.copy`,
   `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `mod.unpack`, `settings.update`,
-  `instance.create`, `instance.delete`, `note.set`, `note.clear`,
+  `instance.create`, `instance.delete`, `instance.change-version` (2.10.0, §3.6),
+  `note.set`, `note.clear`,
   `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
   `server.add`, `server.rename`, `server.remove` (§3.12), `container.create`,
   `container.delete` (§3.13).
@@ -1357,6 +1404,77 @@ type ModpackHit = {
   fix the Minecraft version before `create_container`.
 - Both read-only and not audited.
 
+### 3.15 App info, updates, opening things outside the app (2.10.0)
+
+`get_app_info`, `check_for_update` and `open_url` are app-wide: like §3.12 they take
+**no** `serverId` argument. `open_app_dir` takes the usual `serverId` targeting (§3.0),
+which only matters for `which: "server"`.
+
+| Command | Args | Returns | Mode | Core fn | v1 route |
+| --- | --- | --- | --- | --- | --- |
+| `get_app_info` | — | `AppInfo` | both | `Hub::app_info` → `appinfo::info` | — (new) |
+| `check_for_update` | — | `UpdateCheck` | both | `Hub::check_for_update` → `appinfo::check_for_update` | — (new) |
+| `open_url` | `{ url: string }` | `void` | both | `opener::open_url` | — (new) |
+| `open_app_dir` | `{ which: AppDir }` | `void` | both (`"server"`: simple) | `Hub::open_app_dir` → `opener::open_dir` | — (new) |
+
+```ts
+type AppInfo = {
+  /** MineUI's version (the mineui-core crate version, kept equal to the app's). */
+  version: string;
+  /** Rust `std::env::consts::OS`: "linux" | "windows" | "macos" | … */
+  os: string;
+  /** Rust `std::env::consts::ARCH`: "x86_64" | "aarch64" | … */
+  arch: string;
+  /** App-level data root (`app_data_dir`), not a per-server folder. */
+  dataDir: string;
+  /** App-level config root (`app_config_dir`), not a per-server folder. */
+  configDir: string;
+};
+
+type UpdateCheck = {
+  current: string;               // AppInfo.version
+  latest: string;                // latest release tag without a leading "v"
+  newer: boolean;                // latest > current (dotted numeric comparison)
+  url: string;                   // the release page
+  publishedAt: string | null;    // ISO 8601 from GitHub
+};
+
+type AppDir = "data" | "config" | "server";
+```
+
+- `get_app_info`: read-only, never rejects, not audited. `dataDir`/`configDir` are the
+  roots the shell injected at startup (the `default` profile's dirs, §2.5).
+- `check_for_update`: **only ever on an explicit user action — MineUI never checks on
+  its own.** One GET to the fixed URL
+  `https://api.github.com/repos/I4cTime/mineui/releases/latest` with
+  `Accept: application/vnd.github+json`, a `User-Agent` naming MineUI and its version,
+  and a 10 s timeout. `latest` = `tag_name` trimmed, without a leading `v`/`V`.
+  `newer` compares dot-separated parts numerically, left to right, the shorter one
+  padded with zeros; a `-pre-release` / `+build` suffix is dropped before splitting
+  and a part that is not a number counts as 0. `url` = the release's `html_url` when
+  it starts with `https://github.com/I4cTime/mineui/`, else
+  `https://github.com/I4cTime/mineui/releases/latest`. Network failure, non-2xx, an
+  unparseable body or an empty tag → `DOWNLOAD_FAILED` with a short message. Not
+  audited. MineUI never downloads or installs anything here — the UI offers the link.
+- `open_url`: opens a link in the system browser (the webview's own
+  `target="_blank"` handling is not reliable on every platform, and the app has no
+  shell/opener plugin by design). The URL must parse, use `https`, carry no
+  user name or password, use the default port, and have a host exactly equal to one
+  of: `mineui.i4c.studio`, `github.com`, `aka.ms`, `podman.io`,
+  `podman-desktop.io`, `docs.docker.com`, `adoptium.net`, `modrinth.com`,
+  `www.curseforge.com`, `ko-fi.com` (no subdomain matching); at most 2048
+  characters. Anything else → `INVALID_INPUT`. The normalized URL is handed to the
+  platform opener as one argv element: Linux `xdg-open <url>`, macOS
+  `open <url>`, Windows `explorer.exe <url>` (never `cmd /C start`), spawned
+  through `util::prepare_child`. Only the spawn is checked — the opener's exit
+  status is not (`explorer.exe` exits 1 on success); a spawn failure → `INTERNAL`
+  naming the opener. Not audited.
+- `open_app_dir`: opens a folder in the system file manager with the same opener.
+  `"data"` / `"config"` = `AppInfo.dataDir` / `.configDir`; `"server"` = the targeted
+  profile's `settings.simple.instanceDir` in simple mode, `WRONG_MODE` in advanced
+  mode (a container has no host folder). The directory must exist
+  (`INVALID_INPUT` otherwise, e.g. before an instance is created). Not audited.
+
 ---
 
 ## 4. Event contract
@@ -1460,6 +1578,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | Metrics net/block IO | null (unless future enrichment) | from runtime stats |
 | TPS | RCON `tps` (vanilla: null) | RCON `tps` or server-utils |
 | Instance commands (§3.6) | full | `WRONG_MODE` |
+| `open_app_dir` `"server"` (§3.15, 2.10.0) | opens `instanceDir` | `WRONG_MODE` (no host folder) |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
 | Container create/pull | — | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
 
@@ -2031,6 +2150,49 @@ export const deleteInstance = () =>
   scoped<void>("delete_instance", { confirm: true });
 export const instanceStatus = () => scoped<InstanceStatus>("instance_status");
 
+/** 2.10.0 — what changeInstanceVersion resolves with. */
+export type ChangedInstanceVersion = {
+  status: InstanceStatus;
+  fromVersion: string;
+  toVersion: string;
+  /** Safety backup filename (§3.8); null when there was no world yet. */
+  backup: string | null;
+  /** Archives retention removed while making that backup. */
+  pruned: string[];
+};
+
+/** 2.10.0 — server must be stopped; older (or unknown-direction) targets need
+ *  allowDowngrade. Downloads a server jar and backs up the world first. */
+export const changeInstanceVersion = (mcVersion: string, allowDowngrade?: boolean) =>
+  scoped<ChangedInstanceVersion>("change_instance_version", { mcVersion, allowDowngrade });
+
+/* ---------- app info / updates / opening outside the app (§3.15, 2.10.0) ---------- */
+
+export type AppInfo = {
+  version: string;
+  os: string;
+  arch: string;
+  dataDir: string;
+  configDir: string;
+};
+
+export type UpdateCheck = {
+  current: string;
+  latest: string;
+  newer: boolean;
+  url: string;
+  publishedAt: string | null;
+};
+
+export type AppDir = "data" | "config" | "server";
+
+export const getAppInfo = () => call<AppInfo>("get_app_info");
+/** Explicit user action only — MineUI never checks on its own. */
+export const checkForUpdate = () => call<UpdateCheck>("check_for_update");
+/** https only, allowlisted hosts (§3.15); anything else rejects INVALID_INPUT. */
+export const openUrl = (url: string) => call<void>("open_url", { url });
+export const openAppDir = (which: AppDir) => scoped<void>("open_app_dir", { which });
+
 /* ---------- config files ---------- */
 
 export const listConfigFiles = () =>
@@ -2222,7 +2384,7 @@ Frontend rules:
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
 | `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback |
 | `java` | java discovery + `-version` parsing |
-| `instance` | create/delete/status, `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
+| `instance` | create/delete/status, change version in place (2.10.0), `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
 | `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3) |
 | `mod_archive` | `unpack_mod_archive`: entry selection, bounded host-side extraction, placement (§3.5, §6.2a) |
 | `config_files` | list/read/write over `Runtime` or host fs (§3.7, §6.1) |
@@ -2239,7 +2401,9 @@ Frontend rules:
 | `modpacks` | `search_modpacks` (§3.14): Modrinth search for server-capable modpacks; modpack reference normalization |
 | `cfpack` | CurseForge pack zips (§3.13, §3.14): manifest reading (`inspect_modpack_zip`), name → slug, the in-container path |
 | `identity` | per-profile identity for the overview (§3.12): one `ps` for the phase + cached container `TYPE`/`VERSION` |
-| `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview` |
+| `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview`; the app-level roots for §3.15 (`app_info`, `check_for_update`, `open_app_dir`) |
+| `appinfo` | `get_app_info` + `check_for_update` (§3.15, 2.10.0): version/OS facts, the one GitHub latest-release GET, tag normalization and dotted-version comparison |
+| `opener` | `open_url` + `open_app_dir` (§3.15, 2.10.0): the https host allowlist, the per-OS opener argv (`xdg-open` / `open` / `explorer.exe`), detached spawn via `util::prepare_child` |
 
 `src-tauri` contains: one command fn per §3 row (thin delegation — resolve the
 targeted profile's `Core` via `hub.core(server_id)`, §3.0, then call the listed core
