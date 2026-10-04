@@ -1,8 +1,8 @@
 /* ============================================================
    Theme: Phosphor Amber  (id: phosphor)
-   "k9s grew a GPU" — near-black ops console, hairline grid,
+   "k9s grew a GPU" - near-black ops console, hairline grid,
    amber phosphor accent, mono promoted to UI labels.
-   Spec: docs/aesthetic-directions.md — Direction 3.
+   Spec: docs/aesthetic-directions.md - Direction 3.
    Note: global density is fixed per leader constraint; the
    Phase-1 compact-density recommendations are NOT applied.
    ============================================================ */
@@ -27,9 +27,9 @@
   --default-foreground: var(--foreground);
 
   /* -- Brand / status ------------------------------------ */
-  --accent: #ffb224; /* amber phosphor — the ONE vivid color */
+  --accent: #ffb224; /* amber phosphor - the ONE vivid color */
   --accent-foreground: #1c1300;
-  --success: #3fb950; /* steady green — quiet, not neon */
+  --success: #3fb950; /* steady green - quiet, not neon */
   --success-foreground: #041008;
   --warning: #d29922; /* dimmer amber, subordinate to accent */
   --warning-foreground: #171002;
@@ -59,7 +59,7 @@
   --page-wash: color-mix(in oklab, var(--accent) 18%, transparent);
 
   /* -- Shape ---------------------------------------------- */
-  --radius: 0.375rem; /* 6px everywhere — uniformity is the point */
+  --radius: 0.375rem; /* 6px everywhere - uniformity is the point */
 
   /* -- Shadows: none. Hierarchy = borders + bg steps. ------ */
   --surface-shadow: 0 0 0 0 transparent;
@@ -82,7 +82,7 @@
      tmux/k9s statusbar: bar IS the background, separated only by
      hairlines top+bottom. Densest bar of the four. Uppercase mono
      micro-labels; active item = 2px amber underline flush with
-     the bottom hairline (no fill, no slide — crossfade only). */
+     the bottom hairline (no fill, no slide - crossfade only). */
   --header-height: 48px;
   --header-inset: 0px;
   --header-bg: #0b0c0e; /* = --background; the bar dissolves into the console */
@@ -107,7 +107,7 @@
 }
 
 /* ------------------------------------------------------------
-   Light mode — "Paper console" (contract §10). The statusline on
+   Light mode - "Paper console" (contract §10). The statusline on
    warm paper: amber becomes amber ink. Still zero shadows;
    hierarchy stays borders + background steps.
    ------------------------------------------------------------ */

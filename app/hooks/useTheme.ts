@@ -11,8 +11,8 @@ export const THEMES = [
   {
     id: "deepslate",
     label: "Deepslate & Emerald",
-    description: "Deepslate stone, emerald signal — the tool Mojang would ship.",
-    descriptionLight: "Calcite stone, emerald signal — the same tool in daylight.",
+    description: "Deepslate stone, emerald signal - the tool Mojang would ship.",
+    descriptionLight: "Calcite stone, emerald signal - the same tool in daylight.",
   },
   {
     id: "phosphor",
@@ -23,14 +23,14 @@ export const THEMES = [
   {
     id: "quantum",
     label: "Quantum Fluidity",
-    description: "Deep-space black, cyan signal, violet glow — the I4C look.",
+    description: "Deep-space black, cyan signal, violet glow - the I4C look.",
     descriptionLight: "Daybreak white, deep cyan signal, a trace of violet glow.",
   },
   {
     id: "softglass",
     label: "Soft Glass",
-    description: "Calm, rounded, native-grade — one warm apricot accent.",
-    descriptionLight: "Calm, rounded, native-grade — warm paper and terracotta.",
+    description: "Calm, rounded, native-grade - one warm apricot accent.",
+    descriptionLight: "Calm, rounded, native-grade - warm paper and terracotta.",
   },
 ] as const;
 

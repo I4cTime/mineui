@@ -82,7 +82,7 @@ export default function AppearanceCard() {
   };
   // What the custom ColorPicker shows: the override when set, else the
   // current theme's own accent read from the DOM. Safe to read during
-  // render — this card only mounts behind PageBoundary (client-only), and
+  // render - this card only mounts behind PageBoundary (client-only), and
   // a reset re-runs this memo after the inline override is already removed,
   // so it picks up the theme value again.
   const pickerColor = useMemo(() => {
@@ -234,7 +234,7 @@ export default function AppearanceCard() {
           <ColorPicker
             value={pickerColor}
             onChange={(color) => {
-              // "slider" is throttled (50ms) in useUISound — safe for
+              // "slider" is throttled (50ms) in useUISound - safe for
               // the continuous onChange stream while dragging.
               play("slider");
               setAccent(color.toString("hex"));

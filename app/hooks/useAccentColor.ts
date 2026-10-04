@@ -3,7 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 // User accent override. Persists in localStorage alongside the theme choice
-// (both are appearance-local, not backend Settings — docs/v2-contract.md is
+// (both are appearance-local, not backend Settings - docs/v2-contract.md is
 // untouched). The override is applied as inline custom properties on <html>,
 // which win over every theme block; HeroUI's derived vars (--accent-hover,
 // --accent-soft, ...) are color-mix()ed from --accent and follow for free,
@@ -14,7 +14,7 @@ const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 // Preset swatches offered in Settings → Appearance. These are user-pickable
 // *data values* (any color is reachable through the custom picker), not UI
-// styling — the chrome around them still renders from theme tokens. The
+// styling - the chrome around them still renders from theme tokens. The
 // first four are the shipped themes' own accents.
 export const ACCENT_PRESETS = [
   { id: "emerald", label: "Emerald", value: "#3ddc84" },
@@ -85,7 +85,7 @@ export function readableOnLight(hex: string, background: string): string {
  * not a fixed black/white: it's whichever of the current theme's own
  * --background / --foreground tokens contrasts better with the chosen
  * accent, so text on accent fills stays tokenized and theme-consistent.
- * Call again after a theme switch — the bg/fg tokens it reads change.
+ * Call again after a theme switch - the bg/fg tokens it reads change.
  */
 export function applyAccentOverride() {
   if (typeof document === "undefined") return;

@@ -12,7 +12,7 @@
 //   1. switchTo(id) marks the switch as pending. <ServerBoundary> unmounts
 //      the page, whose cleanup (stop_log_stream, unlisten) therefore still
 //      runs against the OLD target.
-//   2. Only then — in the effect of that same commit — the target moves and
+//   2. Only then - in the effect of that same commit - the target moves and
 //      the page remounts (keyed by server id) against the new one.
 //
 // The backend runs every profile at once regardless (scheduler, log
@@ -59,7 +59,7 @@ interface ServerContextValue {
   active: ServerProfile;
   /** False until the initial list_servers() resolves (or fails soft). */
   ready: boolean;
-  /** True while a switch is in flight — the page is unmounted meanwhile. */
+  /** True while a switch is in flight - the page is unmounted meanwhile. */
   switching: boolean;
   /** Live phase + status of every profile; empty until the first poll. */
   overview: ServerOverview[];
@@ -250,7 +250,7 @@ export function ServerBoundary({
 
 /* ---------- shared presentation helpers ---------- */
 
-/** Status-dot color for a phase — semantic tokens only. */
+/** Status-dot color for a phase - semantic tokens only. */
 export function phaseDotClass(phase: ServerPhase | null | undefined): string {
   switch (phase) {
     case "running":
@@ -316,7 +316,7 @@ export function identityLine(entry: ServerOverview | undefined): string {
     .join(" · ");
 }
 
-/** "Running · 2/20 players" — one line for menus and cards. */
+/** "Running · 2/20 players" - one line for menus and cards. */
 export function overviewSummary(entry: ServerOverview | undefined): string {
   if (!entry) return "Checking…";
   const parts = [phaseText(entry.phase)];

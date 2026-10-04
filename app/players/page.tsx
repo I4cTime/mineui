@@ -228,7 +228,7 @@ export default function PlayersPage() {
       play("error");
       toast.danger(
         error instanceof IpcError && error.code === "RCON_UNAVAILABLE"
-          ? "The server isn't reachable — is it running?"
+          ? "The server isn't reachable - is it running?"
           : error instanceof Error
             ? error.message
             : "Command failed.",
@@ -453,7 +453,7 @@ export default function PlayersPage() {
                           <Table.Cell className="text-muted">
                             {formatDateTime(row.lastSeenEpochMs)}
                           </Table.Cell>
-                          <Table.Cell className="text-muted">{row.ipAddress ?? "—"}</Table.Cell>
+                          <Table.Cell className="text-muted">{row.ipAddress ?? "-"}</Table.Cell>
                           <Table.Cell>
                             {editingNote?.username === row.username ? (
                               <div className="flex items-center gap-1">

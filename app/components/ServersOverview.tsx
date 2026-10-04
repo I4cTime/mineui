@@ -1,7 +1,7 @@
 "use client";
 
 // Dashboard strip: every server profile at a glance (contract §3.12
-// get_servers_overview) — state, players, start/stop — without leaving the
+// get_servers_overview) - state, players, start/stop - without leaving the
 // server that is open. Rendered only when there is more than one server.
 // Never taller than two rows of cards: beyond that the strip scrolls, so the
 // log and KPIs below stay in reach however many servers there are.
@@ -131,14 +131,14 @@ export default function ServersOverview() {
                     <div className="grid gap-1 text-xs text-muted">
                       <span>{entry ? phaseText(entry.phase) : "Checking…"}</span>
                       <span className="font-mono wrap-anywhere">
-                        {entry?.error ?? (identityLine(entry) || "—")}
+                        {entry?.error ?? (identityLine(entry) || "-")}
                       </span>
                       <span>
                         Players:{" "}
                         <span className="font-pixel-num text-foreground">
                           {entry?.status.online
                             ? `${entry.status.players.online}/${entry.status.players.max}`
-                            : "—"}
+                            : "-"}
                         </span>
                       </span>
                     </div>

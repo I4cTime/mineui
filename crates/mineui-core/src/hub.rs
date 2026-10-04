@@ -139,7 +139,7 @@ fn index_file(config_dir: &Path) -> PathBuf {
 }
 
 /// Validate a parsed index (§2.5): strict on ids (they are path segments),
-/// self-healing on the two things a hand edit plausibly breaks — a missing
+/// self-healing on the two things a hand edit plausibly breaks - a missing
 /// `default` profile and a dangling `activeServerId`.
 fn normalize_index(mut index: ServerIndex) -> Result<ServerIndex> {
     let inv = |msg: String| Err(Error::SettingsInvalid(msg));
@@ -298,6 +298,35 @@ impl Hub {
             .get(id)
             .cloned()
             .ok_or_else(|| Error::ServerNotFound(format!("no server with id '{id}'")))
+    }
+
+    /// The app-level roots the shell injected (§3.15): the `default`
+    /// profile's dirs, never a per-server subfolder.
+    pub fn root_paths(&self) -> &Paths {
+        &self.root
+    }
+
+    /// `get_app_info` (§3.15).
+    pub fn app_info(&self) -> crate::model::AppInfo {
+        crate::appinfo::info(&self.root)
+    }
+
+    /// `check_for_update` (§3.15), with the active profile's HTTP client.
+    pub async fn check_for_update(&self) -> Result<crate::model::UpdateCheck> {
+        let core = self.core(None).await?;
+        crate::appinfo::check_for_update(&core.http).await
+    }
+
+    /// `open_app_dir` (§3.15): `server` is the targeted profile's folder.
+    pub async fn open_app_dir(
+        &self,
+        server_id: Option<&str>,
+        which: crate::model::AppDir,
+    ) -> Result<()> {
+        let core = self.core(server_id).await?;
+        let settings = core.settings().await;
+        let dir = crate::opener::app_dir_path(&self.root, &settings, which)?;
+        crate::opener::open_dir(&dir).await
     }
 
     /// `list_servers` (§3.12).

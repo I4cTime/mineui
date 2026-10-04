@@ -1,5 +1,5 @@
 //! CurseForge pack zips (contract §3.13, §3.14): what the CurseForge app's
-//! "Export profile" produces — `manifest.json` next to an `overrides/` folder.
+//! "Export profile" produces - `manifest.json` next to an `overrides/` folder.
 //! MineUI reads the manifest to learn the pack's name and Minecraft version,
 //! then hands the whole zip to the image (`CF_MODPACK_ZIP`), which downloads
 //! the listed files with its own API key and extracts the overrides.
@@ -66,7 +66,7 @@ pub fn read_manifest(path: &Path) -> Result<ModpackZipInfo> {
     let names: Vec<String> = archive.file_names().map(str::to_string).collect();
     let (index, prefix) = find_manifest(&names).ok_or_else(|| {
         Error::InvalidInput(
-            "no manifest.json in the zip — export the pack from the CurseForge app (profile → Export)"
+            "no manifest.json in the zip - export the pack from the CurseForge app (profile → Export)"
                 .into(),
         )
     })?;

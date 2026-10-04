@@ -2,7 +2,7 @@
 //!
 //! Advanced: argv-array `tar`/`mv`/`rm` execs in the container (constant
 //! `sh -c` only for the stat listing, zero interpolation). Restore requires
-//! the server stopped, and `exec` cannot run in a stopped container — so
+//! the server stopped, and `exec` cannot run in a stopped container - so
 //! restore runs its `test`/`mv`/`tar` steps in a throwaway helper container
 //! sharing the target's volumes (`run --rm --volumes-from`, still pure argv;
 //! verified live against rootless podman 4.9.3). Listing and delete (2.9.0)
@@ -45,7 +45,7 @@ fn parse_stat_lines(stdout: &str) -> Vec<BackupEntry> {
 }
 
 /// A listing run's outcome → entries; a failed run is an error, never `[]`
-/// (§3.8, 2.9.0 — an empty list means there are no backups).
+/// (§3.8, 2.9.0 - an empty list means there are no backups).
 fn listing_result(out: crate::runtime::ExecOutput) -> Result<Vec<BackupEntry>> {
     if out.success() {
         Ok(parse_stat_lines(&out.stdout))
@@ -231,7 +231,7 @@ async fn restore_inner(core: &crate::Core, filename: &str) -> Result<()> {
             let archive = format!("/data/backups/{filename}");
 
             // The container is stopped here (require_stopped above), so every
-            // step runs in a helper container over the same volumes — `exec`
+            // step runs in a helper container over the same volumes - `exec`
             // would fail with "can only … on running containers".
             let exists = runtime
                 .run_with_volumes_from(name, &["test", "-f", &archive])
@@ -292,7 +292,7 @@ async fn restore_inner(core: &crate::Core, filename: &str) -> Result<()> {
     }
 }
 
-/// Remove one archive (§3.8), no audit — see `delete` / `prune`.
+/// Remove one archive (§3.8), no audit - see `delete` / `prune`.
 async fn delete_inner(core: &crate::Core, filename: &str) -> Result<()> {
     crate::validate::backup_filename(filename)?;
     let settings = core.settings().await;

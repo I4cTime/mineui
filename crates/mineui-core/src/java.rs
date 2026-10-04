@@ -178,7 +178,7 @@ pub async fn probe(binary: &Path) -> Option<(String, u32)> {
 const MAX_PROBES: usize = 16;
 
 /// `java_check` command (§3.1): discover installs, probe them, and pick the
-/// best — a compatible one when `required_major` is known, else the highest
+/// best - a compatible one when `required_major` is known, else the highest
 /// major. An explicit override is authoritative: it is never silently
 /// substituted with a discovered install.
 pub async fn check(

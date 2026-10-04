@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the MineUI main window: core APIs, events, and the file-open dialog for mod uploads. No shell or fs plugin exposure — all privileged work goes through commands.",
+  "description": "Default capability for the MineUI main window: core APIs, events, and the file-open dialog for mod uploads. No shell or fs plugin exposure - all privileged work goes through commands.",
   "windows": ["main"],
   "permissions": [
     "core:default",

@@ -1,5 +1,5 @@
 //! Online players + player history (contract §3.4) with the CORRECTED
-//! regexes — the v1 source double-escaped `\s`/`\d`/`[Not Secure]` inside
+//! regexes - the v1 source double-escaped `\s`/`\d`/`[Not Secure]` inside
 //! regex literals so join/left lines never matched; v2 uses real classes.
 
 use std::collections::HashMap;
@@ -122,7 +122,7 @@ async fn read_log_lines(core: &crate::Core) -> Vec<String> {
                 ("/data/logs/latest.log.1", "2000"),
             ] {
                 // `exec` while running, the volumes-from helper while
-                // stopped — history must not need a running server (2.9.0).
+                // stopped - history must not need a running server (2.9.0).
                 if let Ok(out) = crate::runtime::run_in_container(
                     runtime.as_ref(),
                     name,
@@ -158,7 +158,7 @@ async fn read_log_lines(core: &crate::Core) -> Vec<String> {
 }
 
 /// `get_player_history` (§3.4). Never rejects because RCON is down (2.9.0):
-/// rows that do not need it — log history and noted players — come back
+/// rows that do not need it - log history and noted players - come back
 /// offline with `rcon_available: false`.
 pub async fn history(core: &crate::Core) -> Result<PlayerHistory> {
     let (online_players, rcon_available) = match crate::rcon::run(core, "list").await {

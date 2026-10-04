@@ -132,6 +132,7 @@ pub fn run() {
             commands::create_instance,
             commands::delete_instance,
             commands::instance_status,
+            commands::change_instance_version,
             // §3.7 config files
             commands::list_config_files,
             commands::read_config_file,
@@ -163,6 +164,11 @@ pub fn run() {
             commands::remove_server,
             commands::set_active_server,
             commands::get_servers_overview,
+            // §3.15 app info, updates, opening outside the app
+            commands::get_app_info,
+            commands::check_for_update,
+            commands::open_url,
+            commands::open_app_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MineUI");

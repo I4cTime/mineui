@@ -1,5 +1,5 @@
 /* ============================================================
-   MineUI v2 — global styles + theme system
+   MineUI v2 - global styles + theme system
    Token contract: docs/theme-contract.md (binding).
    Four styles, one per [data-theme] on <html>:
      deepslate (default / :root fallback), phosphor, quantum,
@@ -9,9 +9,9 @@
    <html> ("dark" | "light", contract §10) picks one. Dark is
    the base block, light a second block in the same file.
    Rules:
-   - Components never hardcode hex/oklch — tokens only.
+   - Components never hardcode hex/oklch - tokens only.
    - Never set HeroUI color-mix derived vars (--*-hover, --*-soft,
-     --border-secondary/tertiary, …) — they derive automatically.
+     --border-secondary/tertiary, …) - they derive automatically.
    ============================================================ */
 
 @import "tailwindcss";
@@ -23,7 +23,7 @@
 @import "./themes/quantum.css";
 @import "./themes/softglass.css";
 
-/* Monocraft (OFL, IdreesInc) — vendored, subset to Basic Latin,
+/* Monocraft (OFL, IdreesInc) - vendored, subset to Basic Latin,
    5.5 KB. Deepslate NUMERALS ONLY, via .font-pixel-num. */
 @font-face {
   font-family: "Monocraft";
@@ -38,22 +38,22 @@
    gap is 0 in every theme except softglass). Per-theme values come
    from --header-height / --header-inset (contract §9). */
 :root {
-  /* One inset only: the sticky top offset doesn't consume flow space —
+  /* One inset only: the sticky top offset doesn't consume flow space -
      only the header's own height + its bottom inset (margin) do. */
   --navbar-height: calc(var(--header-height, 64px) + var(--header-inset, 0px));
 }
 
-/* Header responsive tiers (contract §9.2) — structural, shared by
+/* Header responsive tiers (contract §9.2) - structural, shared by
    all themes (media queries can't read per-theme vars). Generates
    the `header-full:` / `header-mid:` / `header-min:` variants.
    NOT inside `@theme inline`: breakpoints must be static values. */
 @theme {
-  --breakpoint-header-full: 80rem; /* 1280px — full labels + Ko-fi */
-  --breakpoint-header-mid: 56.25rem; /* 900px — icon-only nav */
-  --breakpoint-header-min: 43.75rem; /* 700px — priority overflow */
+  --breakpoint-header-full: 80rem; /* 1280px - full labels + Ko-fi */
+  --breakpoint-header-mid: 56.25rem; /* 900px - icon-only nav */
+  --breakpoint-header-min: 43.75rem; /* 700px - priority overflow */
 }
 
-/* Tailwind utility bridge — inline so utilities resolve the
+/* Tailwind utility bridge - inline so utilities resolve the
    per-theme cascade value at the element, not a snapshot. */
 @theme inline {
   --color-background: var(--background);
@@ -78,7 +78,7 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-display: var(--font-display);
-  /* legacy alias — .font-pixel / font-pixel now mean "display font".
+  /* legacy alias - .font-pixel / font-pixel now mean "display font".
      Slated for cleanup once pages migrate to font-display. */
   --font-pixel: var(--font-display);
 }
@@ -101,9 +101,9 @@ html {
   font-family: var(--font-display);
 }
 
-/* Pixel numerals — the ONLY place Monocraft may appear, and only
+/* Pixel numerals - the ONLY place Monocraft may appear, and only
    deepslate maps --font-numeric to it (other themes map it to
-   their mono). Usage: stat values only — player count, TPS, ping,
+   their mono). Usage: stat values only - player count, TPS, ping,
    download % . Never headings, labels, or body text. */
 .font-pixel-num {
   font-family: var(--font-numeric);
@@ -117,37 +117,37 @@ html {
 
   /* Quantum-only glow (no-op elsewhere: --shadow-quantum is
      undefined outside [data-theme="quantum"]). Accented/hero
-     cards only — ordinary cards stay flat. */
+     cards only - ordinary cards stay flat. */
   .shadow-quantum {
     box-shadow: var(--shadow-quantum, none);
   }
 }
 
 /* ============================================================
-   Motion section (owned by the motion wave — docs/theme-contract.md §6).
+   Motion section (owned by the motion wave - docs/theme-contract.md §6).
    JS-driven Motion transitions live in app/lib/motion.ts and read the
    --motion-* vars directly; this section is only for the handful of
    things Motion components can't express: a CSS-keyframe utility, and a
    reduced-motion guard for the one ambient loop left in the app (the
    Tailwind `animate-pulse` on the dashboard's online-status dot and the
-   matching indicator wherever it's reused — everything else is either a
+   matching indicator wherever it's reused - everything else is either a
    Motion transition honoring --motion-* or a state-triggered, non-looping
    animation; see app/page.tsx, Navbar.tsx, Logo.tsx).
    ============================================================ */
 
 @media (prefers-reduced-motion: reduce) {
   /* Tailwind's core .animate-pulse utility isn't Motion, so MotionConfig's
-     reducedMotion="user" (app/layout.tsx) doesn't reach it — guard it here. */
+     reducedMotion="user" (app/layout.tsx) doesn't reach it - guard it here. */
   .animate-pulse {
     animation: none;
   }
 }
 
 /* Deepslate signature moment (§6: "steps(20) progress + 0.96→1 place-pop").
-   Opt-in utility class for ProgressBar (CreateServerFlow, mods download) —
+   Opt-in utility class for ProgressBar (CreateServerFlow, mods download) -
    deepslate-scoped per the contract's per-theme motion table; a no-op
    everywhere else since the selector requires [data-theme="deepslate"].
-   Only active under prefers-reduced-motion: no-preference — HeroUI's own
+   Only active under prefers-reduced-motion: no-preference - HeroUI's own
    .progress-bar__fill already carries a motion-reduce guard
    (progress-bar.css) and this must not fight it. */
 @media (prefers-reduced-motion: no-preference) {

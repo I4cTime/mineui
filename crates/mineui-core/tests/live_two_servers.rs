@@ -1,5 +1,5 @@
 //! Live multi-server test (contract §2.5, §3.12): one `Hub` managing a Forge
-//! and a Fabric container **at the same time**. **Opt-in** — `#[ignore]`; CI
+//! and a Fabric container **at the same time**. **Opt-in** - `#[ignore]`; CI
 //! never runs it.
 //!
 //! Prerequisite: two itzg/minecraft-server containers on rootless podman (or
@@ -61,7 +61,7 @@ const FABRIC: Target = Target {
 /// Add a profile for `target` and point it at its container.
 async fn attach(hub: &Hub, target: &Target) -> (String, Arc<Core>) {
     let Ok(password) = std::env::var(target.env_var) else {
-        panic!("a required environment variable is not set — see the file header");
+        panic!("a required environment variable is not set - see the file header");
     };
     let list = hub.add(target.name, Some(Mode::Advanced)).await.unwrap();
     let id = list.servers.last().unwrap().id.clone();
@@ -211,7 +211,7 @@ async fn live_feature_surface_on_both_loaders() {
         assert!(players.players.is_empty(), "{name}: {:?}", players.raw);
         mineui_core::players::history(core).await.unwrap();
 
-        // No output on any loader — and no 5 s stall on Forge.
+        // No output on any loader - and no 5 s stall on Forge.
         let started = std::time::Instant::now();
         let said = mineui_core::rcon::run_allowlisted(core, "say feature-check").await;
         assert_eq!(said.unwrap(), "", "{name}");

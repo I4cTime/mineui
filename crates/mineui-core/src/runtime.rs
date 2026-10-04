@@ -1,5 +1,5 @@
 //! Container runtime adapter (module map §8): `trait Runtime` over the
-//! podman/docker CLIs. **All subprocess calls use argv arrays** — the only
+//! podman/docker CLIs. **All subprocess calls use argv arrays** - the only
 //! `sh -c` permitted anywhere is a compile-time-constant script with zero
 //! interpolation (used for directory listings, see `mods`/`backups`).
 
@@ -34,13 +34,13 @@ pub struct ContainerSpec {
     pub image: String,
     /// `KEY=VALUE` lines; keeps secrets out of the argv.
     pub env_file: std::path::PathBuf,
-    /// (host bind address — `None` publishes on every interface the runtime
-    /// has, see §3.13 —, host port, container port).
+    /// (host bind address - `None` publishes on every interface the runtime
+    /// has, see §3.13 -, host port, container port).
     pub ports: Vec<(Option<String>, u16, u16)>,
     /// (named volume, container path).
     pub volume: (String, String),
     /// `None` leaves the runtime's own default; `Some(0)` asks for no pids
-    /// limit at all — the one retry of §3.13, where the default cannot be
+    /// limit at all - the one retry of §3.13, where the default cannot be
     /// applied.
     pub pids_limit: Option<i64>,
 }
@@ -139,13 +139,13 @@ pub trait Runtime: Send + Sync {
     async fn logs_tail(&self, name: &str, tail: u32) -> Result<Vec<String>>;
     /// Spawn `logs --follow --tail 0 <name>`; caller owns the child.
     async fn spawn_follow_logs(&self, name: &str) -> Result<tokio::process::Child>;
-    /// `exec <name> <argv...>` — argv array, never a shell string.
+    /// `exec <name> <argv...>` - argv array, never a shell string.
     /// Only works on a **running** container.
     async fn exec(&self, name: &str, argv: &[&str]) -> Result<ExecOutput>;
     /// `run --rm --volumes-from <name> --entrypoint <argv0> <image> <argv1..>`
     /// where `<image>` is `<name>`'s own image (via inspect). Unlike `exec`
     /// this works while the container is **stopped** (verified live on
-    /// rootless podman 4.9.3) — restore uses it, since restore requires the
+    /// rootless podman 4.9.3) - restore uses it, since restore requires the
     /// server stopped and `exec` cannot run in a stopped container.
     async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput>;
     /// `cp <host_src> <name>:<container_dest>`.
@@ -162,7 +162,7 @@ pub trait Runtime: Send + Sync {
     /// `run -d …` per `spec` (§3.13). Pulls the image when missing, so this
     /// can take minutes. The raw outcome is returned for the caller to map.
     async fn run_detached(&self, spec: &ContainerSpec) -> Result<ExecOutput>;
-    /// `create …` — the same container as `run_detached`, not started; for a
+    /// `create …` - the same container as `run_detached`, not started; for a
     /// pack zip that `cp` must put in place first (§3.13).
     async fn create(&self, spec: &ContainerSpec) -> Result<ExecOutput>;
     /// `rm -f <name>` (`rm -f -v` with `anonymous_volumes`). Callers: the
@@ -171,7 +171,7 @@ pub trait Runtime: Send + Sync {
     async fn remove_force(&self, name: &str, anonymous_volumes: bool) -> Result<()>;
     /// The container's mounts; empty when it cannot be inspected.
     async fn inspect_mounts(&self, name: &str) -> Result<Vec<Mount>>;
-    /// `volume rm <volume>` — `delete_container` with `deleteData` only.
+    /// `volume rm <volume>` - `delete_container` with `deleteData` only.
     async fn remove_volume(&self, volume: &str) -> Result<()>;
     /// Podman: `machine info --format {{.Host.VMType}}` ("wsl", "hyperv",
     /// "applehv", "qemu", …), lower-cased; `None` for docker or when the
@@ -301,7 +301,7 @@ pub fn unavailable_hint(kind: &str, os: &str) -> &'static str {
 }
 
 /// `RUNTIME_UNAVAILABLE` with the runtime's name, the hint, and the first
-/// line of what the CLI said (trimmed; never contains secrets — it is the
+/// line of what the CLI said (trimmed; never contains secrets - it is the
 /// runtime's own connection error).
 pub fn unavailable_error(kind: &str, os: &str, stderr: &str) -> Error {
     // podman prints a generic "Cannot connect to Podman … try `podman
@@ -316,7 +316,7 @@ pub fn unavailable_error(kind: &str, os: &str, stderr: &str) -> Error {
         .take(300)
         .collect();
     let mut message = format!(
-        "{kind} is installed but not responding — {}.",
+        "{kind} is installed but not responding - {}.",
         unavailable_hint(kind, os)
     );
     if !detail.is_empty() {
@@ -889,7 +889,7 @@ async fn probe_auto_override(advanced: &AdvancedModeSettings) -> Option<(Runtime
 }
 
 /// `detect_runtimes`: probe `podman --version` and `docker --version`
-/// (argv arrays), honoring the configured binary override — on Auto too,
+/// (argv arrays), honoring the configured binary override - on Auto too,
 /// where a working override takes its kind's slot and wins `resolved`.
 pub async fn detect(advanced: &AdvancedModeSettings) -> RuntimeProbe {
     if let Some((kind, hit)) = probe_auto_override(advanced).await {
@@ -1034,7 +1034,7 @@ mod tests {
     #[test]
     fn parses_stats_podman_493_snake_case_keys() {
         // Verbatim (trimmed) `podman stats --no-stream --format json` from a
-        // live rootless podman 4.9.3 — snake_case keys, decimal units,
+        // live rootless podman 4.9.3 - snake_case keys, decimal units,
         // lowercase "kB" spelling.
         let stdout = r#"[
  {
@@ -1064,7 +1064,7 @@ mod tests {
     #[test]
     fn parses_stats_podman_493_stopped_container_zeros() {
         // podman 4.9.3 `stats` on a *stopped* container exits 0 and reports
-        // zeroed values (it does not fail as docker does) — verified live.
+        // zeroed values (it does not fail as docker does) - verified live.
         let stdout = r#"[{"id":"9758e78b8c7e","name":"minecraft-server","cpu_percent":"0.00%","mem_usage":"0B / 0B","mem_percent":"0.00%","net_io":"0B / 0B","block_io":"0B / 0B","pids":"0"}]"#;
         let stats = parse_stats_json(stdout);
         assert_eq!(stats.cpu_percent, Some(0.0));
@@ -1077,7 +1077,7 @@ mod tests {
         // Trimmed verbatim `podman ps --all --filter name=^minecraft-server$
         // --format json` from live podman 4.9.3: note the human-relative
         // "CreatedAt" string and the *numeric* "Created"/"StartedAt" epochs
-        // (which str_field correctly ignores — startedAt comes from inspect).
+        // (which str_field correctly ignores - startedAt comes from inspect).
         let stdout = r#"[
   {
     "CreatedAt": "16 seconds ago",
@@ -1323,7 +1323,7 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
         let m = unavailable_error("podman", "macos", "").to_string();
         assert!(m.contains("podman machine start"), "{m}");
         assert!(!m.contains("said"), "{m}");
-        // No machine on Linux: never suggest it there — not even by quoting
+        // No machine on Linux: never suggest it there - not even by quoting
         // podman's own banner (verbatim podman 6.1.1, dead CONTAINER_HOST).
         let m = unavailable_error(
             "podman",

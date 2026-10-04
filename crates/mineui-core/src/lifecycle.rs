@@ -98,7 +98,7 @@ async fn start_inner(core: &crate::Core) -> Result<()> {
             let instance = crate::instance::probe(core).await?;
             if !instance.exists {
                 return Err(Error::InstanceNotFound(
-                    "no instance found — create one first".into(),
+                    "no instance found - create one first".into(),
                 ));
             }
             if !settings.simple.eula_accepted {

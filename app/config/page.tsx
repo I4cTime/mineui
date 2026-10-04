@@ -28,7 +28,7 @@ import {
 } from "@/app/lib/ipc";
 
 // Contract §3.7: config paths are now relative, forward-slash
-// ("server.properties", "config/foo.toml") — display them as-is.
+// ("server.properties", "config/foo.toml") - display them as-is.
 
 export default function ConfigPage() {
   const { containerMotion, cardMotion } = usePageMotion();
@@ -38,7 +38,7 @@ export default function ConfigPage() {
   const [content, setContent] = useState("");
   // What is on disk for the open file. `null` while it loads or when the
   // read failed: the editor and Save stay off until the text shown is
-  // really `selected`'s — otherwise Save would write the previous file's
+  // really `selected`'s - otherwise Save would write the previous file's
   // text into the new one.
   const [loaded, setLoaded] = useState<{ file: string; content: string } | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -214,7 +214,7 @@ export default function ConfigPage() {
                   <span className="text-muted">
                     {files.length
                       ? `No files match “${query.trim()}”.`
-                      : "No config files yet — start the server once to create them."}
+                      : "No config files yet - start the server once to create them."}
                   </span>
                 )}
               </div>

@@ -60,7 +60,7 @@ async fn from_server_utils(core: &crate::Core, base_url: &str) -> Result<ServerS
     })
 }
 
-/// `get_server_status` (§3.2). Failure resolves an offline status — it does
+/// `get_server_status` (§3.2). Failure resolves an offline status - it does
 /// not reject (offline is a normal state, v1 UX).
 pub async fn get(core: &crate::Core) -> Result<ServerStatus> {
     let settings = core.settings().await;
@@ -85,7 +85,7 @@ pub async fn get(core: &crate::Core) -> Result<ServerStatus> {
         Err(e) => {
             let mut error = e.to_string();
             // Windows + rootful WSL machine: the port is published but can
-            // never reach this loopback — say so instead of "refused" (§3.2).
+            // never reach this loopback - say so instead of "refused" (§3.2).
             if settings.active_mode == Mode::Advanced {
                 if let Ok(runtime) = crate::runtime::resolve(&settings.advanced).await {
                     let facts = crate::machine::facts(core, runtime.as_ref()).await;

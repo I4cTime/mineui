@@ -1,4 +1,4 @@
-//! Live modpack tests (contract §3.13, §3.14). **Opt-in** — `#[ignore]`; CI
+//! Live modpack tests (contract §3.13, §3.14). **Opt-in** - `#[ignore]`; CI
 //! never runs them. Need network, and podman or docker on PATH; they create
 //! and remove their own containers and volumes.
 //!

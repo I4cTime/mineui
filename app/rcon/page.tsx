@@ -83,14 +83,14 @@ export default function ConsolePage() {
       try {
         const { output } = await runRconCommand(text);
         play("success");
-        entries.push({ kind: "reply", text: output.trim() || "(no reply — the command ran)" });
+        entries.push({ kind: "reply", text: output.trim() || "(no reply - the command ran)" });
       } catch (error) {
         play("error");
         let message = "Command failed.";
         if (error instanceof IpcError) {
           message =
             error.code === "RCON_UNAVAILABLE"
-              ? "The server isn't reachable — is it running?"
+              ? "The server isn't reachable - is it running?"
               : error.message;
         } else if (error instanceof Error) {
           message = error.message;
@@ -172,7 +172,7 @@ export default function ConsolePage() {
           <Card className="p-5">
             <Card.Header className="flex flex-col items-start gap-2">
               <p className="text-sm">
-                Send a command to the running server — the same as typing it in the server&apos;s
+                Send a command to the running server - the same as typing it in the server&apos;s
                 own console. No leading slash.
               </p>
               {allowlist && (
@@ -188,7 +188,7 @@ export default function ConsolePage() {
                     <span>nothing yet</span>
                   )}
                   <span>
-                    — change in{" "}
+                    - change in{" "}
                     <Link href="/settings" className="text-accent underline underline-offset-2">
                       Server Settings
                     </Link>

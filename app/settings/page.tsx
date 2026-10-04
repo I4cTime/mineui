@@ -12,6 +12,7 @@ import {
   Container,
   Eye,
   EyeOff,
+  FolderOpen,
   Gauge,
   Play,
   Plus,
@@ -37,6 +38,7 @@ import {
   TextField,
   toast,
 } from "@heroui/react";
+import ChangeVersionDialog from "@/app/components/ChangeVersionDialog";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import DeleteContainerButton from "@/app/components/DeleteContainerButton";
 import PageHeader from "@/app/components/PageHeader";
@@ -46,6 +48,7 @@ import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
 import { identityLine, phaseText, useServers } from "@/app/components/ServerProvider";
 import { setLeaveGuard } from "@/app/lib/leaveGuard";
+import { pickFile, pickFolder } from "@/app/lib/dialog";
 import { usePageMotion } from "@/app/lib/motion";
 import {
   deleteInstance,
@@ -54,6 +57,7 @@ import {
   getSettings,
   instanceStatus,
   javaCheck,
+  openAppDir,
   runScheduledJobNow,
   setSettings as saveSettingsIpc,
   isTauri,
@@ -84,7 +88,7 @@ const parseAllowlist = (text: string) =>
     .filter(Boolean);
 
 /** What "unchanged" means: everything Save sends, minus the mode (which is
- *  not part of the draft — it has its own guarded switch). */
+ *  not part of the draft - it has its own guarded switch). */
 const snapshotOf = (settings: Settings, allowlistText: string) =>
   JSON.stringify({ ...settings, activeMode: null, rconAllowlist: parseAllowlist(allowlistText) });
 
@@ -177,7 +181,7 @@ const MODE_OPTIONS = [
     id: "advanced",
     title: "Advanced",
     description:
-      "Runs in a container (Podman or Docker). MineUI can create it for you — with Fabric, Forge, Paper or a modpack — or use one you already have.",
+      "Runs in a container (Podman or Docker). MineUI can create it for you - with Fabric, Forge, Paper or a modpack - or use one you already have.",
     icon: Container,
   },
 ] as const;
@@ -186,8 +190,8 @@ type ModeId = (typeof MODE_OPTIONS)[number]["id"];
 
 /**
  * One selectable card of the mode radio group. Custom control (not a HeroUI
- * ToggleButtonGroup) because the design is a rich card — icon tile, title,
- * description, check badge — not a segmented button. Radio semantics +
+ * ToggleButtonGroup) because the design is a rich card - icon tile, title,
+ * description, check badge - not a segmented button. Radio semantics +
  * roving tabindex live on the group in SettingsPage.
  */
 function ModeOptionCard({
@@ -294,6 +298,7 @@ export default function SettingsPage() {
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [versionOpen, setVersionOpen] = useState(false);
   const { active, activeId, overview, rename, refreshOverview } = useServers();
   const entry = overview.find((item) => item.id === activeId);
   const phase = entry?.phase ?? null;
@@ -304,7 +309,7 @@ export default function SettingsPage() {
   });
   const { play } = useUISound();
   // Shared app-wide mode (app/components/ModeProvider.tsx). Mode switching
-  // lives here now, not in the draft/Save flow below — clicking Simple/
+  // lives here now, not in the draft/Save flow below - clicking Simple/
   // Advanced persists instantly through the same path the navbar toggle
   // uses, so this section and the navbar always agree.
   const {
@@ -419,13 +424,13 @@ export default function SettingsPage() {
   };
 
   // Changing how the server is run re-points MineUI at a different server
-  // for this entry — never a one-click affair (UX review: it looked like the
+  // for this entry - never a one-click affair (UX review: it looked like the
   // server had been deleted), and never while it is running.
   const requestModeChange = (nextMode: ModeId) => {
     if (nextMode === mode || modeSwitching) return;
     if (serverBusy) {
       play("error");
-      toast.warning(`Stop ${active.name} first — it cannot change type while it is running.`);
+      toast.warning(`Stop ${active.name} first - it cannot change type while it is running.`);
       return;
     }
     play("click_confirm");
@@ -456,6 +461,18 @@ export default function SettingsPage() {
     setLeaveGuard((proceed) => setPendingLeave(() => proceed));
     return () => setLeaveGuard(null);
   }, [dirty]);
+
+  // Native picker → a field of the draft (still needs Save).
+  const browse = async (pick: () => Promise<string | null>, apply: (path: string) => void) => {
+    play("click_confirm");
+    try {
+      const path = await pick();
+      if (path) apply(path);
+    } catch (error) {
+      play("error");
+      toast.danger(error instanceof IpcError ? error.message : "Could not open the picker");
+    }
+  };
 
   const discardChanges = () => {
     if (!savedSettings) return;
@@ -491,7 +508,7 @@ export default function SettingsPage() {
       const normalized = await saveSettingsIpc({
         ...draft,
         // The mode buttons below persist through ModeProvider the instant
-        // they're pressed, not through this draft — draft.activeMode can be
+        // they're pressed, not through this draft - draft.activeMode can be
         // stale (loaded before a navbar toggle happened elsewhere). Always
         // send the provider's current mode so Save can't stomp that toggle.
         activeMode: mode,
@@ -591,7 +608,7 @@ export default function SettingsPage() {
                 <p>
                   Launch MineUI with{" "}
                   <code className="font-mono">pnpm tauri dev</code> or the
-                  packaged app — the web preview has no backend.
+                  packaged app - the web preview has no backend.
                 </p>
               )}
             </Card.Content>
@@ -696,6 +713,23 @@ export default function SettingsPage() {
                     Server folder:{" "}
                     <span className="break-all font-mono">{draft.simple.instanceDir}</span>
                   </span>
+                  {instance?.exists && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-fit"
+                      onPress={() => {
+                        play("click_confirm");
+                        openAppDir("server").catch((error: unknown) => {
+                          play("error");
+                          toast.danger(error instanceof IpcError ? error.message : "Could not open the folder");
+                        });
+                      }}
+                    >
+                      <FolderOpen size={13} />
+                      Open folder
+                    </Button>
+                  )}
                   {java && (
                     <div className="flex flex-wrap items-center gap-2">
                       <Chip
@@ -749,7 +783,7 @@ export default function SettingsPage() {
                   <span className="text-xs text-muted">
                     The server type, Minecraft version and memory were set when the
                     container was created. To change them, use <em>Delete container</em>{" "}
-                    below — the world is kept — and create it again.
+                    below - the world is kept - and create it again.
                   </span>
                 </div>
               )}
@@ -757,7 +791,7 @@ export default function SettingsPage() {
           </Card>
         </motion.section>
 
-        {/* 2. Performance & network — Simple only (a container's are fixed
+        {/* 2. Performance & network - Simple only (a container's are fixed
             at creation, see the note above). */}
         {isSimple && (
           <motion.section variants={cardMotion} initial="hidden" animate="show">
@@ -768,13 +802,37 @@ export default function SettingsPage() {
                   <Card.Title>Performance &amp; network</Card.Title>
                 </div>
                 <Card.Description>
-                  Both apply the next time the server starts.
-                  {instance?.exists
-                    ? " The Minecraft version is fixed for these server files; to change it, make a backup, delete the server files below, set the server up again and restore the backup."
-                    : ""}
+                  Memory and the port apply the next time the server starts.
                 </Card.Description>
               </Card.Header>
               <Card.Content className="mt-4 grid gap-4 md:grid-cols-2">
+                {instance?.exists && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 md:col-span-2">
+                    <div className="grid gap-0.5">
+                      <span className="text-sm">
+                        Minecraft version{" "}
+                        <span className="font-pixel-num font-semibold">
+                          {instance.mcVersion ?? "?"}
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted">
+                        Change it without losing the world - MineUI backs the world up first.
+                        {serverBusy ? ` Stop ${active.name} first.` : ""}
+                      </span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      isDisabled={serverBusy || dirty}
+                      onPress={() => {
+                        play("click_confirm");
+                        setVersionOpen(true);
+                      }}
+                      onMouseEnter={() => play("hover")}
+                    >
+                      Change version…
+                    </Button>
+                  </div>
+                )}
                 <TextField className="flex flex-col gap-2" type="number">
                   <Label>Memory (MB)</Label>
                   <Input
@@ -849,7 +907,7 @@ export default function SettingsPage() {
 
               {draft.scheduler.jobs.length === 0 && (
                 <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
-                  No scheduled tasks yet. Add one below — for example a daily backup at 04:00.
+                  No scheduled tasks yet. Add one below - for example a daily backup at 04:00.
                 </div>
               )}
 
@@ -1074,7 +1132,7 @@ export default function SettingsPage() {
                           <span aria-hidden>·</span>
                           <Chip size="sm" variant="soft" color={status.lastRun.ok ? "success" : "danger"}>
                             Last: {formatDateTime(status.lastRun.epochMs)}
-                            {status.lastRun.message ? ` — ${status.lastRun.message}` : ""}
+                            {status.lastRun.message ? ` - ${status.lastRun.message}` : ""}
                           </Chip>
                         </>
                       )}
@@ -1148,20 +1206,30 @@ export default function SettingsPage() {
               </TextField>
               <TextField className="flex flex-col gap-2">
                 <Label>Also copy each new backup to</Label>
-                <Input
-                  fullWidth
-                  className="font-mono"
-                  placeholder="Leave empty for no second copy"
-                  value={draft.backups.copyDir ?? ""}
-                  onChange={(event) =>
-                    updateBackups({
-                      copyDir: event.target.value.trim().length > 0 ? event.target.value : null,
-                    })
-                  }
-                  onFocus={() => play("hover")}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    fullWidth
+                    className="font-mono"
+                    placeholder="Leave empty for no second copy"
+                    value={draft.backups.copyDir ?? ""}
+                    onChange={(event) =>
+                      updateBackups({
+                        copyDir: event.target.value.trim().length > 0 ? event.target.value : null,
+                      })
+                    }
+                    onFocus={() => play("hover")}
+                  />
+                  <Button
+                    variant="secondary"
+                    onPress={() => browse(() => pickFolder("Folder to copy backups to"), (path) => updateBackups({ copyDir: path }))}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    <FolderOpen size={15} />
+                    Browse…
+                  </Button>
+                </div>
                 <span className="text-xs text-muted">
-                  A full folder path on this computer — another disk, a USB drive or a
+                  A full folder path on this computer - another disk, a USB drive or a
                   network share is the point: backups otherwise live with the server
                   itself. The folder is created if missing; a failed copy is recorded in
                   the activity log on the Status page.
@@ -1171,7 +1239,7 @@ export default function SettingsPage() {
           </Card>
         </motion.section>
 
-        {/* 5. Advanced — everything a working server never needs touched. */}
+        {/* 5. Advanced - everything a working server never needs touched. */}
         <motion.section variants={cardMotion}>
           <Card className="p-6">
             <button
@@ -1194,7 +1262,7 @@ export default function SettingsPage() {
                 <span className="text-sm text-muted">
                   {isSimple
                     ? "Java location, the internal RCON port, console command rules, and how this server is run. A working server never needs these changed."
-                    : "How MineUI reaches the container, console command rules, and how this server is run. MineUI filled these in when it created the container — change them only if you changed the container yourself."}
+                    : "How MineUI reaches the container, console command rules, and how this server is run. MineUI filled these in when it created the container - change them only if you changed the container yourself."}
                 </span>
               </span>
               <ChevronDown
@@ -1213,14 +1281,24 @@ export default function SettingsPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <TextField className="flex flex-col gap-2">
                       <Label>Java location</Label>
-                      <Input
-                        fullWidth
-                        className="font-mono"
-                        placeholder="Leave empty to find Java automatically"
-                        value={draft.simple.javaPath ?? ""}
-                        onChange={(event) => updateSimple({ javaPath: event.target.value || null })}
-                        onFocus={() => play("hover")}
-                      />
+                      <div className="flex gap-2">
+                        <Input
+                          fullWidth
+                          className="font-mono"
+                          placeholder="Leave empty to find Java automatically"
+                          value={draft.simple.javaPath ?? ""}
+                          onChange={(event) => updateSimple({ javaPath: event.target.value || null })}
+                          onFocus={() => play("hover")}
+                        />
+                        <Button
+                          variant="secondary"
+                          onPress={() => browse(() => pickFile("Select the java program"), (path) => updateSimple({ javaPath: path }))}
+                          onMouseEnter={() => play("hover")}
+                        >
+                          <FolderOpen size={15} />
+                          Browse…
+                        </Button>
+                      </div>
                       <span className="text-xs text-muted">
                         The full path to a <code className="font-mono">java</code> program, if
                         MineUI finds the wrong one or none.
@@ -1328,7 +1406,7 @@ export default function SettingsPage() {
                       </div>
                       <span className="text-xs text-muted">
                         Which container MineUI controls. Changing it does not rename
-                        the container — MineUI stops managing the current one (it
+                        the container - MineUI stops managing the current one (it
                         keeps running) and looks for one with the new name.
                       </span>
                     </TextField>
@@ -1442,7 +1520,7 @@ export default function SettingsPage() {
                       </div>
                       <span className="text-xs text-muted">
                         Must match the server&apos;s own RCON password. Changing it here
-                        does not change it on the server — it only breaks the player
+                        does not change it on the server - it only breaks the player
                         list, console and scheduled tasks.
                       </span>
                     </TextField>
@@ -1482,7 +1560,7 @@ export default function SettingsPage() {
                   <div className="grid gap-1">
                     <span className="text-sm font-semibold">Commands allowed in the console</span>
                     <span className="text-xs text-muted">
-                      Only these commands can be typed on the Console (RCON) page — a guard
+                      Only these commands can be typed on the Console (RCON) page - a guard
                       against a slip of the keyboard. Player actions and scheduled tasks are not
                       affected. Separate with commas.
                     </span>
@@ -1519,7 +1597,7 @@ export default function SettingsPage() {
                     <span className="text-sm font-semibold">Mod downloads from your own network</span>
                     <span className="text-xs text-muted">
                       By default, a mod link that points at this computer or another device on
-                      your home network is refused — a link from the internet should never be
+                      your home network is refused - a link from the internet should never be
                       able to reach those. Turn this on only if you host mod files yourself on
                       your own network.
                     </span>
@@ -1624,7 +1702,7 @@ export default function SettingsPage() {
                 </Card.Footer>
               ) : (
                 <Card.Content className="mt-4 text-sm text-muted">
-                  Nothing to delete — this server has not been set up yet.
+                  Nothing to delete - this server has not been set up yet.
                 </Card.Content>
               )
             ) : (
@@ -1699,13 +1777,27 @@ export default function SettingsPage() {
           }
         />
 
+        <ChangeVersionDialog
+          isOpen={versionOpen}
+          serverName={active.name}
+          currentVersion={instance?.mcVersion ?? ""}
+          onClose={() => setVersionOpen(false)}
+          onChanged={(result) => {
+            setVersionOpen(false);
+            setInstance(result.status);
+            recheckJava();
+            void loadAll();
+            void refreshOverview();
+          }}
+        />
+
         <ConfirmDialog
           isOpen={pendingMode !== null}
           title={pendingMode === "advanced" ? "Run it in a container" : "Run it on this computer"}
           description={
             pendingMode === "advanced"
-              ? `MineUI will stop showing ${active.name}'s current server files and show a container server here instead — empty until you create or attach one. Nothing is deleted or moved: the world stays where it is and is not carried over. Switch back at any time.`
-              : `MineUI will stop managing the container "${draft.advanced.containerName}" for ${active.name} and show a plain server on this computer instead — empty until you set it up. The container and its world are not deleted or moved. Switch back at any time.`
+              ? `MineUI will stop showing ${active.name}'s current server files and show a container server here instead - empty until you create or attach one. Nothing is deleted or moved: the world stays where it is and is not carried over. Switch back at any time.`
+              : `MineUI will stop managing the container "${draft.advanced.containerName}" for ${active.name} and show a plain server on this computer instead - empty until you set it up. The container and its world are not deleted or moved. Switch back at any time.`
           }
           confirmLabel="Switch"
           cancelLabel="Keep as is"

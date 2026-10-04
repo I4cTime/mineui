@@ -74,16 +74,16 @@ const OVERFLOW_QUERY = "(max-width: 56.24rem)";
 
 const PRIORITY_COUNT = 4;
 
-// App-wide settings (server list, theme) — a controls-zone button, not a
+// App-wide settings (server list, theme) - a controls-zone button, not a
 // nav item: the nav holds per-server pages only (§9.1 scope split).
 const APP_SETTINGS_HREF = "/app-settings";
 
 /**
- * Active-item background/shadow/radius treatment — the shared skeleton
+ * Active-item background/shadow/radius treatment - the shared skeleton
  * that renders all four themes' character purely off the --nav-active-*
  * vars (docs/theme-contract.md §9.1, §9.3). Phosphor's fill is transparent
  * by design (its treatment is the underline strip below, not a fill), and
- * per §9.6 it must NOT participate in the shared layoutId slide — it
+ * per §9.6 it must NOT participate in the shared layoutId slide - it
  * crossfades in at `--motion-fast` instead. The other three themes share
  * a single `layoutId` so the capsule/slot glides between whichever item
  * just became active.
@@ -126,7 +126,7 @@ function NavActiveFill({ theme, layoutId }: { theme: string; layoutId: string })
   );
 }
 
-/** The bottom-edge underline strip — zero-height in every theme except
+/** The bottom-edge underline strip - zero-height in every theme except
  * phosphor (docs/theme-contract.md §9.1), so this renders as a no-op in
  * the other three. Anchored by its parent's full header height, not the
  * button's own height, so it sits flush with the bar's bottom edge. */
@@ -203,7 +203,7 @@ export default function Navbar() {
   const overflowItems = navItems.slice(PRIORITY_COUNT);
   // T4 (640-699px) folds ALL eight items into "More"; T3 (700-899px) folds
   // only the non-priority four. The priority four's menu-only rendering is
-  // therefore only meaningful at T4 — gated with `header-min:hidden` below.
+  // therefore only meaningful at T4 - gated with `header-min:hidden` below.
   const activeInOverflowAlways = overflowItems.some((item) => isActive(item.href));
   const activeInPriority = priorityItems.some((item) => isActive(item.href));
   const moreHasActive = activeInOverflowAlways || activeInPriority;
@@ -227,7 +227,7 @@ export default function Navbar() {
       {/* Edge strips (docs/theme-contract.md §9.1): solid or gradient per
           theme, transparent = invisible = free. Replaces the old static
           radial-gradient glow decal, which was quantum-flavored and leaked
-          into all four themes — quantum's glow now lives entirely in
+          into all four themes - quantum's glow now lives entirely in
           --header-shadow / --header-edge-bottom. */}
       <div
         aria-hidden
@@ -255,7 +255,7 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Nav zone — the only zone that adapts (§9.1). min-w-0 lets it
+        {/* Nav zone - the only zone that adapts (§9.1). min-w-0 lets it
             shrink instead of forcing the header wider than the window. */}
         <nav
           aria-label="Primary"
@@ -285,7 +285,7 @@ export default function Navbar() {
                     aria-current={active ? "page" : undefined}
                     // The label span is CSS-hidden below header-full (T2–T4),
                     // and a display:none child contributes nothing to the
-                    // accessible name — this is the icon-only tiers' real
+                    // accessible name - this is the icon-only tiers' real
                     // name, not decoration.
                     aria-label={item.label}
                   >
@@ -339,7 +339,7 @@ export default function Navbar() {
             );
           })}
 
-          {/* "More" overflow — a desktop toolbar-overflow Dropdown, not a
+          {/* "More" overflow - a desktop toolbar-overflow Dropdown, not a
               drawer (§9.2). Visible only below header-mid (900px, T3+T4).
               Its menu always contains all eight items; the priority four
               are CSS-hidden inside it except at T4 (<700px), where they
@@ -412,10 +412,10 @@ export default function Navbar() {
           )}
         </nav>
 
-        {/* Controls zone — fixed, shrink-0 (§9.1). */}
+        {/* Controls zone - fixed, shrink-0 (§9.1). */}
         <div className="flex shrink-0 items-center gap-1">
           {/* This server: which one the pages show (§9.1). How it is run
-              (Simple / Advanced) is changed in Server Settings only — a
+              (Simple / Advanced) is changed in Server Settings only - a
               one-click header toggle made a server look deleted. */}
           <ServerSwitcher />
 
@@ -458,8 +458,8 @@ export default function Navbar() {
           <Popover isOpen={showKofi} onOpenChange={setShowKofi}>
             {/* Popover.Trigger is HeroUI's pressable (a react-aria Pressable
                 around a role="button" div). It needs tabIndex to be
-                focusable — omitted, it logs "<Pressable> child must be
-                focusable" — and it must be the only interactive element:
+                focusable - omitted, it logs "<Pressable> child must be
+                focusable" - and it must be the only interactive element:
                 nesting a Button inside it, or wrapping it in a Tooltip,
                 leaves the DialogTrigger's PressResponder unconsumed. So the
                 trigger is styled as the ghost icon button itself. */}

@@ -1,5 +1,5 @@
 //! Host-side HTTP downloads with progress events (contract §4.3, §6.3).
-//! All downloads happen in Rust via reqwest — never `curl` in a container.
+//! All downloads happen in Rust via reqwest - never `curl` in a container.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -43,7 +43,7 @@ pub struct DownloadResult {
 
 /// General-purpose client (`core.http`): mojang/server-utils traffic and
 /// downloads with `allowPrivateDownloadHosts` enabled. Redirect hops are
-/// checked for scheme only — server-utils legitimately lives on LAN hosts.
+/// checked for scheme only - server-utils legitimately lives on LAN hosts.
 pub fn build_client() -> reqwest::Client {
     client_with_redirect_policy(true)
 }

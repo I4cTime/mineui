@@ -113,7 +113,7 @@ impl Manager {
         Ok(())
     }
 
-    /// Drop every subscription at once and kill the follower — used when the
+    /// Drop every subscription at once and kill the follower - used when the
     /// server profile itself goes away (§3.12 `remove_server`).
     pub async fn shutdown(&self) {
         *self.refcount.lock().unwrap() = 0;

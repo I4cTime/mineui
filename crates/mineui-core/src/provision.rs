@@ -6,7 +6,7 @@
 //!
 //! Deletion (`delete_container`) exists for cleaning up a failed or unwanted
 //! server. It runs only on an explicit, confirmed request, and removes a data
-//! volume only when that was asked for too — never as a side effect of
+//! volume only when that was asked for too - never as a side effect of
 //! anything else, and never a folder on the host.
 
 use std::net::{Ipv4Addr, TcpListener};
@@ -65,7 +65,7 @@ pub enum Workload {
 }
 
 impl Workload {
-    /// `FORGE`, `MODRINTH:<slug>`, `AUTO_CURSEFORGE:<slug>` — the audit label.
+    /// `FORGE`, `MODRINTH:<slug>`, `AUTO_CURSEFORGE:<slug>` - the audit label.
     pub fn label(&self) -> String {
         match self {
             Workload::Loader(itzg_type) => (*itzg_type).to_string(),
@@ -197,7 +197,7 @@ pub fn env_file_body(plan: &Plan, memory_mb: u32, rcon_password: &str) -> String
     )
 }
 
-/// `run -d` — or, with a pack zip that must be inside before the first
+/// `run -d` - or, with a pack zip that must be inside before the first
 /// start, `create` + `cp` + `start` (§3.13). A `cp`/`start` failure is
 /// reported like a failed `run`: the caller removes the half-made container
 /// and the pids-limit retry can still read the runtime's words.
@@ -290,7 +290,7 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
     let runtime = crate::runtime::resolve(&settings.advanced).await?;
     if runtime.ps_state(name).await?.exists {
         return Err(Error::ContainerExists(format!(
-            "a container named '{name}' already exists — attach to it in the server's settings"
+            "a container named '{name}' already exists - attach to it in the server's settings"
         )));
     }
 
@@ -320,7 +320,7 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
         &env_file_body(&plan, args.memory_mb, &rcon_password),
     )
     .await?;
-    // "Keep on this computer" binds 127.0.0.1 — unless that loopback is a
+    // "Keep on this computer" binds 127.0.0.1 - unless that loopback is a
     // VM's rather than the user's: Podman on Windows with the WSL provider
     // publishes inside the machine, and WSL's localhost relay only reaches
     // ports bound on all interfaces there (§3.13). Published without an
@@ -707,7 +707,7 @@ mod tests {
             "EULA=TRUE\nTYPE=MODRINTH\nMODRINTH_MODPACK=cobblemon-fabric\nVERSION=1.21.1\nMEMORY=6144M\nENABLE_RCON=true\nRCON_PASSWORD=pw\n"
         );
 
-        // CurseForge: the pack file fixes the version, so none is sent — the
+        // CurseForge: the pack file fixes the version, so none is sent - the
         // version argument still picks the Java image.
         let plan = validate(&with_modpack(ModpackSource::Curseforge, "all-the-mods-10")).unwrap();
         assert_eq!(plan.version, "1.21.1");

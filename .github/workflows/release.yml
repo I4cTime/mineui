@@ -107,7 +107,7 @@ jobs:
             patchelf gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
             gstreamer1.0-alsa gstreamer1.0-pulseaudio gstreamer1.0-gl
 
-      # Same HEROUI_AUTH_TOKEN gate as ci.yml — see the comment there.
+      # Same HEROUI_AUTH_TOKEN gate as ci.yml - see the comment there.
       # `pnpm build` (the frontend static export) runs on this runner too,
       # via tauri.conf.json's beforeBuildCommand, so the Pro artifacts must
       # already be resolved before tauri-action invokes it.
@@ -121,7 +121,7 @@ jobs:
       # (bundle/macos/icon.rs::create_icns_file): it generates the .icns at
       # build time from whatever PNGs are declared in tauri.conf.json's
       # bundle.icon list, and 32/128/256px (128@2x) are all valid native icns
-      # sizes — it does not require a pre-existing .icns and does not hard-fail
+      # sizes - it does not require a pre-existing .icns and does not hard-fail
       # here. If the generated icon looks soft, regenerate the whole icon set
       # from a >=1024px source via `pnpm tauri icon` (this also needs updating
       # tauri.conf.json's bundle.icon list) rather than hand-adding an .icns.
@@ -131,7 +131,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
           # --- Code signing: not configured yet, no certs exist. ---
-          # macOS notarization/signing — add these secrets and uncomment when
+          # macOS notarization/signing - add these secrets and uncomment when
           # an Apple Developer cert is available:
           # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -139,7 +139,7 @@ jobs:
           # APPLE_ID: ${{ secrets.APPLE_ID }}
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # Windows code signing — add when a cert is available:
+          # Windows code signing - add when a cert is available:
           # WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           # WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           # Tauri updater artifact signing (independent of OS code signing):

@@ -1,6 +1,6 @@
 "use client";
 
-// Settings → Servers: the list of server profiles (contract §2.5, §3.12) —
+// Settings → Servers: the list of server profiles (contract §2.5, §3.12) -
 // open, rename, remove, add. State and IPC live in ServerProvider; this is
 // presentation plus the add/rename/remove flows.
 import { useState } from "react";
@@ -48,7 +48,7 @@ import {
   type ServerProfile,
 } from "@/app/lib/ipc";
 
-/** How a new server comes to be — and so where adding it lands you. */
+/** How a new server comes to be - and so where adding it lands you. */
 type AddKind = "new-container" | "existing-container" | "managed";
 
 const ADD_KINDS: {
@@ -64,7 +64,7 @@ const ADD_KINDS: {
     id: "new-container",
     title: "Modded or modpack server",
     description:
-      "MineUI creates the server in a container for you — Paper, Fabric, Forge, NeoForge, or a whole modpack. Needs Podman or Docker (MineUI shows how to install one).",
+      "MineUI creates the server in a container for you - Paper, Fabric, Forge, NeoForge, or a whole modpack. Needs Podman or Docker (MineUI shows how to install one).",
     icon: Container,
     mode: "advanced",
     next: "/",
@@ -103,7 +103,7 @@ export default function ServersCard() {
   const [newKind, setNewKind] = useState<AddKind>("new-container");
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<ServerProfile | null>(null);
-  // Removing a server can take its container along (contract §3.13) — off
+  // Removing a server can take its container along (contract §3.13) - off
   // by default, and the world only goes with a second tick and its name typed.
   const [alsoContainer, setAlsoContainer] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
@@ -232,7 +232,7 @@ export default function ServersCard() {
           <Card.Title>Servers</Card.Title>
         </div>
         <Card.Description>
-          MineUI manages every server listed here at the same time — scheduled
+          MineUI manages every server listed here at the same time - scheduled
           tasks and backups keep running for all of them. Per-server settings
           live on each server&apos;s Settings page.
         </Card.Description>

@@ -1,8 +1,8 @@
 // Shared display formatters. Timestamps arrive as epoch ms or RFC 3339
-// strings per docs/v2-contract.md §7 — format client-side, "—" for unknown.
+// strings per docs/v2-contract.md §7 - format client-side, "-" for unknown.
 
 export const formatBytes = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   if (value === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let size = value;
@@ -18,8 +18,8 @@ export const formatDateTime = (
   value: number | string | null | undefined,
 ): string => {
   if (value === null || value === undefined || value === 0 || value === "") {
-    return "—";
+    return "-";
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
 };

@@ -1,12 +1,13 @@
 "use client";
 
-// How to install Podman or Docker — shown wherever advanced mode needs a
+// How to install Podman or Docker - shown wherever advanced mode needs a
 // container runtime and `detect_runtimes` found neither. Opens on the
 // visitor's own OS; the other two are a tab away. Commands are copyable;
 // nothing here runs anything.
 import { useState } from "react";
 import { Check, Copy, ExternalLink, RefreshCw, TriangleAlert } from "lucide-react";
 import { Button, Tabs } from "@heroui/react";
+import OutLink from "@/app/components/OutLink";
 import { useUISound } from "@/app/hooks/useUISound";
 
 type Os = "linux" | "windows" | "mac";
@@ -166,7 +167,7 @@ export default function RuntimeInstallHelp({ onRecheck, checking = false }: Runt
         <div className="grid gap-1">
           <span className="font-semibold">Podman or Docker is needed, and neither was found</span>
           <span className="text-xs text-muted">
-            A container server runs inside one of them. Install either — MineUI
+            A container server runs inside one of them. Install either - MineUI
             finds it by itself and uses Podman when both are there. Nothing
             below is run for you; copy the commands into a terminal.
           </span>
@@ -196,15 +197,10 @@ export default function RuntimeInstallHelp({ onRecheck, checking = false }: Runt
                   <CommandRow key={step.command} step={step} />
                 ))}
                 {option.after && <span className="text-xs text-muted">{option.after}</span>}
-                <a
-                  href={option.link.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-accent underline"
-                >
+                <OutLink href={option.link.href} className="inline-flex items-center gap-1.5 text-xs text-accent underline">
                   {option.link.label}
                   <ExternalLink size={12} />
-                </a>
+                </OutLink>
               </div>
             ))}
           </Tabs.Panel>

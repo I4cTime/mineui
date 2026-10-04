@@ -1,5 +1,5 @@
 //! Live integration tests for Advanced mode against a real rootless podman
-//! container. **Opt-in** — every test is `#[ignore]`; CI never runs them.
+//! container. **Opt-in** - every test is `#[ignore]`; CI never runs them.
 //!
 //! Prerequisite (matches the shapes these tests assert against, validated on
 //! podman 4.9.3 + itzg/minecraft-server, Minecraft 26.2):
@@ -207,7 +207,7 @@ async fn live_config_list_and_read() {
 async fn live_config_write_roundtrip_creates_missing_subdir() {
     let _g = live_lock().await;
     let (_tmp, core) = live_core().await;
-    // Vanilla itzg has no /data/config — the write must create it
+    // Vanilla itzg has no /data/config - the write must create it
     // (regression: bare `podman cp` fails when the parent dir is missing).
     let rel = "config/mineui-live-test.toml";
     let body = "mineui = \"live-test\"\n";
@@ -246,7 +246,7 @@ async fn live_config_write_roundtrip_creates_missing_subdir() {
 async fn live_mods_list_vanilla_is_empty_not_error() {
     let _g = live_lock().await;
     let (_tmp, core) = live_core().await;
-    // Vanilla server: no /data/mods, no /data/plugins — must be an empty
+    // Vanilla server: no /data/mods, no /data/plugins - must be an empty
     // result, not an error.
     let mods = mineui_core::mods::list(&core).await.expect("mods list");
     assert!(mods.mods.is_empty(), "vanilla has no mods dir");
@@ -437,6 +437,6 @@ async fn live_metrics_composition_end_to_end() {
     let started_at = metrics.started_at.expect("startedAt from inspect");
     chrono::DateTime::parse_from_rfc3339(&started_at).expect("startedAt is RFC 3339");
     assert!(metrics.uptime_seconds.unwrap_or(-1) >= 0);
-    // Vanilla has no `tps` command — must degrade to None, not error.
+    // Vanilla has no `tps` command - must degrade to None, not error.
     assert!(metrics.tps.is_none());
 }

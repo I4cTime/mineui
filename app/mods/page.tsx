@@ -59,7 +59,7 @@ export default function ModsPage() {
   const [restarting, setRestarting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ item: ModEntry; kind: ModTarget } | null>(null);
   const addedInDialog = useRef(false);
-  // Shared app-wide mode (app/components/ModeProvider.tsx) — reacts live to a
+  // Shared app-wide mode (app/components/ModeProvider.tsx) - reacts live to a
   // navbar toggle instead of the old per-mount getServerState() snapshot.
   const { mode } = useMode();
   const isSimpleMode = mode === "simple";
@@ -232,7 +232,7 @@ export default function ModsPage() {
       >
         <PageHeader title="Mods & Plugins" icon={Boxes} />
 
-        {/* Mounts after the async settings fetch, past the parent's stagger —
+        {/* Mounts after the async settings fetch, past the parent's stagger -
             must drive its own enter animation. */}
         {isSimpleMode && (
           <motion.section variants={cardMotion} initial="hidden" animate="show">
@@ -308,7 +308,7 @@ export default function ModsPage() {
                 Total: {countOf(allEntries.length, totalMods + totalPlugins)}
               </Chip>
               <Chip variant="soft">
-                Last updated: {lastUpdated ? formatDateTime(lastUpdated) : "—"}
+                Last updated: {lastUpdated ? formatDateTime(lastUpdated) : "-"}
               </Chip>
             </Card.Content>
             <Card.Footer className="flex flex-wrap items-center gap-3">

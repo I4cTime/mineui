@@ -2,7 +2,7 @@
 
 // Choosing a modpack for a new container (contract §3.13, §3.14).
 // Modrinth: search in place and pick. CurseForge: its search needs a
-// personal API key, so the pack is named by its page address or slug — or
+// personal API key, so the pack is named by its page address or slug - or
 // handed over as the zip the CurseForge app exports (2.8.0).
 import { useEffect, useRef, useState } from "react";
 import { Download, FileArchive, Loader2, Search, X } from "lucide-react";
@@ -79,7 +79,7 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
   const [zipInfo, setZipInfo] = useState<ModpackZipInfo | null>(null);
   const [zipError, setZipError] = useState<string | null>(null);
   const [inspecting, setInspecting] = useState(false);
-  // Only the newest search may land — typing fast must not show stale hits.
+  // Only the newest search may land - typing fast must not show stale hits.
   const searchId = useRef(0);
 
   useEffect(() => {
@@ -326,7 +326,7 @@ export default function ModpackPicker({ value, onChange, isDisabled = false }: M
           />
           <Description>
             Copy the address of the pack&apos;s page on CurseForge. No API key is
-            needed. A few CurseForge mods forbid automatic download — if the
+            needed. A few CurseForge mods forbid automatic download - if the
             server log names one, that file has to be added by hand.
           </Description>
         </TextField>

@@ -125,7 +125,7 @@ pub fn next_due(schedule: &Schedule, after: DateTime<Local>) -> Option<DateTime<
     }
 }
 
-/// Anchor for a job's next due time: its last run, or app start — whichever
+/// Anchor for a job's next due time: its last run, or app start - whichever
 /// is later. A slot missed while the app was closed never fires late.
 fn anchor_ms(core: &crate::Core, last_run: Option<&JobRunResult>) -> i64 {
     let started = core.scheduler.started_at_epoch_ms;

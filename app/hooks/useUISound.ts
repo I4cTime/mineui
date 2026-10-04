@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { Howl } from "howler";
 import {
+  DEFAULT_SOUND_SET,
+  SoundSetId,
   UISoundType,
   UI_SOUNDS,
   UI_SOUND_TYPES,
+  isSoundSetId,
+  soundSrc,
 } from "@/app/lib/audio-constants";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -16,13 +20,28 @@ const STORAGE_KEY = "mineui-sound-settings";
 
 interface SoundSettings {
   enabled: boolean;
+  /** 0–100. */
   volume: number;
+  /** Which sound set plays (app/lib/audio-constants.ts SOUND_SETS). */
+  set: SoundSetId;
 }
 
 const defaultSettings: SoundSettings = {
   enabled: true,
   volume: 70,
+  set: DEFAULT_SOUND_SET,
 };
+
+/** Whatever was stored (older versions had no `set`; a set can be retired)
+ *  becomes a complete, valid settings object. */
+function normalize(stored: Partial<SoundSettings> | null): SoundSettings {
+  const volume = Number(stored?.volume);
+  return {
+    enabled: typeof stored?.enabled === "boolean" ? stored.enabled : defaultSettings.enabled,
+    volume: Number.isFinite(volume) ? Math.min(100, Math.max(0, Math.round(volume))) : defaultSettings.volume,
+    set: isSoundSetId(stored?.set) ? stored.set : DEFAULT_SOUND_SET,
+  };
+}
 
 let cachedSettings: SoundSettings | null = null;
 const listeners = new Set<() => void>();
@@ -33,7 +52,7 @@ function getSettings(): SoundSettings {
 
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    cachedSettings = stored ? JSON.parse(stored) : defaultSettings;
+    cachedSettings = stored ? normalize(JSON.parse(stored)) : defaultSettings;
   } catch {
     cachedSettings = defaultSettings;
   }
@@ -42,7 +61,7 @@ function getSettings(): SoundSettings {
 
 function setSettings(settings: Partial<SoundSettings>) {
   const current = getSettings();
-  const updated = { ...current, ...settings };
+  const updated = normalize({ ...current, ...settings });
   cachedSettings = updated;
 
   if (typeof window !== "undefined") {
@@ -80,10 +99,15 @@ export function useSoundSettings() {
     setSettings({ volume });
   }, []);
 
+  const setSet = useCallback((set: SoundSetId) => {
+    setSettings({ set });
+  }, []);
+
   return {
     ...settings,
     setEnabled,
     setVolume,
+    setSet,
   };
 }
 
@@ -91,48 +115,63 @@ export function useSoundSettings() {
 // SOUND POOL
 // ═══════════════════════════════════════════════════════════════════════════
 
-const soundPool: Map<UISoundType, Howl> = new Map();
-let isPreloaded = false;
-let preloadPromise: Promise<void> | null = null;
+// One pool per sound set, loaded the first time the set is needed (the
+// active set at startup; another when the user previews or picks it).
+const soundPools: Map<SoundSetId, Map<UISoundType, Howl>> = new Map();
+const preloads: Map<SoundSetId, Promise<void>> = new Map();
 
-function preloadSounds(): Promise<void> {
-  if (isPreloaded) return Promise.resolve();
-  if (preloadPromise) return preloadPromise;
+function preloadSounds(set: SoundSetId): Promise<void> {
+  const pending = preloads.get(set);
+  if (pending) return pending;
 
-  preloadPromise = new Promise((resolve) => {
+  const pool: Map<UISoundType, Howl> = new Map();
+  soundPools.set(set, pool);
+  const promise = new Promise<void>((resolve) => {
     let loadedCount = 0;
     const totalSounds = UI_SOUND_TYPES.length;
+    const settle = () => {
+      loadedCount++;
+      if (loadedCount === totalSounds) resolve();
+    };
 
     UI_SOUND_TYPES.forEach((type) => {
       const config = UI_SOUNDS[type];
-
-      const howl = new Howl({
-        src: [config.src],
-        volume: config.volume,
-        loop: config.loop ?? false,
-        preload: true,
-        html5: false,
-        onload: () => {
-          loadedCount++;
-          if (loadedCount === totalSounds) {
-            isPreloaded = true;
-            resolve();
-          }
-        },
-        onloaderror: () => {
-          loadedCount++;
-          if (loadedCount === totalSounds) {
-            isPreloaded = true;
-            resolve();
-          }
-        },
-      });
-
-      soundPool.set(type, howl);
+      pool.set(
+        type,
+        new Howl({
+          src: [soundSrc(set, type)],
+          volume: config.volume,
+          loop: config.loop ?? false,
+          preload: true,
+          html5: false,
+          onload: settle,
+          onloaderror: settle,
+        }),
+      );
     });
   });
+  preloads.set(set, promise);
+  return promise;
+}
 
-  return preloadPromise;
+/** Play one sound of one set at the given 0–100 volume (used by play() and
+ *  by the set preview in App Settings, which must work for any set). */
+function playFrom(set: SoundSetId, type: UISoundType, volume: number) {
+  const howl = soundPools.get(set)?.get(type);
+  if (!howl) return;
+  const config = UI_SOUNDS[type];
+  howl.volume(config.volume * (volume / 100));
+  if (!config.loop) howl.stop();
+  howl.play();
+}
+
+/** Audition a set regardless of the mute switch: a click, then the success
+ *  chime - the two sounds heard most. */
+export function previewSoundSet(set: SoundSetId, volume: number) {
+  void preloadSounds(set).then(() => {
+    playFrom(set, "click_confirm", volume);
+    window.setTimeout(() => playFrom(set, "success", volume), 260);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -176,48 +215,31 @@ interface UseUISoundReturn {
 
 export function useUISound(): UseUISoundReturn {
   const settings = useSoundSettings();
-  const hasPreloadedRef = useRef(false);
+  const { enabled, volume, set } = settings;
 
+  // Load the active set on mount and whenever the user picks another.
   useEffect(() => {
-    if (!hasPreloadedRef.current) {
-      hasPreloadedRef.current = true;
-      preloadSounds();
-    }
-  }, []);
+    void preloadSounds(set);
+  }, [set]);
 
   const play = useCallback(
     (type: UISoundType) => {
-      if (!settings.enabled) return;
+      if (!enabled) return;
       if (shouldThrottle(type)) return;
-
-      const howl = soundPool.get(type);
-      if (!howl) return;
-
-      const config = UI_SOUNDS[type];
-      const finalVolume = config.volume * (settings.volume / 100);
-
-      howl.volume(finalVolume);
-
-      if (!config.loop) {
-        howl.stop();
-      }
-
-      howl.play();
+      playFrom(set, type, volume);
     },
-    [settings.enabled, settings.volume],
+    [enabled, volume, set],
   );
 
-  const stop = useCallback((type: UISoundType) => {
-    const howl = soundPool.get(type);
-    if (howl) {
-      howl.stop();
-    }
-  }, []);
+  const stop = useCallback(
+    (type: UISoundType) => {
+      soundPools.get(set)?.get(type)?.stop();
+    },
+    [set],
+  );
 
   const stopAll = useCallback(() => {
-    soundPool.forEach((howl) => {
-      howl.stop();
-    });
+    soundPools.forEach((pool) => pool.forEach((howl) => howl.stop()));
   }, []);
 
   return {

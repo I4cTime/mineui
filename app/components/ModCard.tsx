@@ -72,7 +72,7 @@ export default function ModCard({
           {known && <Chip variant="soft">Loader: {loaderName(item.loader)}</Chip>}
           {mismatch && (
             <Chip variant="soft" color="warning">
-              Made for {loaderName(item.loader)} — this server runs {loaderName(serverLoader)}
+              Made for {loaderName(item.loader)} - this server runs {loaderName(serverLoader)}
             </Chip>
           )}
           {disabled ? (

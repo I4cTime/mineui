@@ -1,8 +1,8 @@
 "use client";
 
 // Mods → "Add mod or plugin". One flow, top to bottom:
-//   1. what it is (mod or plugin — decides the folder),
-//   2. where it comes from (a link, or a file on this computer) — and, when
+//   1. what it is (mod or plugin - decides the folder),
+//   2. where it comes from (a link, or a file on this computer) - and, when
 //      that is a .zip, whether it is one mod or a bundle of mods to unpack,
 //   3. what happened (progress, errors in place, what was added so far).
 // The dialog stays open after a success so several files can be added in a
@@ -140,7 +140,7 @@ const nameFromLink = (url: URL | null): string | null => {
 interface AddModDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  /** A file landed on the server — refresh the list behind the dialog. */
+  /** A file landed on the server - refresh the list behind the dialog. */
   onInstalled: () => void;
 }
 
@@ -242,7 +242,7 @@ function AddModForm({
     setBundleNote(
       `${installed.length} ${what}${installed.length === 1 ? "" : "s"} unpacked from ${archive}` +
         (skipped > 0
-          ? ` — ${skipped} other file${skipped === 1 ? " was" : "s were"} left out (configs and anything that is not a ${what}).`
+          ? ` - ${skipped} other file${skipped === 1 ? " was" : "s were"} left out (configs and anything that is not a ${what}).`
           : "."),
     );
     onInstalled();
@@ -350,7 +350,7 @@ function AddModForm({
       </Modal.Header>
 
       <Modal.Body className="flex flex-col gap-5 px-1 pt-3 pb-1 text-sm">
-        {/* 1 — what it is */}
+        {/* 1 - what it is */}
         <section className="flex flex-col gap-2">
           <span id="add-mod-kind" className="text-xs uppercase tracking-[0.2em] text-muted">
             1 · What are you adding?
@@ -403,7 +403,7 @@ function AddModForm({
           )}
         </section>
 
-        {/* 2 — where it comes from */}
+        {/* 2 - where it comes from */}
         <section className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-[0.2em] text-muted">
             2 · Where is the file?
@@ -456,11 +456,11 @@ function AddModForm({
                   }}
                 />
                 <Description>
-                  The direct link to a .jar or .zip — on Modrinth or CurseForge,
+                  The direct link to a .jar or .zip - on Modrinth or CurseForge,
                   copy the address of the file&apos;s Download button.
                 </Description>
                 <FieldError>
-                  That is not a link MineUI can download — it must start with
+                  That is not a link MineUI can download - it must start with
                   http:// or https://.
                 </FieldError>
               </TextField>
@@ -566,7 +566,7 @@ function AddModForm({
                       onPress={() => handlePendingZip("bundle")}
                       onMouseEnter={() => play("hover")}
                     >
-                      Several {target === "mods" ? "mods" : "plugins"} — unpack them
+                      Several {target === "mods" ? "mods" : "plugins"} - unpack them
                     </Button>
                     <Button
                       variant="secondary"
@@ -574,7 +574,7 @@ function AddModForm({
                       onPress={() => handlePendingZip("single")}
                       onMouseEnter={() => play("hover")}
                     >
-                      One {target === "mods" ? "mod" : "plugin"} — add as it is
+                      One {target === "mods" ? "mod" : "plugin"} - add as it is
                     </Button>
                   </div>
                   <p className="text-xs text-muted">
@@ -588,7 +588,7 @@ function AddModForm({
           </Tabs>
         </section>
 
-        {/* 3 — what happened */}
+        {/* 3 - what happened */}
         {downloading && (
           <div className="grid gap-1.5" role="status">
             <div className="flex items-center justify-between gap-3 text-xs text-muted">

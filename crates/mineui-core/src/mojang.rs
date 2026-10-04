@@ -174,6 +174,20 @@ pub async fn version_detail(core: &crate::Core, version_id: &str) -> Result<Vers
         .map_err(|e| Error::DownloadFailed(format!("invalid version detail JSON: {e}")))
 }
 
+/// `releaseTime` of one version from the cached manifest (§3.6
+/// `change_instance_version` step 3). `None` when no manifest is cached or
+/// the version is not listed. Call after `version_detail`, which warms it.
+pub async fn cached_release_time(core: &crate::Core, version_id: &str) -> Option<String> {
+    let cache = core.mojang_cache.lock().await;
+    cache
+        .as_ref()?
+        .manifest
+        .versions
+        .iter()
+        .find(|v| v.id == version_id)
+        .map(|v| v.release_time.clone())
+}
+
 /// Download the server jar to `dest` with sha1 verification and
 /// `kind: "server-jar"` progress events (§3.6 step 5).
 pub async fn download_server_jar(
@@ -190,7 +204,7 @@ pub async fn download_server_jar(
         max_bytes: None,
         expected_sha1: Some(download.sha1.clone()),
         // Server-jar URLs come from Mojang's HTTPS manifest and the content
-        // is SHA-1 pinned; still use the strict client — piston-data has no
+        // is SHA-1 pinned; still use the strict client - piston-data has no
         // business redirecting to private hosts.
         allow_private_hosts: false,
     };

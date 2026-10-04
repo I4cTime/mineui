@@ -23,7 +23,7 @@ fn rotated(core: &crate::Core) -> PathBuf {
     core.paths.data_dir.join(format!("{FILE}.1"))
 }
 
-/// `"CODE: message"` — the `error` field of a failed entry.
+/// `"CODE: message"` - the `error` field of a failed entry.
 pub fn error_string(e: &Error) -> String {
     format!("{}: {e}", e.code())
 }

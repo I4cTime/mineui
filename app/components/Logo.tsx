@@ -9,7 +9,7 @@ interface LogoProps {
 }
 
 /**
- * The "Ore Cube" brand mark (2026-08 rollout — see assets/brand/): a neon
+ * The "Ore Cube" brand mark (2026-08 rollout - see assets/brand/): a neon
  * isometric voxel with the glowing core on the front-corner junction and
  * one orbit through the cube. Geometry is the canonical 512-grid mark
  * scaled to a 32 viewBox; colors come from the active theme's tokens, so
@@ -52,7 +52,7 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
         <circle cx="16" cy="16" r="3.4" strokeWidth="1.1" fill="var(--surface)" />
       </g>
 
-      {/* Core — was an infinite pulse in the old logo; single-shot bloom-in
+      {/* Core - was an infinite pulse in the old logo; single-shot bloom-in
           on mount only (this renders in Navbar on every page). */}
       <motion.circle
         cx="16"
@@ -64,7 +64,7 @@ export default function Logo({ size = 32, className = "" }: LogoProps) {
         transition={transition("slow")}
       />
 
-      {/* Glow layer — same single-shot fade as the old logo's. */}
+      {/* Glow layer - same single-shot fade as the old logo's. */}
       <motion.path
         d="M16 4.75 L25.74 10.38 L25.74 21.62 L16 27.25 L6.26 21.62 L6.26 10.38 Z"
         fill="none"
