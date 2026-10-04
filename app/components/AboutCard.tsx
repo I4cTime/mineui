@@ -21,7 +21,7 @@ const LINKS: { label: string; url: string }[] = [
   { label: "Website and guides", url: "https://mineui.i4c.studio" },
   { label: "What's new (changelog)", url: "https://mineui.i4c.studio/changelog" },
   { label: "Report a problem", url: "https://github.com/I4cTime/mineui/issues" },
-  { label: "Source code and license (MIT)", url: "https://github.com/I4cTime/mineui" },
+  { label: "Source code and license (AGPL-3.0)", url: "https://github.com/I4cTime/mineui" },
 ];
 
 const OS_NAMES: Record<string, string> = { linux: "Linux", windows: "Windows", macos: "macOS" };
@@ -102,7 +102,7 @@ export default function AboutCard() {
           <Card.Title>About MineUI</Card.Title>
         </div>
         <Card.Description>
-          Free and open source. Not affiliated with Mojang or Microsoft.
+          Free and open source (AGPL-3.0). Not affiliated with Mojang or Microsoft.
         </Card.Description>
       </Card.Header>
       <Card.Content className="mt-4 grid gap-6">
