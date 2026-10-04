@@ -114,8 +114,9 @@ MineUI forget it: its container, world and backups are never touched.
 
 ### Create a modded server without touching the command line
 
-Adding a server offers three routes: a **new container**, an **existing
-container**, or a **managed vanilla** process. For a new container MineUI
+Adding a server offers three routes: a **Modded or modpack server** (a new
+container), a **Plain Minecraft server** (vanilla, run on this computer, no
+containers), or **A container I already run**. For a new container MineUI
 creates an [`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)
 container for you — pick Vanilla, Paper, Purpur, Fabric, Quilt, Forge or
 NeoForge, the Minecraft version, memory and ports — picks the image with the
@@ -145,10 +146,13 @@ with copyable commands, and a *Check again* button — see also
 
 ### App settings vs. server settings
 
-The header's sliders button opens **App Settings** — the server list, theme
-and accent, which apply to MineUI as a whole. **Settings** in the navigation
-is always the open server's own: mode, connection, scheduled tasks, backup
-policy, RCON allowlist.
+The header's sliders button opens **App Settings** — the server list and
+appearance (dark / light mode, style, accent), which apply to MineUI as a
+whole. **Settings** in the navigation is always the open server's own: its
+name, performance, scheduled tasks, backups, and — under *Advanced* —
+connection details, console command rules and how the server is run (Simple
+or Advanced; there is no header toggle for that any more, it is changed there,
+never while the server runs, and asks first).
 
 ### Server control and live status
 
@@ -162,10 +166,11 @@ Online players, join/leave history with last-seen and IP, one-click
 whitelist/op/ban/kick actions, and a private note per player for whatever you
 need to remember about them.
 
-### RCON console
+### Console
 
-An allowlisted command panel — only vetted commands can be run, even with
-raw RCON access configured.
+Send commands to the running server (over RCON). Only allowlisted commands
+can be run — the page shows which — with a transcript, Up/Down recall and a
+confirmation before `stop`.
 
 ### Mods & plugins
 
