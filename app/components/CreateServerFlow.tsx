@@ -38,6 +38,7 @@ import {
   type McVersion,
 } from "@/app/lib/ipc";
 import DiscardServerButton from "@/app/components/DiscardServerButton";
+import OutLink from "@/app/components/OutLink";
 import { useUISound } from "@/app/hooks/useUISound";
 
 const MEMORY_MIN = 512;
@@ -353,14 +354,9 @@ export default function CreateServerFlow({
                 />
                 <span>
                   I accept the{" "}
-                  <a
-                    href="https://aka.ms/MinecraftEULA"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline text-accent"
-                  >
+                  <OutLink href="https://aka.ms/MinecraftEULA" className="underline text-accent">
                     Minecraft End User License Agreement
-                  </a>
+                  </OutLink>
                   .{" "}
                   <span className="text-muted">
                     Mojang&apos;s rules for running a server — every Minecraft server has to

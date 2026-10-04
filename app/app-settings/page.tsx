@@ -7,6 +7,7 @@
 // the header's controls zone, not the nav (docs/theme-contract.md §9.1).
 import { motion } from "motion/react";
 import { SlidersHorizontal } from "lucide-react";
+import AboutCard from "@/app/components/AboutCard";
 import AppearanceCard from "@/app/components/AppearanceCard";
 import PageHeader from "@/app/components/PageHeader";
 import ServersCard from "@/app/components/ServersCard";
@@ -37,6 +38,9 @@ export default function AppSettingsPage() {
         </motion.section>
         <motion.section variants={cardMotion}>
           <SoundsCard />
+        </motion.section>
+        <motion.section variants={cardMotion}>
+          <AboutCard />
         </motion.section>
       </motion.main>
     </div>

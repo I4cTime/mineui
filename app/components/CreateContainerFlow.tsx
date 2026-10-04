@@ -25,6 +25,7 @@ import {
 import DiscardServerButton from "@/app/components/DiscardServerButton";
 import ModpackPicker, { type ModpackChoice } from "@/app/components/ModpackPicker";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
+import OutLink from "@/app/components/OutLink";
 import { useUISound } from "@/app/hooks/useUISound";
 import { fadeUp } from "@/app/lib/motion";
 import {
@@ -479,14 +480,9 @@ export default function CreateContainerFlow({
               />
               <span>
                 I accept the{" "}
-                <a
-                  href="https://aka.ms/MinecraftEULA"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-accent underline"
-                >
+                <OutLink href="https://aka.ms/MinecraftEULA" className="text-accent underline">
                   Minecraft End User License Agreement
-                </a>
+                </OutLink>
                 .{" "}
                 <span className="text-muted">
                   Mojang&apos;s rules for running a server — every Minecraft server has to

@@ -3,6 +3,38 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Change the Minecraft version of a plain (Simple) server without losing
+  the world.** Server Settings → Performance & network → *Change version…*:
+  MineUI downloads the server for the version you pick, backs the world up
+  first, and switches in place. The server has to be stopped. Moving to an
+  *older* version needs an extra tick, because an older Minecraft usually
+  cannot open a world saved by a newer one.
+- **Sounds card in App Settings:** a volume slider and a choice of four sound
+  sets — the original *Classic* plus *Blocks* (chiptune), *Glass* (soft
+  bells) and *Terminal* (relay ticks and beeps) — each with a Preview button.
+  The new sets are synthesized (no samples) and matched in loudness to the
+  original, so switching sets does not make the app louder or quieter.
+- **About card in App Settings:** the version and platform, where MineUI
+  keeps its files (copy the path or open the folder), links to the website,
+  changelog and issue tracker, and a *Check for updates* button. MineUI never
+  checks on its own; pressing the button asks GitHub for the newest release
+  and sends nothing about you or your servers.
+- **Browse… buttons** for the backup copy folder (a folder picker) and the
+  Java location; **Open folder** for a Simple server's files.
+- Five new IPC commands: `change_instance_version`, `get_app_info`,
+  `check_for_update`, `open_url`, `open_app_dir` (52 total).
+
+### Changed
+
+- Links that leave the app (EULA, install guides, the About links) now open
+  through an allowlisted command in the system browser — `https` only, a
+  fixed list of hosts — instead of relying on the webview's handling of
+  `target="_blank"`, which is not dependable on every platform.
+
 ## [2.9.0] - 2026-10-03
 
 A full review of every screen and flow ("does this make sense to someone

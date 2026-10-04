@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { Check, Copy, ExternalLink, RefreshCw, TriangleAlert } from "lucide-react";
 import { Button, Tabs } from "@heroui/react";
+import OutLink from "@/app/components/OutLink";
 import { useUISound } from "@/app/hooks/useUISound";
 
 type Os = "linux" | "windows" | "mac";
@@ -196,15 +197,10 @@ export default function RuntimeInstallHelp({ onRecheck, checking = false }: Runt
                   <CommandRow key={step.command} step={step} />
                 ))}
                 {option.after && <span className="text-xs text-muted">{option.after}</span>}
-                <a
-                  href={option.link.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-accent underline"
-                >
+                <OutLink href={option.link.href} className="inline-flex items-center gap-1.5 text-xs text-accent underline">
                   {option.link.label}
                   <ExternalLink size={12} />
-                </a>
+                </OutLink>
               </div>
             ))}
           </Tabs.Panel>

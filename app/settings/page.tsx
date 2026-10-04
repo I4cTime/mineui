@@ -38,6 +38,7 @@ import {
   TextField,
   toast,
 } from "@heroui/react";
+import ChangeVersionDialog from "@/app/components/ChangeVersionDialog";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import DeleteContainerButton from "@/app/components/DeleteContainerButton";
 import PageHeader from "@/app/components/PageHeader";
@@ -56,6 +57,7 @@ import {
   getSettings,
   instanceStatus,
   javaCheck,
+  openAppDir,
   runScheduledJobNow,
   setSettings as saveSettingsIpc,
   isTauri,
@@ -296,6 +298,7 @@ export default function SettingsPage() {
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [versionOpen, setVersionOpen] = useState(false);
   const { active, activeId, overview, rename, refreshOverview } = useServers();
   const entry = overview.find((item) => item.id === activeId);
   const phase = entry?.phase ?? null;
@@ -710,6 +713,23 @@ export default function SettingsPage() {
                     Server folder:{" "}
                     <span className="break-all font-mono">{draft.simple.instanceDir}</span>
                   </span>
+                  {instance?.exists && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-fit"
+                      onPress={() => {
+                        play("click_confirm");
+                        openAppDir("server").catch((error: unknown) => {
+                          play("error");
+                          toast.danger(error instanceof IpcError ? error.message : "Could not open the folder");
+                        });
+                      }}
+                    >
+                      <FolderOpen size={13} />
+                      Open folder
+                    </Button>
+                  )}
                   {java && (
                     <div className="flex flex-wrap items-center gap-2">
                       <Chip
@@ -782,13 +802,37 @@ export default function SettingsPage() {
                   <Card.Title>Performance &amp; network</Card.Title>
                 </div>
                 <Card.Description>
-                  Both apply the next time the server starts.
-                  {instance?.exists
-                    ? " The Minecraft version is fixed for these server files; to change it, make a backup, delete the server files below, set the server up again and restore the backup."
-                    : ""}
+                  Memory and the port apply the next time the server starts.
                 </Card.Description>
               </Card.Header>
               <Card.Content className="mt-4 grid gap-4 md:grid-cols-2">
+                {instance?.exists && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 md:col-span-2">
+                    <div className="grid gap-0.5">
+                      <span className="text-sm">
+                        Minecraft version{" "}
+                        <span className="font-pixel-num font-semibold">
+                          {instance.mcVersion ?? "?"}
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted">
+                        Change it without losing the world — MineUI backs the world up first.
+                        {serverBusy ? ` Stop ${active.name} first.` : ""}
+                      </span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      isDisabled={serverBusy || dirty}
+                      onPress={() => {
+                        play("click_confirm");
+                        setVersionOpen(true);
+                      }}
+                      onMouseEnter={() => play("hover")}
+                    >
+                      Change version…
+                    </Button>
+                  </div>
+                )}
                 <TextField className="flex flex-col gap-2" type="number">
                   <Label>Memory (MB)</Label>
                   <Input
@@ -1731,6 +1775,20 @@ export default function SettingsPage() {
               <Input autoComplete="off" spellCheck={false} />
             </TextField>
           }
+        />
+
+        <ChangeVersionDialog
+          isOpen={versionOpen}
+          serverName={active.name}
+          currentVersion={instance?.mcVersion ?? ""}
+          onClose={() => setVersionOpen(false)}
+          onChanged={(result) => {
+            setVersionOpen(false);
+            setInstance(result.status);
+            recheckJava();
+            void loadAll();
+            void refreshOverview();
+          }}
         />
 
         <ConfirmDialog

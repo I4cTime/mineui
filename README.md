@@ -146,9 +146,10 @@ with copyable commands, and a *Check again* button — see also
 
 ### App settings vs. server settings
 
-The header's sliders button opens **App Settings** — the server list and
-appearance (dark / light mode, style, accent), which apply to MineUI as a
-whole. **Settings** in the navigation is always the open server's own: its
+The header's sliders button opens **App Settings** — the server list,
+appearance (dark / light mode, style, accent), sounds (volume and four sound
+sets) and an About card (version, where files live, a manual update check),
+which apply to MineUI as a whole. **Settings** in the navigation is always the open server's own: its
 name, performance, scheduled tasks, backups, and — under *Advanced* —
 connection details, console command rules and how the server is run (Simple
 or Advanced; there is no header toggle for that any more, it is changed there,
@@ -226,8 +227,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 198 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (47 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 222 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (52 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) — binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -255,7 +256,7 @@ Other commands:
 - `pnpm build` — static export to `out/` (what Tauri bundles)
 - `pnpm lint` — ESLint
 - `pnpm tauri build` — production desktop bundle
-- `cargo test -p mineui-core` — Rust unit tests (198 tests; must stay green)
+- `cargo test -p mineui-core` — Rust unit tests (222 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every
