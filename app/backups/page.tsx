@@ -10,9 +10,8 @@ import {
   Loader2,
   Plus,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
-import { Button, Card, Chip, Table, toast } from "@heroui/react";
+import { Alert, Button, Card, Chip, Table, toast } from "@heroui/react";
 import { EmptyState } from "@heroui-pro/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import PageHeader from "@/app/components/PageHeader";
@@ -248,14 +247,17 @@ export default function BackupsPage() {
             </Card.Header>
             <Card.Content className="mt-4 p-0">
               {listError ? (
-                <div
+                <Alert
+                  status="danger"
                   role="alert"
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-danger p-3 text-sm"
+                  className="flex-wrap items-center justify-between gap-3 rounded-lg border border-danger bg-transparent p-3 shadow-none"
                 >
-                  <span className="flex items-start gap-2">
-                    <TriangleAlert size={16} className="mt-0.5 shrink-0 text-danger" />
-                    <span>Couldn&apos;t read the backups: {listError}</span>
-                  </span>
+                  <Alert.Indicator className="p-0 text-danger" />
+                  <Alert.Content className="min-w-0 flex-1">
+                    <Alert.Description className="text-sm text-foreground">
+                      Couldn&apos;t read the backups: {listError}
+                    </Alert.Description>
+                  </Alert.Content>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -267,7 +269,7 @@ export default function BackupsPage() {
                   >
                     Try again
                   </Button>
-                </div>
+                </Alert>
               ) : (
               <Table>
                 <Table.ScrollContainer>

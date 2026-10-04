@@ -317,6 +317,12 @@ impl Hub {
         crate::appinfo::check_for_update(&core.http).await
     }
 
+    /// `get_public_address` (§3.16, 2.11.0): explicit user action only.
+    pub async fn public_address(&self) -> Result<crate::model::PublicAddress> {
+        let core = self.core(None).await?;
+        crate::joininfo::public_address(&core.http).await
+    }
+
     /// `open_app_dir` (§3.15): `server` is the targeted profile's folder.
     pub async fn open_app_dir(
         &self,

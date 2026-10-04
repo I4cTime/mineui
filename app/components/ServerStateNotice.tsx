@@ -7,8 +7,8 @@
 // page header's status dot uses, so the two never disagree.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Play, Square, TriangleAlert } from "lucide-react";
-import { Button, toast } from "@heroui/react";
+import { Loader2, Play, Square } from "lucide-react";
+import { Alert, Button, toast } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import { useServers } from "@/app/components/ServerProvider";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -106,14 +106,15 @@ export default function ServerStateNotice({ need, what }: ServerStateNoticeProps
   }
 
   return (
-    <div
+    <Alert
+      status="warning"
       role="status"
-      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning p-3 text-sm"
+      className="flex-wrap items-center justify-between gap-3 rounded-lg border border-warning bg-transparent p-3 shadow-none"
     >
-      <span className="flex min-w-0 items-start gap-2">
-        <TriangleAlert size={16} className="mt-0.5 shrink-0 text-warning" />
-        <span>{message}</span>
-      </span>
+      <Alert.Indicator className="p-0 text-warning" />
+      <Alert.Content className="min-w-0 flex-1">
+        <Alert.Description className="text-sm text-foreground">{message}</Alert.Description>
+      </Alert.Content>
       {action}
       <ConfirmDialog
         isOpen={confirmStop}
@@ -128,6 +129,6 @@ export default function ServerStateNotice({ need, what }: ServerStateNoticeProps
           void run(stopServer, "Could not stop the server.");
         }}
       />
-    </div>
+    </Alert>
   );
 }

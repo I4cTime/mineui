@@ -63,11 +63,11 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.10.0_amd64.AppImage` - `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.10.0_amd64.deb` - `sudo apt install ./MineUI_2.10.0_amd64.deb` |
-| Windows x64 | `MineUI_2.10.0_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.10.0_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.10.0_x64.dmg` |
+| Linux x86_64 | `MineUI_2.11.0_amd64.AppImage` - `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.11.0_amd64.deb` - `sudo apt install ./MineUI_2.11.0_amd64.deb` |
+| Windows x64 | `MineUI_2.11.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.11.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.11.0_x64.dmg` |
 
 Simple mode needs Java installed (MineUI version-checks it against the
 Minecraft release you pick). Advanced mode needs Docker or Podman.
@@ -155,6 +155,15 @@ connection details, console command rules and how the server is run (Simple
 or Advanced; there is no header toggle for that any more, it is changed there,
 never while the server runs, and asks first).
 
+### Ports and how players join
+
+The Dashboard shows the address players type - on this computer, on your
+home network, and from the internet (with the router steps) - instead of a
+`127.0.0.1` address nobody else can use. Container servers can publish extra
+ports for mods such as Simple Voice Chat (UDP 24454), at creation or later
+from Server Settings; changing ports rebuilds the container around the same
+world.
+
 ### Server control and live status
 
 Start, stop, and restart (managed process or container), with live TPS,
@@ -184,7 +193,8 @@ already exists.
 
 ### Configuration editor
 
-Edit `server.properties` and files under `config/` directly from the app.
+Edit `server.properties` and files under `config/` directly from the app:
+a folder tree with search, line numbers, a wrap switch, Revert and Ctrl+S.
 
 ### World backups
 
@@ -227,8 +237,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 222 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (52 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 240 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (55 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) - binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -256,7 +266,7 @@ Other commands:
 - `pnpm build` - static export to `out/` (what Tauri bundles)
 - `pnpm lint` - ESLint
 - `pnpm tauri build` - production desktop bundle
-- `cargo test -p mineui-core` - Rust unit tests (222 tests; must stay green)
+- `cargo test -p mineui-core` - Rust unit tests (240 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

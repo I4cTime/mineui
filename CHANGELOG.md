@@ -3,6 +3,45 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.11.0] - 2026-10-04
+
+### Added
+
+- **Extra ports for mods.** Some mods need a port of their own - voice chat
+  is the usual one. When you create a container server, *Extra ports for
+  mods* takes a list of ports (TCP or UDP) with a *Common mods* menu:
+  Simple Voice Chat (24454 UDP), Plasmo Voice (the game port over UDP),
+  Geyser (19132 UDP), BlueMap (8100), squaremap (8080) and Dynmap (8123).
+- **Network and ports card in Server Settings** (container servers). Change
+  the extra ports of an existing server, or open a "this computer only"
+  server to your network, without starting over: MineUI rebuilds the
+  container around the same data volume, so the world, mods, settings and
+  backups stay. The server has to be stopped; the old container is removed
+  only once the new one exists, and is put back if anything fails. Ports
+  already in use on this computer are refused before anything changes.
+- **How players join card on the Dashboard.** The address to type, with a
+  Copy button, for each case: on this computer, on your home network (this
+  computer's network address, not 127.0.0.1), and from the internet (the
+  router steps, plus a *Look up my public address* button that asks
+  api.ipify.org only when you press it). It says when only this computer can
+  connect and why, lists the extra ports, and names the firewall step for
+  your system. With Podman on Windows it explains the extra Windows setup
+  the server needs before other devices can reach it.
+- Three new IPC commands: `get_join_info`, `get_public_address`,
+  `update_container_ports` (55 total). Containers created from now on carry
+  a `studio.i4c.mineui.managed` label.
+
+### Changed
+
+- **Config editor rebuilt.** Files are a folder tree instead of a flat list
+  of long paths, so every name is readable in full; search matches the whole
+  path and shows how many files match. The editor fills the window, has line
+  numbers, a *Wrap lines* switch, *Revert*, and saves with Ctrl+S.
+- Page headers and server cards show `port 25565` instead of a
+  `127.0.0.1:25565` address, which only ever worked on this computer; the
+  Status page points to the Dashboard card for the address to give players.
+- Warnings and notices across the app share one look.
+
 ## [2.10.0] - 2026-10-04
 
 ### Added

@@ -12,10 +12,10 @@ use std::sync::Arc;
 use mineui_core::model::{
     AppDir, AppInfo, AuditLog, BackupEntry, ChangedInstanceVersion, ConfigFileContent,
     ConfigFileList, CreateContainerArgs, CreateInstanceArgs, CreatedBackup, DeletedContainer,
-    DownloadedMod, InstanceStatus, JavaCheck, JobRunResult, LogsTail, McVersion, Metrics,
-    ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory, PlayerNote, PlayerNotes,
-    PlayersResult, RconOutput, RuntimeProbe, SchedulerStatus, ServerList, ServerOverview,
-    ServerState, ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
+    DownloadedMod, ExtraPort, InstanceStatus, JavaCheck, JobRunResult, JoinInfo, LogsTail,
+    McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory, PlayerNote,
+    PlayerNotes, PlayersResult, PublicAddress, RconOutput, RuntimeProbe, SchedulerStatus,
+    ServerList, ServerOverview, ServerState, ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
 };
 use mineui_core::settings::Mode;
 use mineui_core::{Core, Error, Hub, Settings};
@@ -429,6 +429,31 @@ pub async fn delete_container(
 ) -> CmdResult<DeletedContainer> {
     let core = core_for(&hub, server_id).await?;
     mineui_core::provision::delete(&core, confirm, delete_data).await
+}
+
+#[tauri::command]
+pub async fn update_container_ports(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    expose_to_network: bool,
+    extra_ports: Vec<ExtraPort>,
+    confirm: bool,
+) -> CmdResult<ServerState> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::provision::update_ports(&core, expose_to_network, &extra_ports, confirm).await
+}
+
+/* ---------- §3.16 ports and how players join ---------- */
+
+#[tauri::command]
+pub async fn get_join_info(hub: HubState<'_>, server_id: Option<String>) -> CmdResult<JoinInfo> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::joininfo::join_info(&core).await
+}
+
+#[tauri::command]
+pub async fn get_public_address(hub: HubState<'_>) -> CmdResult<PublicAddress> {
+    hub.public_address().await
 }
 
 /* ---------- §3.14 modpack search ---------- */

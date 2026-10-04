@@ -291,9 +291,17 @@ const LOADER_LABELS: Record<string, string> = {
   auto_curseforge: "CurseForge pack",
 };
 
+/** A loopback host reads as "the address" and is wrong for everyone else
+ *  (the dashboard's How players join card has the real ones): "port N". */
+function addressLabel(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const match = /^(127\.0\.0\.1|localhost):(\d+)$/i.exec(address);
+  return match ? `port ${match[2]}` : address;
+}
+
 /**
  * What a server actually is, independent of the name it was given:
- * "Forge 1.21.1 · mc-forge · 127.0.0.1:25566". Used wherever a server has to
+ * "Forge 1.21.1 · mc-forge · port 25566". Used wherever a server has to
  * be told apart from its neighbours (page headers, switcher, cards).
  */
 export function identityLine(entry: ServerOverview | undefined): string {
@@ -311,7 +319,7 @@ export function identityLine(entry: ServerOverview | undefined): string {
   const kind = entry.modpack
     ? [[entry.modpack, version].filter(Boolean).join(" "), loader]
     : [[loader, version].filter(Boolean).join(" ")];
-  return [...kind, entry.containerName ?? "Managed", entry.address]
+  return [...kind, entry.containerName ?? "Managed", addressLabel(entry.address)]
     .filter(Boolean)
     .join(" · ");
 }

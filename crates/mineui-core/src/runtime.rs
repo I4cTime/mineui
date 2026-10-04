@@ -9,7 +9,7 @@ use std::process::Stdio;
 use async_trait::async_trait;
 
 use crate::error::{Error, Result};
-use crate::model::{ContainerDetail, RuntimeHit, RuntimeProbe};
+use crate::model::{ContainerDetail, PortProtocol, RuntimeHit, RuntimeProbe};
 use crate::settings::{AdvancedModeSettings, RuntimeKind};
 
 #[derive(Debug, Clone)]
@@ -34,15 +34,60 @@ pub struct ContainerSpec {
     pub image: String,
     /// `KEY=VALUE` lines; keeps secrets out of the argv.
     pub env_file: std::path::PathBuf,
-    /// (host bind address - `None` publishes on every interface the runtime
-    /// has, see §3.13 -, host port, container port).
-    pub ports: Vec<(Option<String>, u16, u16)>,
+    /// Published ports, in argv order.
+    pub ports: Vec<PublishedPort>,
     /// (named volume, container path).
     pub volume: (String, String),
+    /// `--label key=value` pairs (2.11.0: the managed marker).
+    pub labels: Vec<(String, String)>,
     /// `None` leaves the runtime's own default; `Some(0)` asks for no pids
     /// limit at all - the one retry of §3.13, where the default cannot be
     /// applied.
     pub pids_limit: Option<i64>,
+}
+
+/// One `-p` of a new container (§3.13).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishedPort {
+    /// Host bind address; `None` publishes on every interface the runtime
+    /// has (the Windows + WSL case of §3.13).
+    pub bind: Option<String>,
+    pub host: u16,
+    pub container: u16,
+    pub protocol: PortProtocol,
+}
+
+impl PublishedPort {
+    pub fn tcp(bind: Option<String>, host: u16, container: u16) -> Self {
+        PublishedPort {
+            bind,
+            host,
+            container,
+            protocol: PortProtocol::Tcp,
+        }
+    }
+
+    /// The `-p` value: `[bind:]host:container[/udp]`.
+    pub fn arg(&self) -> String {
+        let suffix = match self.protocol {
+            PortProtocol::Tcp => "",
+            PortProtocol::Udp => "/udp",
+        };
+        match &self.bind {
+            Some(bind) => format!("{bind}:{}:{}{suffix}", self.host, self.container),
+            None => format!("{}:{}{suffix}", self.host, self.container),
+        }
+    }
+}
+
+/// One configured port binding of a container, from `inspect` (§3.16).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortBinding {
+    pub container_port: u16,
+    pub protocol: PortProtocol,
+    /// As the runtime reports it; empty means every interface (docker).
+    pub host_ip: String,
+    pub host_port: u16,
 }
 
 impl ContainerSpec {
@@ -64,12 +109,13 @@ impl ContainerSpec {
             "--env-file".into(),
             self.env_file.to_string_lossy().to_string(),
         ]);
-        for (bind, host, container) in &self.ports {
+        for (key, value) in &self.labels {
+            args.push("--label".into());
+            args.push(format!("{key}={value}"));
+        }
+        for port in &self.ports {
             args.push("-p".into());
-            args.push(match bind {
-                Some(bind) => format!("{bind}:{host}:{container}"),
-                None => format!("{host}:{container}"),
-            });
+            args.push(port.arg());
         }
         args.push("-v".into());
         args.push(format!("{}:{}", self.volume.0, self.volume.1));
@@ -173,6 +219,20 @@ pub trait Runtime: Send + Sync {
     async fn inspect_mounts(&self, name: &str) -> Result<Vec<Mount>>;
     /// `volume rm <volume>` - `delete_container` with `deleteData` only.
     async fn remove_volume(&self, volume: &str) -> Result<()>;
+    /// The configured port bindings (`.HostConfig.PortBindings`, present on a
+    /// stopped container too); empty when the container cannot be inspected.
+    async fn inspect_ports(&self, name: &str) -> Result<Vec<PortBinding>>;
+    /// The container's labels (image labels included); empty when it cannot
+    /// be inspected.
+    async fn inspect_labels(&self, name: &str) -> Result<Vec<(String, String)>>;
+    /// The image reference the container was created from (`.Config.Image`),
+    /// `None` when it cannot be inspected.
+    async fn inspect_image(&self, name: &str) -> Result<Option<String>>;
+    /// The environment an image defines itself (`image inspect`); empty when
+    /// the image cannot be inspected.
+    async fn image_env(&self, image: &str) -> Result<Vec<(String, String)>>;
+    /// `rename <old> <new>` - only `update_container_ports` (§3.13).
+    async fn rename(&self, old: &str, new: &str) -> Result<()>;
     /// Podman: `machine info --format {{.Host.VMType}}` ("wsl", "hyperv",
     /// "applehv", "qemu", …), lower-cased; `None` for docker or when the
     /// command fails. `create_container` uses it to tell whose loopback a
@@ -644,6 +704,67 @@ impl Runtime for CliBackend {
         self.run_ok(&["volume", "rm", volume]).await.map(|_| ())
     }
 
+    async fn inspect_ports(&self, name: &str) -> Result<Vec<PortBinding>> {
+        // `.HostConfig.PortBindings` is the configuration, so it is filled on
+        // a stopped container too (`.NetworkSettings.Ports` is empty until it
+        // runs on docker). Same shape on podman and docker.
+        let out = self
+            .run(&[
+                "inspect",
+                "-f",
+                "{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}}|{{.HostIp}}|{{.HostPort}}{{println}}{{end}}{{end}}",
+                name,
+            ])
+            .await?;
+        if !out.success() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_port_lines(&out.stdout))
+    }
+
+    async fn inspect_labels(&self, name: &str) -> Result<Vec<(String, String)>> {
+        let out = self
+            .run(&[
+                "inspect",
+                "-f",
+                "{{range $k, $v := .Config.Labels}}{{$k}}={{$v}}{{println}}{{end}}",
+                name,
+            ])
+            .await?;
+        if !out.success() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_env_lines(&out.stdout))
+    }
+
+    async fn inspect_image(&self, name: &str) -> Result<Option<String>> {
+        let out = self
+            .run(&["inspect", "-f", "{{.Config.Image}}", name])
+            .await?;
+        let image = out.stdout.trim();
+        Ok((out.success() && !image.is_empty()).then(|| image.to_string()))
+    }
+
+    async fn image_env(&self, image: &str) -> Result<Vec<(String, String)>> {
+        let out = self
+            .run(&[
+                "image",
+                "inspect",
+                "-f",
+                "{{range .Config.Env}}{{println .}}{{end}}",
+                image,
+            ])
+            .await?;
+        if !out.success() {
+            return Ok(Vec::new());
+        }
+        Ok(parse_env_lines(&out.stdout))
+    }
+
+    async fn rename(&self, old: &str, new: &str) -> Result<()> {
+        self.run_ok(&["rename", old, new]).await.map(|_| ())
+    }
+
     async fn machine_vm_type(&self) -> Option<String> {
         if self.kind == RuntimeKind::Docker {
             return None;
@@ -697,6 +818,32 @@ fn parse_mount_lines(stdout: &str) -> Vec<Mount> {
                 destination: parts.next()?.to_string(),
             };
             (!mount.kind.is_empty() && !mount.destination.is_empty()).then_some(mount)
+        })
+        .collect()
+}
+
+/// `<port>/<proto>|<hostIp>|<hostPort>` per line → bindings; malformed lines
+/// skipped.
+fn parse_port_lines(stdout: &str) -> Vec<PortBinding> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.trim().splitn(3, '|');
+            let (port, proto) = parts.next()?.split_once('/')?;
+            let protocol = match proto.to_ascii_lowercase().as_str() {
+                "tcp" => PortProtocol::Tcp,
+                "udp" => PortProtocol::Udp,
+                _ => return None,
+            };
+            let host_ip = parts.next()?.trim().to_string();
+            let host_port: u16 = parts.next()?.trim().parse().ok()?;
+            let container_port: u16 = port.trim().parse().ok()?;
+            (host_port != 0 && container_port != 0).then_some(PortBinding {
+                container_port,
+                protocol,
+                host_ip,
+                host_port,
+            })
         })
         .collect()
 }
@@ -773,6 +920,21 @@ macro_rules! delegate_runtime {
             }
             async fn remove_volume(&self, volume: &str) -> Result<()> {
                 self.0.remove_volume(volume).await
+            }
+            async fn inspect_ports(&self, name: &str) -> Result<Vec<PortBinding>> {
+                self.0.inspect_ports(name).await
+            }
+            async fn inspect_labels(&self, name: &str) -> Result<Vec<(String, String)>> {
+                self.0.inspect_labels(name).await
+            }
+            async fn inspect_image(&self, name: &str) -> Result<Option<String>> {
+                self.0.inspect_image(name).await
+            }
+            async fn image_env(&self, image: &str) -> Result<Vec<(String, String)>> {
+                self.0.image_env(image).await
+            }
+            async fn rename(&self, old: &str, new: &str) -> Result<()> {
+                self.0.rename(old, new).await
             }
             async fn machine_vm_type(&self) -> Option<String> {
                 self.0.machine_vm_type().await
@@ -1141,10 +1303,11 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             image: "docker.io/itzg/minecraft-server:java21".into(),
             env_file: "/tmp/x.env".into(),
             ports: vec![
-                (Some("0.0.0.0".into()), 25566, 25565),
-                (Some("127.0.0.1".into()), 25576, 25575),
+                PublishedPort::tcp(Some("0.0.0.0".into()), 25566, 25565),
+                PublishedPort::tcp(Some("127.0.0.1".into()), 25576, 25575),
             ],
             volume: ("mc-forge-data".into(), "/data".into()),
+            labels: vec![],
             pids_limit: None,
         };
         assert_eq!(
@@ -1175,6 +1338,7 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             env_file: "/tmp/x.env".into(),
             ports: vec![],
             volume: ("mc-data".into(), "/data".into()),
+            labels: vec![],
             pids_limit: Some(0),
         };
         let args = spec.run_args();
@@ -1190,8 +1354,9 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             name: "mc".into(),
             image: "docker.io/itzg/minecraft-server:java21".into(),
             env_file: "/tmp/x.env".into(),
-            ports: vec![(Some("127.0.0.1".into()), 25566, 25565)],
+            ports: vec![PublishedPort::tcp(Some("127.0.0.1".into()), 25566, 25565)],
             volume: ("mc-data".into(), "/data".into()),
+            labels: vec![("studio.i4c.mineui.managed".into(), "1".into())],
             pids_limit: None,
         };
         let run = spec.run_args();
@@ -1208,12 +1373,97 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             name: "mc".into(),
             image: "docker.io/itzg/minecraft-server:java21".into(),
             env_file: "/tmp/x.env".into(),
-            ports: vec![(None, 25566, 25565), (None, 25576, 25575)],
+            ports: vec![
+                PublishedPort::tcp(None, 25566, 25565),
+                PublishedPort::tcp(None, 25576, 25575),
+            ],
             volume: ("mc-data".into(), "/data".into()),
+            labels: vec![],
             pids_limit: None,
         };
         let args = spec.run_args();
         assert_eq!(&args[6..10], ["-p", "25566:25565", "-p", "25576:25575"]);
+    }
+
+    #[test]
+    fn extra_ports_and_the_label_in_the_argv() {
+        let udp = |bind: Option<&str>, port| PublishedPort {
+            bind: bind.map(Into::into),
+            host: port,
+            container: port,
+            protocol: PortProtocol::Udp,
+        };
+        let spec = ContainerSpec {
+            name: "mc".into(),
+            image: "docker.io/itzg/minecraft-server:java21".into(),
+            env_file: "/tmp/x.env".into(),
+            ports: vec![
+                PublishedPort::tcp(Some("0.0.0.0".into()), 25566, 25565),
+                PublishedPort::tcp(Some("127.0.0.1".into()), 25576, 25575),
+                udp(Some("0.0.0.0"), 24454),
+                PublishedPort::tcp(Some("0.0.0.0".into()), 8100, 8100),
+                udp(None, 19132),
+            ],
+            volume: ("mc-data".into(), "/data".into()),
+            labels: vec![("studio.i4c.mineui.managed".into(), "1".into())],
+            pids_limit: None,
+        };
+        assert_eq!(
+            spec.create_args(),
+            [
+                "create",
+                "--name",
+                "mc",
+                "--env-file",
+                "/tmp/x.env",
+                "--label",
+                "studio.i4c.mineui.managed=1",
+                "-p",
+                "0.0.0.0:25566:25565",
+                "-p",
+                "127.0.0.1:25576:25575",
+                "-p",
+                "0.0.0.0:24454:24454/udp",
+                "-p",
+                "0.0.0.0:8100:8100",
+                "-p",
+                "19132:19132/udp",
+                "-v",
+                "mc-data:/data",
+                "docker.io/itzg/minecraft-server:java21",
+            ]
+        );
+    }
+
+    #[test]
+    fn port_bindings_parse_and_skip_junk() {
+        // podman fills HostIp; docker leaves it empty for "every interface".
+        let stdout = "24454/udp|0.0.0.0|24454\n25565/tcp|127.0.0.1|25566\n25575/tcp||25576\n\
+                      garbage\n25565/sctp|0.0.0.0|1\n8100/tcp|0.0.0.0|notaport\n/tcp|x|5\n\n";
+        let ports = parse_port_lines(stdout);
+        assert_eq!(
+            ports,
+            [
+                PortBinding {
+                    container_port: 24454,
+                    protocol: PortProtocol::Udp,
+                    host_ip: "0.0.0.0".into(),
+                    host_port: 24454,
+                },
+                PortBinding {
+                    container_port: 25565,
+                    protocol: PortProtocol::Tcp,
+                    host_ip: "127.0.0.1".into(),
+                    host_port: 25566,
+                },
+                PortBinding {
+                    container_port: 25575,
+                    protocol: PortProtocol::Tcp,
+                    host_ip: String::new(),
+                    host_port: 25576,
+                },
+            ]
+        );
     }
 
     #[test]

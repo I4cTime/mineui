@@ -286,6 +286,9 @@ export type CreateContainerArgs = {
   /** Create from a modpack instead of a bare loader; `loader` is then
    *  ignored and `mcVersion` must be a concrete version. */
   modpack?: ModpackRef | null;
+  /** 2.11.0. Extra published ports for mods (e.g. Simple Voice Chat 24454/udp);
+   *  at most 16, published like the game port. */
+  extraPorts?: ExtraPort[];
 };
 
 /** Result of delete_container (§3.13). */
@@ -358,6 +361,37 @@ export const inspectModpackZip = (sourcePath: string) =>
  *  the image when missing - the first call can take minutes. */
 export const createContainer = (args: CreateContainerArgs) =>
   scoped<ServerState>("create_container", { args });
+
+/* ---------- ports and join info (§3.16, 2.11.0) ---------- */
+
+export type PortProtocol = "tcp" | "udp";
+/** An extra published port for a mod; host port = container port. */
+export type ExtraPort = { port: number; protocol: PortProtocol };
+/** Who can reach a published port. */
+export type PortReach = "this-computer" | "network" | "unknown";
+
+export type JoinInfo = {
+  /** The port players type after the address. */
+  port: number;
+  reach: PortReach;
+  /** This computer's LAN IPv4 addresses, primary first; may be empty. */
+  lanAddresses: string[];
+  extraPorts: (ExtraPort & { reach: PortReach })[];
+  /** True when MineUI can recreate this container with other ports. */
+  canChangePorts: boolean;
+  /** Why not, in the user's words; null when canChangePorts is true. */
+  whyNot: string | null;
+  /** Windows + Podman machine on WSL: the LAN cannot reach WSL ports without extra Windows setup. */
+  wslNat: boolean;
+};
+
+export const getJoinInfo = () => scoped<JoinInfo>("get_join_info");
+/** Explicit user action only. */
+export const getPublicAddress = () => call<{ ip: string }>("get_public_address");
+/** Recreates the stopped container with other published ports; world,
+ *  env and image stay. The caller must have asked the user first. */
+export const updateContainerPorts = (exposeToNetwork: boolean, extraPorts: ExtraPort[]) =>
+  scoped<ServerState>("update_container_ports", { exposeToNetwork, extraPorts, confirm: true });
 
 /* ---------- logs ---------- */
 

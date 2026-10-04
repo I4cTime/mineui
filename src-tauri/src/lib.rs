@@ -154,6 +154,7 @@ pub fn run() {
             // §3.13 container creation
             commands::create_container,
             commands::delete_container,
+            commands::update_container_ports,
             // §3.14 modpack search
             commands::search_modpacks,
             commands::inspect_modpack_zip,
@@ -169,6 +170,9 @@ pub fn run() {
             commands::check_for_update,
             commands::open_url,
             commands::open_app_dir,
+            // §3.16 ports and how players join
+            commands::get_join_info,
+            commands::get_public_address,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MineUI");
