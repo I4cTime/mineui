@@ -3,7 +3,7 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.10.0] - 2026-10-04
 
 ### Added
 
