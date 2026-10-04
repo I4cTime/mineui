@@ -12,6 +12,7 @@ import {
   Container,
   Eye,
   EyeOff,
+  FolderOpen,
   Gauge,
   Play,
   Plus,
@@ -46,6 +47,7 @@ import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
 import { identityLine, phaseText, useServers } from "@/app/components/ServerProvider";
 import { setLeaveGuard } from "@/app/lib/leaveGuard";
+import { pickFile, pickFolder } from "@/app/lib/dialog";
 import { usePageMotion } from "@/app/lib/motion";
 import {
   deleteInstance,
@@ -456,6 +458,18 @@ export default function SettingsPage() {
     setLeaveGuard((proceed) => setPendingLeave(() => proceed));
     return () => setLeaveGuard(null);
   }, [dirty]);
+
+  // Native picker → a field of the draft (still needs Save).
+  const browse = async (pick: () => Promise<string | null>, apply: (path: string) => void) => {
+    play("click_confirm");
+    try {
+      const path = await pick();
+      if (path) apply(path);
+    } catch (error) {
+      play("error");
+      toast.danger(error instanceof IpcError ? error.message : "Could not open the picker");
+    }
+  };
 
   const discardChanges = () => {
     if (!savedSettings) return;
@@ -1148,18 +1162,28 @@ export default function SettingsPage() {
               </TextField>
               <TextField className="flex flex-col gap-2">
                 <Label>Also copy each new backup to</Label>
-                <Input
-                  fullWidth
-                  className="font-mono"
-                  placeholder="Leave empty for no second copy"
-                  value={draft.backups.copyDir ?? ""}
-                  onChange={(event) =>
-                    updateBackups({
-                      copyDir: event.target.value.trim().length > 0 ? event.target.value : null,
-                    })
-                  }
-                  onFocus={() => play("hover")}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    fullWidth
+                    className="font-mono"
+                    placeholder="Leave empty for no second copy"
+                    value={draft.backups.copyDir ?? ""}
+                    onChange={(event) =>
+                      updateBackups({
+                        copyDir: event.target.value.trim().length > 0 ? event.target.value : null,
+                      })
+                    }
+                    onFocus={() => play("hover")}
+                  />
+                  <Button
+                    variant="secondary"
+                    onPress={() => browse(() => pickFolder("Folder to copy backups to"), (path) => updateBackups({ copyDir: path }))}
+                    onMouseEnter={() => play("hover")}
+                  >
+                    <FolderOpen size={15} />
+                    Browse…
+                  </Button>
+                </div>
                 <span className="text-xs text-muted">
                   A full folder path on this computer — another disk, a USB drive or a
                   network share is the point: backups otherwise live with the server
@@ -1213,14 +1237,24 @@ export default function SettingsPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <TextField className="flex flex-col gap-2">
                       <Label>Java location</Label>
-                      <Input
-                        fullWidth
-                        className="font-mono"
-                        placeholder="Leave empty to find Java automatically"
-                        value={draft.simple.javaPath ?? ""}
-                        onChange={(event) => updateSimple({ javaPath: event.target.value || null })}
-                        onFocus={() => play("hover")}
-                      />
+                      <div className="flex gap-2">
+                        <Input
+                          fullWidth
+                          className="font-mono"
+                          placeholder="Leave empty to find Java automatically"
+                          value={draft.simple.javaPath ?? ""}
+                          onChange={(event) => updateSimple({ javaPath: event.target.value || null })}
+                          onFocus={() => play("hover")}
+                        />
+                        <Button
+                          variant="secondary"
+                          onPress={() => browse(() => pickFile("Select the java program"), (path) => updateSimple({ javaPath: path }))}
+                          onMouseEnter={() => play("hover")}
+                        >
+                          <FolderOpen size={15} />
+                          Browse…
+                        </Button>
+                      </div>
                       <span className="text-xs text-muted">
                         The full path to a <code className="font-mono">java</code> program, if
                         MineUI finds the wrong one or none.

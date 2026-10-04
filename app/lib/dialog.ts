@@ -43,3 +43,32 @@ export async function pickModpackZip(): Promise<string | null> {
   });
   return typeof selected === "string" ? selected : null;
 }
+
+/**
+ * Opens a native folder picker. Resolves with the absolute host path, or
+ * null when the user cancels. Used for the backup copy folder.
+ */
+export async function pickFolder(title: string): Promise<string | null> {
+  if (!isTauri()) {
+    throw new IpcError(
+      "INTERNAL",
+      "Folder picker requires the Tauri runtime. Run the app via `pnpm tauri dev`.",
+    );
+  }
+  const selected = await open({ multiple: false, directory: true, title });
+  return typeof selected === "string" ? selected : null;
+}
+
+/**
+ * Opens a native file picker for any single file (e.g. the java program).
+ */
+export async function pickFile(title: string): Promise<string | null> {
+  if (!isTauri()) {
+    throw new IpcError(
+      "INTERNAL",
+      "File picker requires the Tauri runtime. Run the app via `pnpm tauri dev`.",
+    );
+  }
+  const selected = await open({ multiple: false, directory: false, title });
+  return typeof selected === "string" ? selected : null;
+}
