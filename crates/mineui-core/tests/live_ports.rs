@@ -297,6 +297,12 @@ async fn live_join_info_shape_check() {
     assert_eq!(info.reach, PortReach::Unknown);
     assert!(!info.can_change_ports);
     assert_eq!(info.why_not.as_deref(), Some("There is no container yet."));
+    assert_eq!(
+        info.reach_problem.as_deref(),
+        Some("There is no container yet.")
+    );
+    assert_eq!(info.windows_build, None);
+    assert_eq!(info.wsl_address, None);
 
     // What 2.6.0-2.10.x created: itzg image, one named volume, no label.
     podman(&[
@@ -316,6 +322,26 @@ async fn live_join_info_shape_check() {
     assert!(info.extra_ports.is_empty(), "RCON is not an extra port");
     assert!(info.can_change_ports, "{:?}", info.why_not);
     assert!(info.why_not.is_none());
+    assert_eq!(info.reach_problem, None);
+    podman(&["rm", "-f", NAME]);
+
+    // 2.11.1: published, but not on the game port - reach unknown, and why.
+    podman(&[
+        "create",
+        "--name",
+        NAME,
+        "-p",
+        "127.0.0.1:25642:8100",
+        "-v",
+        &format!("{NAME}-data:/data"),
+        "docker.io/itzg/minecraft-server:java21",
+    ]);
+    let info = mineui_core::joininfo::join_info(&core).await.unwrap();
+    assert_eq!(info.reach, PortReach::Unknown);
+    assert_eq!(
+        info.reach_problem.as_deref(),
+        Some("The container does not publish the game port MineUI expects (25640). Check the game port in Server Settings.")
+    );
     podman(&["rm", "-f", NAME]);
 
     // Somebody else's container: an extra bind mount.
@@ -347,5 +373,204 @@ async fn live_join_info_shape_check() {
     assert_eq!(err.code(), "INVALID_INPUT");
     assert!(err.to_string().contains("not created by MineUI"), "{err}");
 
+    cleanup(NAME);
+}
+
+fn pids_limit(name: &str) -> String {
+    podman(&["inspect", "-f", "{{.HostConfig.PidsLimit}}", name])
+        .trim()
+        .to_string()
+}
+
+async fn core_for(
+    hub: &Hub,
+    name: &str,
+    game: u16,
+    rcon: u16,
+) -> std::sync::Arc<mineui_core::Core> {
+    let core = advanced_core(hub).await;
+    let mut s = core.settings().await;
+    s.advanced.container_name = name.into();
+    s.advanced.query_port = game;
+    s.advanced.rcon_port = rcon;
+    core.update_settings(s).await.unwrap();
+    core
+}
+
+/// 2.11.1: a container whose pids limit was lifted (`--pids-limit=0`, the
+/// create retry on machines without the pids controller) keeps it through a
+/// port change; one with the runtime's default keeps the default. Nothing
+/// is started.
+#[tokio::test]
+#[ignore]
+async fn live_port_change_keeps_a_lifted_pids_limit() {
+    const NAME: &str = "mineui-live-pids-rebuild";
+    const GAME: u16 = 25650;
+    const RCON: u16 = 25651;
+    let tmp = tempfile::tempdir().unwrap();
+    let hub = Hub::init(tmp.path().join("config"), tmp.path().join("data"))
+        .await
+        .unwrap();
+    let core = core_for(&hub, NAME, GAME, RCON).await;
+
+    for (create_flag, expected) in [(Some("--pids-limit=0"), "0"), (None, "2048")] {
+        cleanup(NAME);
+        let volume = format!("{NAME}-data:/data");
+        let game = format!("127.0.0.1:{GAME}:25565");
+        let rcon = format!("127.0.0.1:{RCON}:25575");
+        let mut args = vec![
+            "create",
+            "--name",
+            NAME,
+            "--label",
+            "studio.i4c.mineui.managed=1",
+            "-e",
+            "EULA=TRUE",
+            "-p",
+            &game,
+            "-p",
+            &rcon,
+            "-v",
+            &volume,
+        ];
+        args.extend(create_flag);
+        args.push("docker.io/itzg/minecraft-server:java21");
+        podman(&args);
+        assert!(exists(NAME));
+        assert_eq!(pids_limit(NAME), expected, "before the change");
+
+        mineui_core::provision::update_ports(&core, true, &[], true)
+            .await
+            .unwrap();
+        assert!(!exists(&format!("{NAME}-mineui-old")));
+        assert_eq!(status(NAME), "created");
+        assert_eq!(pids_limit(NAME), expected, "after the change");
+        assert_eq!(bindings(NAME)[0], format!("0.0.0.0:{GAME}->25565/tcp"));
+    }
+    cleanup(NAME);
+}
+
+/// 2.11.1 start fallback, the part a machine with the pids controller can
+/// run: the in-place `update --pids-limit=0` on a MineUI container (state
+/// "created", as a 2.11.0 port change leaves it) takes. The crun refusal
+/// itself cannot be produced on a machine that has the controller; unit
+/// tests cover that branch.
+///
+/// Booting with the lifted limit is only checked under crun, which skips
+/// `pids.max` for a limit of 0 - the runtime the fallback fires for (its
+/// refusal is crun's). runc 1.5.1 with the systemd cgroup manager (this
+/// development machine, 2026-10-05) applies 0 literally: the container
+/// cannot fork at all. That is why the lift is never applied by default.
+#[tokio::test]
+#[ignore]
+async fn live_pids_lift_takes_in_place() {
+    const NAME: &str = "mineui-live-pids-lift";
+    const GAME: u16 = 25660;
+    const RCON: u16 = 25661;
+    cleanup(NAME);
+    let tmp = tempfile::tempdir().unwrap();
+    let hub = Hub::init(tmp.path().join("config"), tmp.path().join("data"))
+        .await
+        .unwrap();
+    let core = advanced_core(&hub).await;
+    let create = CreateContainerArgs {
+        loader: ContainerLoader::Vanilla,
+        mc_version: "1.21.1".into(),
+        container_name: NAME.into(),
+        memory_mb: 1024,
+        game_port: GAME,
+        rcon_port: RCON,
+        expose_to_network: false,
+        accept_eula: true,
+        modpack: None,
+        extra_ports: vec![],
+    };
+    mineui_core::provision::create(&core, &create)
+        .await
+        .unwrap();
+    assert_eq!(pids_limit(NAME), "2048", "the runtime's default");
+    podman(&["stop", "-t", "20", NAME]);
+    // A port change leaves a "created" container with the default limit.
+    mineui_core::provision::update_ports(&core, false, &[], true)
+        .await
+        .unwrap();
+    assert_eq!(status(NAME), "created");
+    assert_eq!(
+        pids_limit(NAME),
+        "2048",
+        "a default limit is not lifted by a rebuild"
+    );
+
+    let settings = core.settings().await;
+    let runtime = mineui_core::runtime::resolve(&settings.advanced)
+        .await
+        .unwrap();
+    runtime.set_pids_limit_unlimited(NAME).await.unwrap();
+    assert_eq!(pids_limit(NAME), "0");
+    assert_eq!(
+        runtime.inspect_pids_limit(NAME).await.unwrap(),
+        Some(0),
+        "read back through the runtime"
+    );
+
+    let oci = podman(&["info", "--format", "{{.Host.OCIRuntime.Name}}"]);
+    if oci.trim() != "crun" {
+        eprintln!(
+            "OCI runtime is {:?}, not crun: boot check skipped",
+            oci.trim()
+        );
+        cleanup(NAME);
+        return;
+    }
+    mineui_core::lifecycle::start(&core).await.unwrap();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(300);
+    loop {
+        if let Ok(out) = mineui_core::rcon::run_allowlisted(&core, "list").await {
+            assert!(out.contains("players online"), "{out}");
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "lifted server did not become RCON-ready:\n{}",
+            podman(&["logs", "--tail", "30", NAME])
+        );
+        tokio::time::sleep(Duration::from_secs(4)).await;
+    }
+    assert_eq!(pids_limit(NAME), "0", "still lifted while running");
+    cleanup(NAME);
+}
+
+/// The lift on a container that has run before ("exited"): podman applies it
+/// at the next start, and `inspect` only shows it from then on.
+#[tokio::test]
+#[ignore]
+async fn live_pids_lift_on_an_exited_container() {
+    const NAME: &str = "mineui-live-pids-exited";
+    cleanup(NAME);
+    let tmp = tempfile::tempdir().unwrap();
+    let hub = Hub::init(tmp.path().join("config"), tmp.path().join("data"))
+        .await
+        .unwrap();
+    let core = core_for(&hub, NAME, 25670, 25671).await;
+    podman(&[
+        "run",
+        "--name",
+        NAME,
+        "docker.io/library/alpine:latest",
+        "true",
+    ]);
+    assert_eq!(status(NAME), "exited");
+    let settings = core.settings().await;
+    let runtime = mineui_core::runtime::resolve(&settings.advanced)
+        .await
+        .unwrap();
+    runtime.set_pids_limit_unlimited(NAME).await.unwrap();
+    runtime.start(NAME).await.unwrap();
+    assert_eq!(pids_limit(NAME), "0");
+    // And a missing container is an error, not a silent success.
+    assert!(runtime
+        .set_pids_limit_unlimited("mineui-live-no-such-container")
+        .await
+        .is_err());
     cleanup(NAME);
 }

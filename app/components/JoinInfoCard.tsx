@@ -21,17 +21,30 @@ import {
   type PortReach,
 } from "@/app/lib/ipc";
 
+/** First Windows build with WSL mirrored networking (Windows 11 22H2). */
+const MIRRORED_MIN_BUILD = 22621;
+
 /** Podman on Windows keeps its containers inside WSL, which sits behind its
  *  own virtual network. Wording is final-pending: keep it all in here. */
 const WSL_LAN_NOTE = {
   title: "Windows setup needed for other devices",
   intro:
-    "With Podman on Windows the server runs inside WSL, which other devices on your network cannot reach until Windows is set up for it. Two ways, both described in Microsoft's guide:",
-  mirrored:
+    "With Podman on Windows the server runs inside WSL, which other devices on your network cannot reach until Windows is set up for it.",
+  twoWays: "Two ways, both described in Microsoft's guide:",
+  oldWindows:
+    "Mirrored networking needs Windows 11 22H2 or newer, so on this PC the way is port forwarding.",
+  mirroredUnknown:
     "Mirrored networking (Windows 11 22H2 or newer). Works for every port.",
+  mirroredKnown: "Mirrored networking. Works for every port.",
   forward:
     "Port forwarding from Windows to WSL. TCP only: fine for the game port, not for a UDP port such as voice chat.",
-  udp: "Voice chat and other UDP ports may not connect with this setup. If so, try mirrored networking or Docker Desktop.",
+};
+
+const FORWARD_TEXT = {
+  intro: "Open Terminal as administrator (right-click Start, Terminal (Admin)) and run:",
+  placeholder: "WSL-ADDRESS",
+  changes:
+    "The WSL address changes when Windows restarts. MineUI shows the current one here - run the first line again if it changed.",
 };
 
 type Os = "windows" | "mac" | "linux";
@@ -120,6 +133,110 @@ const Muted = ({ children }: { children: React.ReactNode }) => (
   <p className="text-xs text-muted">{children}</p>
 );
 
+/** Commands ready to paste: monospace, wraps instead of widening the card,
+ *  selectable, and the Copy button puts exactly these lines on the clipboard. */
+function CommandBlock({ lines, label }: { lines: string[]; label: string }) {
+  return (
+    <div className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-border bg-background p-2">
+      <pre
+        tabIndex={0}
+        aria-label={label}
+        className="m-0 min-w-0 flex-1 select-text whitespace-pre-wrap break-all font-mono text-xs text-foreground"
+      >
+        {lines.join("\n")}
+      </pre>
+      <CopyButton text={lines.join("\n")} label={label} />
+    </div>
+  );
+}
+
+/** A small "show / hide" toggle in the card's link style. */
+function MiniDisclosure({
+  showLabel,
+  hideLabel,
+  children,
+}: {
+  showLabel: string;
+  hideLabel: string;
+  children: React.ReactNode;
+}) {
+  const { play } = useUISound();
+  const [open, setOpen] = useState(false);
+  return (
+    <Disclosure
+      isExpanded={open}
+      onExpandedChange={(next) => {
+        play(next ? "toggle_on" : "toggle_off");
+        setOpen(next);
+      }}
+    >
+      <Disclosure.Heading>
+        <Disclosure.Trigger
+          className="flex w-fit items-center gap-1.5 text-xs text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+          style={{ outlineColor: "var(--focus)" }}
+        >
+          {open ? hideLabel : showLabel}
+          <Disclosure.Indicator className="ms-0 size-auto">
+            <ChevronDown size={13} />
+          </Disclosure.Indicator>
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+      <Disclosure.Content>
+        <Disclosure.Body style={{ padding: "0.5rem 0 0" }}>{children}</Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
+  );
+}
+
+/** Port forwarding from Windows to the WSL virtual machine (TCP only), as
+ *  commands to paste into an administrator terminal. */
+function ForwardingSteps({
+  port,
+  wslAddress,
+  playerAddress,
+}: {
+  port: number;
+  wslAddress: string | null;
+  playerAddress: string | null;
+}) {
+  const target = wslAddress ?? FORWARD_TEXT.placeholder;
+  const name = `MineUI ${port}`;
+  const add = [
+    `netsh interface portproxy add v4tov4 listenport=${port} listenaddress=0.0.0.0 connectport=${port} connectaddress=${target}`,
+    `netsh advfirewall firewall add rule name="${name}" dir=in action=allow protocol=TCP localport=${port}`,
+  ];
+  const undo = [
+    `netsh interface portproxy delete v4tov4 listenport=${port} listenaddress=0.0.0.0`,
+    `netsh advfirewall firewall delete rule name="${name}"`,
+  ];
+  return (
+    <div className="grid gap-2">
+      <p className="text-sm">{FORWARD_TEXT.intro}</p>
+      <CommandBlock lines={add} label="the port forwarding commands" />
+      {wslAddress === null && (
+        <p className="text-xs text-muted">
+          Find the address by running{" "}
+          <code className="select-text font-mono">wsl hostname -I</code> and use the first
+          address shown.
+        </p>
+      )}
+      <Muted>{FORWARD_TEXT.changes}</Muted>
+      <MiniDisclosure showLabel="Undo" hideLabel="Hide undo">
+        <div className="grid gap-2">
+          <p className="text-xs text-muted">To remove the forwarding and the firewall rule:</p>
+          <CommandBlock lines={undo} label="the undo commands" />
+        </div>
+      </MiniDisclosure>
+      {playerAddress && (
+        <p className="text-sm">
+          Players on your network then use{" "}
+          <span className="select-text break-all font-mono">{withPort(playerAddress, port)}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function JoinInfoCard({ online }: { online: boolean }) {
   const router = useRouter();
   const { play } = useUISound();
@@ -184,6 +301,18 @@ export default function JoinInfoCard({ online }: { online: boolean }) {
   const lan = info?.lanAddresses ?? [];
   const lanPrimary = lan[0] ?? null;
   const localAddress = port === DEFAULT_PORT ? "localhost" : withPort("localhost", port);
+  // Windows note: mirrored networking exists only from Windows 11 22H2.
+  const noMirrored = info?.windowsBuild != null && info.windowsBuild < MIRRORED_MIN_BUILD;
+  const udpPorts = (info?.extraPorts ?? [])
+    .filter((item) => item.protocol === "udp")
+    .map((item) => `${item.port} UDP`);
+  const forwarding = (
+    <ForwardingSteps
+      port={port}
+      wslAddress={info?.wslAddress ?? null}
+      playerAddress={lanPrimary}
+    />
+  );
 
   return (
     <Card className="p-5">
@@ -240,7 +369,8 @@ export default function JoinInfoCard({ online }: { online: boolean }) {
                       </span>
                     </Muted>
                   )}
-                  <Muted>{FIREWALL_LINE[os]}</Muted>
+                  {/* The backend knows when it runs on Windows; the user agent is a fallback. */}
+                  <Muted>{FIREWALL_LINE[info.windowsBuild !== null ? "windows" : os]}</Muted>
                 </>
               )}
               {info.reach === "network" && !lanPrimary && (
@@ -268,11 +398,21 @@ export default function JoinInfoCard({ online }: { online: boolean }) {
                 </div>
               )}
               {info.reach === "unknown" && (
-                <Muted>
-                  MineUI could not tell who can connect. That happens when the server is not
-                  set up yet, or when the program that runs it (Podman or Docker) cannot be
-                  reached right now.
-                </Muted>
+                <>
+                  <Muted>
+                    MineUI could not tell who can connect. That happens when the server is not
+                    set up yet, or when the program that runs it (Podman or Docker) cannot be
+                    reached right now.
+                  </Muted>
+                  {info.reachProblem && (
+                    <p
+                      data-testid="reach-problem"
+                      className="select-text whitespace-pre-wrap break-words text-xs text-muted"
+                    >
+                      {info.reachProblem}
+                    </p>
+                  )}
+                </>
               )}
               {lan.length === 0 && info.reach !== "network" && (
                 <Muted>This computer does not seem to be connected to a network.</Muted>
@@ -290,12 +430,38 @@ export default function JoinInfoCard({ online }: { online: boolean }) {
                     </Alert.Title>
                     <Alert.Description className="grid gap-1.5 text-sm text-foreground">
                       <p>{WSL_LAN_NOTE.intro}</p>
-                      <ul className="grid list-disc gap-1 pl-5">
-                        <li>{WSL_LAN_NOTE.mirrored}</li>
-                        <li>{WSL_LAN_NOTE.forward}</li>
-                      </ul>
-                      {info.extraPorts.some((item) => item.protocol === "udp") && (
-                        <p>{WSL_LAN_NOTE.udp}</p>
+                      {noMirrored ? (
+                        <>
+                          <p>{WSL_LAN_NOTE.oldWindows}</p>
+                          {forwarding}
+                        </>
+                      ) : (
+                        <>
+                          <p>{WSL_LAN_NOTE.twoWays}</p>
+                          <ul className="grid list-disc gap-1 pl-5">
+                            <li>
+                              {info.windowsBuild === null
+                                ? WSL_LAN_NOTE.mirroredUnknown
+                                : WSL_LAN_NOTE.mirroredKnown}
+                            </li>
+                            <li>{WSL_LAN_NOTE.forward}</li>
+                          </ul>
+                          <MiniDisclosure
+                            showLabel="Show the port forwarding commands"
+                            hideLabel="Hide the port forwarding commands"
+                          >
+                            {forwarding}
+                          </MiniDisclosure>
+                        </>
+                      )}
+                      {udpPorts.length > 0 && (
+                        <p>
+                          Port forwarding cannot carry UDP ports such as{" "}
+                          <span className="font-mono">{udpPorts.join(", ")}</span>, so players on
+                          other devices will not get those (voice chat) with this setup.
+                          {!noMirrored &&
+                            " On Windows 11 22H2 or newer, mirrored networking is the way."}
+                        </p>
                       )}
                       <OutLink
                         href="https://learn.microsoft.com/en-us/windows/wsl/networking"

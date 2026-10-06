@@ -220,8 +220,16 @@ pub trait Runtime: Send + Sync {
     /// `volume rm <volume>` - `delete_container` with `deleteData` only.
     async fn remove_volume(&self, volume: &str) -> Result<()>;
     /// The configured port bindings (`.HostConfig.PortBindings`, present on a
-    /// stopped container too); empty when the container cannot be inspected.
+    /// stopped container too). An error carrying the runtime's own words when
+    /// the container cannot be inspected (2.11.1; it used to be empty).
     async fn inspect_ports(&self, name: &str) -> Result<Vec<PortBinding>>;
+    /// `inspect -f {{.HostConfig.PidsLimit}}`: the container's pids limit
+    /// (`Some(0)` = none asked for), `None` when unset or unreadable output;
+    /// an error when the command fails (2.11.1).
+    async fn inspect_pids_limit(&self, name: &str) -> Result<Option<i64>>;
+    /// `update --pids-limit=0 <name>`: lift the pids limit of an existing,
+    /// stopped container in place (§3.2 start fallback, 2.11.1).
+    async fn set_pids_limit_unlimited(&self, name: &str) -> Result<()>;
     /// The container's labels (image labels included); empty when it cannot
     /// be inspected.
     async fn inspect_labels(&self, name: &str) -> Result<Vec<(String, String)>>;
@@ -717,9 +725,30 @@ impl Runtime for CliBackend {
             ])
             .await?;
         if !out.success() {
-            return Ok(Vec::new());
+            if engine_unreachable(&out.stderr) {
+                return Err(self.unavailable(&out.stderr));
+            }
+            let reason = if out.stderr.is_empty() {
+                out.stdout.trim().to_string()
+            } else {
+                out.stderr.clone()
+            };
+            return Err(Error::Internal(reason));
         }
         Ok(parse_port_lines(&out.stdout))
+    }
+
+    async fn inspect_pids_limit(&self, name: &str) -> Result<Option<i64>> {
+        let out = self
+            .run_ok(&["inspect", "-f", "{{.HostConfig.PidsLimit}}", name])
+            .await?;
+        Ok(parse_pids_limit(&out.stdout))
+    }
+
+    async fn set_pids_limit_unlimited(&self, name: &str) -> Result<()> {
+        self.run_ok(&["update", "--pids-limit=0", name])
+            .await
+            .map(|_| ())
     }
 
     async fn inspect_labels(&self, name: &str) -> Result<Vec<(String, String)>> {
@@ -848,6 +877,12 @@ fn parse_port_lines(stdout: &str) -> Vec<PortBinding> {
         .collect()
 }
 
+/// `{{.HostConfig.PidsLimit}}` output → the limit; `<nil>`, empty or
+/// anything unparseable → `None`.
+pub fn parse_pids_limit(stdout: &str) -> Option<i64> {
+    stdout.trim().parse().ok()
+}
+
 /// `KEY=VALUE` per line → pairs; lines without `=` are skipped.
 fn parse_env_lines(stdout: &str) -> Vec<(String, String)> {
     stdout
@@ -923,6 +958,12 @@ macro_rules! delegate_runtime {
             }
             async fn inspect_ports(&self, name: &str) -> Result<Vec<PortBinding>> {
                 self.0.inspect_ports(name).await
+            }
+            async fn inspect_pids_limit(&self, name: &str) -> Result<Option<i64>> {
+                self.0.inspect_pids_limit(name).await
+            }
+            async fn set_pids_limit_unlimited(&self, name: &str) -> Result<()> {
+                self.0.set_pids_limit_unlimited(name).await
             }
             async fn inspect_labels(&self, name: &str) -> Result<Vec<(String, String)>> {
                 self.0.inspect_labels(name).await
@@ -1483,6 +1524,20 @@ bind||/home/me/minecraft|/extra\n\nnot-a-mount\n";
             "Error: rootlessport listen tcp 127.0.0.1:25566: bind: address already in use"
         ));
         assert!(!is_pids_controller_unavailable(""));
+        // the tester's 2.11.0 start error, wrapped by run_ok
+        assert!(is_pids_controller_unavailable(
+            "podman start failed: Error: unable to start container \"06cd\": crun: controller pids is not available under /sys/fs/cgroup/non-systemd/user.slice/user-1000.slice/user@1000.service/user.slice/libpod-06cd.scope/container/cgroup.controllers: OCI runtime error"
+        ));
+    }
+
+    #[test]
+    fn pids_limit_output() {
+        assert_eq!(parse_pids_limit("2048\n"), Some(2048));
+        assert_eq!(parse_pids_limit("0"), Some(0));
+        assert_eq!(parse_pids_limit("-1"), Some(-1));
+        assert_eq!(parse_pids_limit("<nil>\n"), None);
+        assert_eq!(parse_pids_limit(""), None);
+        assert_eq!(parse_pids_limit("lots"), None);
     }
 
     #[test]

@@ -511,6 +511,27 @@ Semantics:
   (argv array). Phase mapping: not exists → `not-created`; running → `running`; else
   `stopped` (container runtimes don't expose starting/stopping reliably).
   `start/stop/restart` = runtime `start`/`stop`/`restart <name>`.
+- **Advanced start fallback (2.11.1).** When `start` or `restart` fails because the
+  runtime cannot apply the container's pids limit (crun: ``controller `pids` is not
+  available under …/cgroup.controllers``, matched as in §3.13 on the error message;
+  seen on Podman machines on WSL without systemd, for containers created with the
+  runtime's default limit - before the 2.7.1 create retry, by a 2.11.0 port change,
+  or outside MineUI), core lifts the limit in place - `update --pids-limit=0 <name>`
+  (argv array; same verb on Podman and Docker) on the stopped container - and runs
+  `start <name>` once more (also after a failed `restart`: the container is
+  stopped). Once only; no other failure triggers it, and no container is removed or
+  recreated. The second start's outcome is the command's outcome. If the `update`
+  itself fails, the original start error is returned (`INTERNAL`) with one sentence
+  added: "The container was made with a process limit this machine cannot apply,
+  and MineUI could not lift it; run `podman update --pids-limit=0 <name>` and start
+  the server again." (with `docker` under Docker and the real container name). The `update` is audited as `container.update`
+  (target = container name, detail = `process limit (pids) lifted`, with the
+  update's error when it failed), with the source of the start (`user`, or
+  `scheduler` for a scheduled restart); `server.start` / `server.restart` are
+  recorded as before with the final outcome. A limit of `0` is never applied
+  otherwise: under runc with the systemd cgroup manager (runc 1.5.1, verified
+  2026-10-05) it means no processes at all and the server cannot fork; crun, whose
+  refusal triggers the fallback, writes no pids limit for `0`.
 - **Simple**: supervisor (`supervisor::Supervisor`) owns the child process.
   `start_server` preconditions: instance exists (`INSTANCE_NOT_FOUND`),
   `eulaAccepted` (`EULA_NOT_ACCEPTED`), java compatible (`JAVA_NOT_FOUND` /
@@ -1077,7 +1098,8 @@ type AuditEntry = {
   `note.set`, `note.clear`,
   `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
   `server.add`, `server.rename`, `server.remove` (§3.12), `container.create`,
-  `container.delete` (§3.13).
+  `container.delete`, `container.ports` (§3.13), `container.update` (§3.2 start
+  fallback, 2.11.1).
 
 ### 3.12 Server profiles (2.6.0)
 
@@ -1298,10 +1320,11 @@ Sequence (first failure wins; nothing is created before step 7):
    crun: ``controller `pids` is not available under …/cgroup.controllers``, seen
    with Podman machines on WSL whose cgroup tree has no `pids` delegation - the
    half-made container is removed and the same call is made once more with
-   `--pids-limit=0` before the image (2.7.1): `0` makes the runtime write no pids
+   `--pids-limit=0` before the image (2.7.1): `0` makes crun write no pids
    limit at all, so the server runs without one, as it does under Docker. No
    other failure is retried, and a container that started on the first call is
-   never touched.
+   never touched. (2.11.1) `0` is only ever used after crun's refusal: runc with
+   the systemd cgroup manager applies it literally (no processes; see §3.2).
 
    The env file (`<app-data-dir>/tmp/`, `0o600`, deleted right after the call) holds
    `EULA=TRUE`, `TYPE=<LOADER>`, `VERSION=<mcVersion>`, `MEMORY=<memoryMb>M`,
@@ -1417,7 +1440,13 @@ Sequence (first failure wins; nothing changes before step 9):
    volume at `/data`, the image, and the ports: game `queryPort`→25565 and every
    extra port with the bind of `exposeToNetwork` (the §3.13 rule, including the
    WSL no-address case), RCON `rconPort`→25575 local. A pids-limit failure is
-   retried once with `--pids-limit=0` as in §3.13.
+   retried once with `--pids-limit=0` as in §3.13. (2.11.1) The pids limit is
+   carried over: `inspect -f {{.HostConfig.PidsLimit}}` of the old container (read
+   before the rename) is `0` → the new container gets `--pids-limit=0`; any other
+   value, `<nil>`, or a failed read → no flag (the runtime's default). Without
+   this, a container that only runs because its limit was lifted (create retry or
+   §3.2 start fallback) would be recreated with the default and fail at its next
+   `start` - `create` succeeds and the refusal only comes at start.
 10. Success → `rm -f <containerName>-mineui-old` (its volume is the new
    container's volume and is never removed). Any failure in step 9 → remove the
    half-made new container, rename the old one back, then `CONTAINER_CREATE_FAILED`
@@ -1574,6 +1603,15 @@ type JoinInfo = {
   /** Windows + Podman machine on WSL: the LAN cannot reach WSL ports without
    *  extra Windows setup. */
   wslNat: boolean;
+  /** Why `reach` is "unknown", in plain words with the runtime's message;
+   *  null otherwise. (2.11.1) */
+  reachProblem: string | null;
+  /** Windows build number (19045 = Windows 10 22H2, 22621+ = Windows 11 22H2
+   *  or newer); null when not on Windows or unknown. (2.11.1) */
+  windowsBuild: number | null;
+  /** Windows + Podman on WSL: the WSL virtual machine's IPv4 address that port
+   *  forwarding must point at; null otherwise or when it cannot be read. (2.11.1) */
+  wslAddress: string | null;
 };
 ```
 
@@ -1611,6 +1649,29 @@ type JoinInfo = {
   network → `[]`. (Std only; other interfaces are not enumerated.)
 - `wslNat`: Windows, and the Podman machine's provider is `wsl` (`machine::facts`).
   Always false on Linux/macOS and with Docker.
+- `reachProblem` (2.11.1): set exactly when `reach` is `unknown`, so a failure is
+  never silent. Advanced mode: the runtime cannot be resolved → its error message;
+  the container state query fails → "MineUI could not ask <Podman|Docker> about the
+  container: <message>"; no container → "There is no container yet."; reading the
+  published ports fails (the `inspect` exits non-zero) → "MineUI could not read the
+  container's published ports: <stderr>"; the container exists but has no binding
+  for the game port → "The container does not publish the game port MineUI expects
+  (<queryPort>). Check the game port in Server Settings.". Simple mode with no
+  instance → "There is no server yet.". `whyNot` keeps its meaning (why the ports
+  cannot be changed) and is independent of `reachProblem`.
+- `windowsBuild` (2.11.1): on Windows only, the build number parsed from the output
+  of `cmd /C ver` (`Microsoft Windows [Version 10.0.19045.6466]` → `19045`; the
+  third dot-separated number inside the brackets, whatever language the prefix text
+  is in). Run once per process and cached; any failure → null. On Linux/macOS
+  always null and nothing is run.
+- `wslAddress` (2.11.1): only when `wslNat` is true. `wsl.exe -d <machine name> -e
+  hostname -I` (machine name as in `machine::facts`), 5 s timeout; the first
+  whitespace-separated token that parses as an IPv4 address that is not
+  unspecified, loopback, link-local, broadcast or multicast, and not in the Podman
+  bridge range `10.88.0.0/16` (output seen on a tester's machine:
+  `172.21.76.85 10.88.0.1` → `172.21.76.85`). Cached for 60 s like the machine
+  facts (the address changes when Windows restarts). Any failure → null, never an
+  error.
 
 `get_public_address`: **only ever on an explicit user action - MineUI never asks on
 its own.** One GET to the fixed URL `https://api.ipify.org` (plain-text body = the
@@ -2208,6 +2269,12 @@ export type JoinInfo = {
   whyNot: string | null;
   /** Windows + Podman machine on WSL: the LAN cannot reach WSL ports without extra Windows setup. */
   wslNat: boolean;
+  /** Why `reach` is "unknown", in plain words with the runtime's message; null otherwise. (2.11.1) */
+  reachProblem: string | null;
+  /** Windows build number (19045 = Windows 10 22H2, 22621+ = Windows 11 22H2 or newer); null when not on Windows or unknown. (2.11.1) */
+  windowsBuild: number | null;
+  /** Windows + Podman on WSL: the WSL virtual machine's IPv4 address that port forwarding must point at; null otherwise or when it cannot be read. (2.11.1) */
+  wslAddress: string | null;
 };
 
 export const getJoinInfo = () => scoped<JoinInfo>("get_join_info");
@@ -2556,9 +2623,9 @@ Frontend rules:
 | --- | --- |
 | `error` | `Error` enum + serde serialization to `{code,message}` (§1) |
 | `settings` | load/save/validate/migrate (§2), atomic write + 0600 |
-| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, inspect_ports, inspect_labels, inspect_image, image_env, rename, run_detached, create, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio - **no shell strings anywhere in the crate** |
+| `runtime` | `trait Runtime` (state, start, stop, restart, logs, follow_logs, exec(argv), run_with_volumes_from(argv), cp_to, cp_from, stats, inspect_started_at, inspect_env, inspect_mounts, inspect_ports, inspect_pids_limit and set_pids_limit_unlimited (2.11.1), inspect_labels, inspect_image, image_env, rename, run_detached, create, remove_force, remove_volume) + `PodmanCli`/`DockerCli` impls + `detect`/`resolve` (override-first on Auto, 2.9.0) + `run_in_container` (exec when running, stopped-container helper otherwise, 2.9.0) + the `RUNTIME_UNAVAILABLE` mapping (§3.1). All subprocess calls use arg arrays via `std::process::Command`/tokio - **no shell strings anywhere in the crate** |
 | `supervisor` | simple-mode child process: spawn, stdin stop, kill-after-30s, phase machine, log ring buffer, state-change + log callbacks |
-| `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2) |
+| `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2); the Windows build, once per process (§3.16, 2.11.1) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
 | `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback |
@@ -2581,7 +2648,7 @@ Frontend rules:
 | `cfpack` | CurseForge pack zips (§3.13, §3.14): manifest reading (`inspect_modpack_zip`), name → slug, the in-container path |
 | `identity` | per-profile identity for the overview (§3.12): one `ps` for the phase + cached container `TYPE`/`VERSION` |
 | `hub` | server profiles (§2.5, §3.12): `servers.json`, one `Core` per profile, `core(server_id)` lookup, server-scoped event fan-in (`HubEvent`), `poll_all` / `tick_all`, `overview`; the app-level roots for §3.15 (`app_info`, `check_for_update`, `open_app_dir`) and §3.16 (`public_address`) |
-| `joininfo` | `get_join_info` + `get_public_address` (§3.16, 2.11.0): published-port reach, the pre-2.11.0 shape check (`can_change_ports`), LAN address discovery, the one ipify GET |
+| `joininfo` | `get_join_info` + `get_public_address` (§3.16, 2.11.0): published-port reach and why it is unknown (`reachProblem`, 2.11.1), the pre-2.11.0 shape check (`can_change_ports`), LAN address discovery, the one ipify GET |
 | `appinfo` | `get_app_info` + `check_for_update` (§3.15, 2.10.0): version/OS facts, the one GitHub latest-release GET, tag normalization and dotted-version comparison |
 | `opener` | `open_url` + `open_app_dir` (§3.15, 2.10.0): the https host allowlist, the per-OS opener argv (`xdg-open` / `open` / `explorer.exe`), detached spawn via `util::prepare_child` |
 

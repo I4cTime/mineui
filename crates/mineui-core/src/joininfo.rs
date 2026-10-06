@@ -23,6 +23,22 @@ const PROBE_TARGET: (Ipv4Addr, u16) = (Ipv4Addr::new(192, 0, 2, 1), 9);
 pub const WHY_NOT_NO_CONTAINER: &str = "There is no container yet.";
 pub const WHY_NOT_FOREIGN: &str = "This container was not created by MineUI, so MineUI cannot rebuild it with other ports. Change its ports where you created it.";
 pub const WHY_NOT_SIMPLE: &str = "A plain server listens on this computer directly - there is nothing to publish. A firewall may still need to allow the port.";
+pub const REACH_NO_SERVER: &str = "There is no server yet.";
+
+/// "Podman" / "Docker" for a runtime kind, as the user knows it.
+fn runtime_display_name(kind: &str) -> &'static str {
+    match kind {
+        "docker" => "Docker",
+        _ => "Podman",
+    }
+}
+
+/// `reachProblem` when the container has no binding for the game port.
+pub fn reach_problem_no_game_port(query_port: u16) -> String {
+    format!(
+        "The container does not publish the game port MineUI expects ({query_port}). Check the game port in Server Settings."
+    )
+}
 
 /// Reach of one binding by its host address.
 pub fn reach_of_host_ip(host_ip: &str) -> PortReach {
@@ -178,13 +194,61 @@ pub fn reach_from_server_ip(server_ip: Option<&str>) -> PortReach {
     }
 }
 
+/// The container part of `get_join_info` (§3.16): reach, extra ports,
+/// `canChangePorts`/`whyNot`, and - whenever reach stays unknown - the
+/// reason in `reachProblem` (2.11.1).
+pub(crate) async fn fill_from_container(
+    runtime: &dyn Runtime,
+    name: &str,
+    query_port: u16,
+    rcon_port: u16,
+    info: &mut JoinInfo,
+) {
+    match runtime.ps_state(name).await {
+        Ok(detail) if detail.exists => {}
+        Ok(_) => {
+            info.why_not = Some(WHY_NOT_NO_CONTAINER.to_string());
+            info.reach_problem = Some(WHY_NOT_NO_CONTAINER.to_string());
+            return;
+        }
+        Err(e) => {
+            info.why_not = Some(e.to_string());
+            info.reach_problem = Some(format!(
+                "MineUI could not ask {} about the container: {e}",
+                runtime_display_name(runtime.kind())
+            ));
+            return;
+        }
+    }
+    match runtime.inspect_ports(name).await {
+        Ok(bindings) => {
+            let (reach, extra) = summarize_bindings(&bindings, query_port, rcon_port);
+            info.reach = reach;
+            info.extra_ports = extra;
+            if reach == PortReach::Unknown {
+                info.reach_problem = Some(reach_problem_no_game_port(query_port));
+            }
+        }
+        Err(e) => {
+            info.reach_problem = Some(format!(
+                "MineUI could not read the container's published ports: {e}"
+            ));
+        }
+    }
+    let (can, why_not) = rebuild_check(runtime, name).await;
+    info.can_change_ports = can;
+    info.why_not = why_not;
+}
+
 /// `get_join_info` (§3.16). Never rejects for a missing runtime or
-/// container: those become `unknown` with the reason in `whyNot`.
+/// container: those become `unknown` with the reason in `whyNot` and
+/// `reachProblem`.
 pub async fn join_info(core: &crate::Core) -> Result<JoinInfo> {
     let settings = core.settings().await;
     let lan = tokio::task::spawn_blocking(lan_addresses)
         .await
         .unwrap_or_default();
+    let windows_build = crate::machine::windows_build().await;
     if settings.active_mode == Mode::Simple {
         let props = settings.simple.instance_dir.join("server.properties");
         let reach = if settings
@@ -211,6 +275,9 @@ pub async fn join_info(core: &crate::Core) -> Result<JoinInfo> {
             can_change_ports: false,
             why_not: Some(WHY_NOT_SIMPLE.to_string()),
             wsl_nat: false,
+            reach_problem: (reach == PortReach::Unknown).then(|| REACH_NO_SERVER.to_string()),
+            windows_build,
+            wsl_address: None,
         });
     }
 
@@ -223,35 +290,31 @@ pub async fn join_info(core: &crate::Core) -> Result<JoinInfo> {
         can_change_ports: false,
         why_not: None,
         wsl_nat: false,
+        reach_problem: None,
+        windows_build,
+        wsl_address: None,
     };
     let runtime = match crate::runtime::resolve(advanced).await {
         Ok(runtime) => runtime,
         Err(e) => {
             info.why_not = Some(e.to_string());
+            info.reach_problem = Some(e.to_string());
             return Ok(info);
         }
     };
     let facts = crate::machine::facts(core, runtime.as_ref()).await;
     info.wsl_nat = cfg!(windows) && facts.vm_type.as_deref() == Some("wsl");
-    let name = advanced.container_name.as_str();
-    match runtime.ps_state(name).await {
-        Ok(detail) if detail.exists => {}
-        Ok(_) => {
-            info.why_not = Some(WHY_NOT_NO_CONTAINER.to_string());
-            return Ok(info);
-        }
-        Err(e) => {
-            info.why_not = Some(e.to_string());
-            return Ok(info);
-        }
+    if info.wsl_nat {
+        info.wsl_address = facts.ip.clone();
     }
-    let bindings = runtime.inspect_ports(name).await.unwrap_or_default();
-    let (reach, extra) = summarize_bindings(&bindings, advanced.query_port, advanced.rcon_port);
-    info.reach = reach;
-    info.extra_ports = extra;
-    let (can, why_not) = rebuild_check(runtime.as_ref(), name).await;
-    info.can_change_ports = can;
-    info.why_not = why_not;
+    fill_from_container(
+        runtime.as_ref(),
+        advanced.container_name.as_str(),
+        advanced.query_port,
+        advanced.rcon_port,
+        &mut info,
+    )
+    .await;
     Ok(info)
 }
 
@@ -511,16 +574,121 @@ mod tests {
         assert_eq!(info.why_not.as_deref(), Some(WHY_NOT_SIMPLE));
         assert!(info.extra_ports.is_empty());
         assert!(!info.wsl_nat);
+        assert_eq!(info.reach_problem.as_deref(), Some(REACH_NO_SERVER));
+        assert_eq!(info.wsl_address, None);
+        if !cfg!(windows) {
+            assert_eq!(info.windows_build, None);
+        }
 
         let dir = core.settings().await.simple.instance_dir;
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(crate::instance::META_FILE), "{}").unwrap();
         std::fs::write(dir.join("server.properties"), "server-ip=127.0.0.1\n").unwrap();
-        assert_eq!(
-            join_info(&core).await.unwrap().reach,
-            PortReach::ThisComputer
-        );
+        let info = join_info(&core).await.unwrap();
+        assert_eq!(info.reach, PortReach::ThisComputer);
+        assert_eq!(info.reach_problem, None);
         std::fs::write(dir.join("server.properties"), "motd=x\nserver-ip=\n").unwrap();
         assert_eq!(join_info(&core).await.unwrap().reach, PortReach::Network);
+    }
+
+    fn blank_info() -> JoinInfo {
+        JoinInfo {
+            port: 25566,
+            reach: PortReach::Unknown,
+            lan_addresses: Vec::new(),
+            extra_ports: Vec::new(),
+            can_change_ports: false,
+            why_not: None,
+            wsl_nat: false,
+            reach_problem: None,
+            windows_build: None,
+            wsl_address: None,
+        }
+    }
+
+    async fn filled(rt: &crate::fake_runtime::FakeRuntime) -> JoinInfo {
+        let mut info = blank_info();
+        fill_from_container(rt, "mc", 25566, 25576, &mut info).await;
+        info
+    }
+
+    #[tokio::test]
+    async fn reach_problem_names_every_unknown() {
+        use crate::fake_runtime::FakeRuntime;
+        use PortProtocol::Tcp;
+
+        let rt = FakeRuntime {
+            ps: Err("Cannot connect to Podman".into()),
+            ..Default::default()
+        };
+        let info = filled(&rt).await;
+        assert_eq!(info.reach, PortReach::Unknown);
+        assert_eq!(
+            info.reach_problem.as_deref(),
+            Some("MineUI could not ask Podman about the container: Cannot connect to Podman")
+        );
+
+        let rt = FakeRuntime {
+            ps: Ok(None),
+            ..Default::default()
+        };
+        let info = filled(&rt).await;
+        assert_eq!(info.reach_problem.as_deref(), Some(WHY_NOT_NO_CONTAINER));
+        assert_eq!(info.why_not.as_deref(), Some(WHY_NOT_NO_CONTAINER));
+
+        // The inspect failed: its words reach the user, and whyNot still
+        // answers the other question.
+        let rt = FakeRuntime {
+            ports: Err("Error: no such object: \"mc\"".into()),
+            labels: vec![(crate::provision::MANAGED_LABEL.into(), "1".into())],
+            ..Default::default()
+        };
+        let info = filled(&rt).await;
+        assert_eq!(info.reach, PortReach::Unknown);
+        assert_eq!(
+            info.reach_problem.as_deref(),
+            Some("MineUI could not read the container's published ports: Error: no such object: \"mc\"")
+        );
+        assert!(info.can_change_ports);
+        assert_eq!(info.why_not, None);
+
+        // Published, but not the game port.
+        let rt = FakeRuntime {
+            ports: Ok(vec![binding(8100, Tcp, "0.0.0.0", 8100)]),
+            ..Default::default()
+        };
+        let info = filled(&rt).await;
+        assert_eq!(
+            info.reach_problem.as_deref(),
+            Some("The container does not publish the game port MineUI expects (25566). Check the game port in Server Settings.")
+        );
+        assert_eq!(info.why_not.as_deref(), Some(WHY_NOT_FOREIGN));
+
+        // Known reach: no problem.
+        let rt = FakeRuntime {
+            ports: Ok(vec![binding(25565, Tcp, "127.0.0.1", 25566)]),
+            ..Default::default()
+        };
+        let info = filled(&rt).await;
+        assert_eq!(info.reach, PortReach::ThisComputer);
+        assert_eq!(info.reach_problem, None);
+    }
+
+    #[tokio::test]
+    async fn unresolvable_runtime_is_the_reach_problem() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = crate::Core::init(tmp.path().join("config"), tmp.path().join("data"))
+            .await
+            .unwrap();
+        let mut s = core.settings().await;
+        s.active_mode = Mode::Advanced;
+        s.advanced.runtime = crate::settings::RuntimeKind::Podman;
+        s.advanced.runtime_binary = Some(tmp.path().join("no-such-podman"));
+        core.update_settings(s).await.unwrap();
+        let info = join_info(&core).await.unwrap();
+        assert_eq!(info.reach, PortReach::Unknown);
+        let problem = info.reach_problem.expect("a reason");
+        assert!(!problem.is_empty());
+        assert_eq!(Some(problem), info.why_not);
     }
 }

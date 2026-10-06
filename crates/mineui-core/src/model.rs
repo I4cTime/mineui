@@ -711,6 +711,12 @@ pub struct JoinInfo {
     pub can_change_ports: bool,
     pub why_not: Option<String>,
     pub wsl_nat: bool,
+    /// Why `reach` is unknown, in plain words (2.11.1).
+    pub reach_problem: Option<String>,
+    /// Windows build number; `None` off Windows or when unknown (2.11.1).
+    pub windows_build: Option<u32>,
+    /// The WSL machine's IPv4 address, only when `wsl_nat` (2.11.1).
+    pub wsl_address: Option<String>,
 }
 
 /// Result of `get_public_address` (§3.16, 2.11.0).
