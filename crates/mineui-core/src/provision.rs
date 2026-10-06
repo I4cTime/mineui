@@ -609,6 +609,18 @@ pub(crate) async fn swap_container(runtime: &dyn Runtime, spec: &ContainerSpec) 
     Ok(())
 }
 
+/// The pids limit a rebuilt container keeps (2.11.1): `Some(0)` only when
+/// the old one has none - set by the create retry or the start fallback
+/// (§3.2) because this machine cannot apply one. Anything else, including an
+/// unreadable value, gets the runtime's default again: `--pids-limit=0`
+/// breaks forking under systemd, so it is never applied by default.
+pub(crate) async fn pids_limit_to_keep(runtime: &dyn Runtime, name: &str) -> Option<i64> {
+    match runtime.inspect_pids_limit(name).await {
+        Ok(Some(0)) => Some(0),
+        _ => None,
+    }
+}
+
 async fn update_ports_inner(
     core: &crate::Core,
     expose_to_network: bool,
@@ -686,6 +698,7 @@ async fn update_ports_inner(
         ensure_port_free_proto(probe(&game_bind), p.port, p.protocol)?;
     }
 
+    let pids_limit = pids_limit_to_keep(runtime.as_ref(), name).await;
     let env_file =
         write_env_file(&core.paths.data_dir.join("tmp"), &env_file_from_pairs(&env)).await?;
     let spec = ContainerSpec {
@@ -695,7 +708,7 @@ async fn update_ports_inner(
         ports: published_ports(game_bind, local_bind, game_port, rcon_port, extra_ports),
         volume: (volume, DATA_PATH.to_string()),
         labels: managed_labels(),
-        pids_limit: None,
+        pids_limit,
     };
     core.logs.shutdown().await;
     let result = swap_container(runtime.as_ref(), &spec).await;
@@ -1200,6 +1213,12 @@ mod tests {
         async fn inspect_ports(&self, _: &str) -> Result<Vec<crate::runtime::PortBinding>> {
             unimplemented!()
         }
+        async fn inspect_pids_limit(&self, _: &str) -> Result<Option<i64>> {
+            unimplemented!()
+        }
+        async fn set_pids_limit_unlimited(&self, _: &str) -> Result<()> {
+            unimplemented!()
+        }
         async fn inspect_labels(&self, _: &str) -> Result<Vec<(String, String)>> {
             unimplemented!()
         }
@@ -1264,6 +1283,33 @@ mod tests {
         let err = swap_container(&rt, &swap_spec()).await.unwrap_err();
         assert!(err.to_string().contains("kept as 'mc-mineui-old'"), "{err}");
         assert!(!rt.calls().contains(&"rm mc-mineui-old".to_string()));
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_keeps_a_lifted_pids_limit_only() {
+        use crate::fake_runtime::FakeRuntime as Scripted;
+        for (old, flag) in [(Some(0), true), (Some(2048), false), (None, false)] {
+            let rt = Scripted {
+                pids_limit: old,
+                ..Default::default()
+            };
+            let spec = ContainerSpec {
+                pids_limit: pids_limit_to_keep(&rt, "mc").await,
+                ..swap_spec()
+            };
+            swap_container(&rt, &spec).await.unwrap();
+            let create = rt
+                .calls()
+                .into_iter()
+                .find(|c| c.starts_with("create "))
+                .expect("a create call");
+            assert_eq!(
+                create.split(' ').any(|a| a == "--pids-limit=0"),
+                flag,
+                "old {old:?}: {create}"
+            );
+            assert!(!create.contains("--pids-limit=2048"), "{create}");
+        }
     }
 
     #[tokio::test]

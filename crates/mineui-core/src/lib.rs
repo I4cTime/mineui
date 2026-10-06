@@ -13,6 +13,8 @@ pub mod cfpack;
 pub mod config_files;
 pub mod download;
 pub mod error;
+#[cfg(test)]
+pub(crate) mod fake_runtime;
 pub mod hub;
 pub mod identity;
 pub mod instance;

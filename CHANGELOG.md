@@ -3,6 +3,32 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.11.1] - 2026-10-05
+
+### Fixed
+
+- **A server whose ports were changed in 2.11.0 would not start on some
+  Windows machines** (`crun: controller pids is not available`). Where
+  Podman cannot apply its per-container process limit, MineUI creates the
+  container without one; the 2.11.0 port change rebuilt the container with
+  the limit back on. A port change now keeps the limit switched off.
+- **Start and Restart recover from that error by themselves.** If the
+  runtime refuses to start a container because the process limit cannot be
+  applied, MineUI lifts the limit in place (`update --pids-limit=0`) and
+  starts it once more. Nothing is removed or rebuilt. If lifting fails, the
+  error names the one command to run.
+
+### Changed
+
+- **How players join** says why it could not tell who can connect (the
+  runtime's message), instead of a generic sentence.
+- **Windows with Podman:** the card knows the Windows version. On Windows 10
+  it no longer offers mirrored networking (it needs Windows 11 22H2 or
+  newer) and shows the port forwarding commands ready to paste into an
+  administrator terminal, with the game port and this PC's current WSL
+  address filled in, plus how to undo them. It says plainly that port
+  forwarding cannot carry UDP ports such as voice chat.
+
 ## [2.11.0] - 2026-10-04
 
 ### Added

@@ -383,6 +383,12 @@ export type JoinInfo = {
   whyNot: string | null;
   /** Windows + Podman machine on WSL: the LAN cannot reach WSL ports without extra Windows setup. */
   wslNat: boolean;
+  /** Why `reach` is "unknown", in plain words with the runtime's message; null otherwise. (2.11.1) */
+  reachProblem: string | null;
+  /** Windows build number (19045 = Windows 10 22H2, 22621+ = Windows 11 22H2 or newer); null when not on Windows or unknown. (2.11.1) */
+  windowsBuild: number | null;
+  /** Windows + Podman on WSL: the WSL virtual machine's IPv4 address that port forwarding must point at; null otherwise or when it cannot be read. (2.11.1) */
+  wslAddress: string | null;
 };
 
 export const getJoinInfo = () => scoped<JoinInfo>("get_join_info");

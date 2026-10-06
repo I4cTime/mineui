@@ -5,7 +5,69 @@ use crate::model::AuditSource;
 use crate::model::{
     ContainerDetail, CoreEvent, ProcessDetail, ServerPhase, ServerState, ServerStateEvent,
 };
+use crate::runtime::Runtime;
 use crate::settings::Mode;
+
+/// Audit detail of the start fallback's in-place change (2.11.1).
+pub const PIDS_LIFTED_DETAIL: &str = "process limit (pids) lifted";
+
+/// The sentence added to the start error when the pids limit could not be
+/// lifted (§3.2, 2.11.1).
+pub fn pids_unliftable_sentence(runtime_kind: &str, name: &str) -> String {
+    format!(
+        "The container was made with a process limit this machine cannot apply, and MineUI could not lift it; run `{runtime_kind} update --pids-limit=0 {name}` and start the server again."
+    )
+}
+
+/// What the pids fallback did, for the audit: `None` = not needed.
+pub(crate) type PidsLift = Option<Result<()>>;
+
+/// Start (or restart) `name`; when the runtime refuses because this machine
+/// cannot apply the container's pids limit (crun: "controller `pids` is not
+/// available" - Podman on WSL without systemd), lift the limit in place with
+/// `update --pids-limit=0` and start once more (§3.2, 2.11.1). Only once.
+/// Containers created before the 2.7.1 create retry, and any container the
+/// user made elsewhere, carry the runtime's default limit and land here.
+pub(crate) async fn start_lifting_pids(
+    runtime: &dyn Runtime,
+    name: &str,
+    restart: bool,
+) -> (Result<()>, PidsLift) {
+    let first = if restart {
+        runtime.restart(name).await
+    } else {
+        runtime.start(name).await
+    };
+    let original = match first {
+        Err(e) if crate::runtime::is_pids_controller_unavailable(&e.to_string()) => e,
+        other => return (other, None),
+    };
+    if let Err(lift_error) = runtime.set_pids_limit_unlimited(name).await {
+        let message = format!(
+            "{original} {}",
+            pids_unliftable_sentence(runtime.kind(), name)
+        );
+        return (Err(Error::Internal(message)), Some(Err(lift_error)));
+    }
+    // The failed attempt left the container stopped, so a plain start is
+    // the retry for a restart too.
+    (runtime.start(name).await, Some(Ok(())))
+}
+
+/// Record the fallback's `container.update` entry when it ran (§3.11).
+async fn audit_pids_lift(core: &crate::Core, source: AuditSource, name: &str, lift: &PidsLift) {
+    if let Some(outcome) = lift {
+        crate::audit::record(
+            core,
+            source,
+            "container.update",
+            Some(name),
+            Some(PIDS_LIFTED_DETAIL),
+            outcome.as_ref().err(),
+        )
+        .await;
+    }
+}
 
 pub(crate) fn phase_from_container(detail: &ContainerDetail) -> ServerPhase {
     if !detail.exists {
@@ -86,7 +148,9 @@ async fn start_inner(core: &crate::Core) -> Result<()> {
                     "container '{name}' does not exist"
                 )));
             }
-            runtime.start(name).await?;
+            let (result, lift) = start_lifting_pids(runtime.as_ref(), name, false).await;
+            audit_pids_lift(core, AuditSource::User, name, &lift).await;
+            result?;
             poll_advanced_state(core).await;
             Ok(())
         }
@@ -161,7 +225,7 @@ async fn stop_inner(core: &crate::Core) -> Result<()> {
 }
 
 /// `restart_server` (§3.2): simple mode = stop (await exit) then start.
-async fn restart_inner(core: &crate::Core) -> Result<()> {
+async fn restart_inner(core: &crate::Core, source: AuditSource) -> Result<()> {
     let settings = core.settings().await;
     match settings.active_mode {
         Mode::Advanced => {
@@ -173,7 +237,9 @@ async fn restart_inner(core: &crate::Core) -> Result<()> {
                     "container '{name}' does not exist"
                 )));
             }
-            runtime.restart(name).await?;
+            let (result, lift) = start_lifting_pids(runtime.as_ref(), name, true).await;
+            audit_pids_lift(core, source, name, &lift).await;
+            result?;
             poll_advanced_state(core).await;
             Ok(())
         }
@@ -264,7 +330,7 @@ pub async fn restart(core: &crate::Core) -> Result<()> {
 
 /// Restart on behalf of `source` (the scheduler uses `Scheduler`).
 pub async fn restart_from(core: &crate::Core, source: AuditSource) -> Result<()> {
-    let r = restart_inner(core).await;
+    let r = restart_inner(core, source).await;
     crate::audit::record(core, source, "server.restart", None, None, r.as_ref().err()).await;
     r
 }
@@ -309,5 +375,112 @@ mod tests {
             phase_from_container(&detail(true, None)),
             ServerPhase::Stopped
         );
+    }
+
+    const PIDS_ERROR: &str = "podman start failed: Error: unable to start container \"06cd\": crun: controller pids is not available under /sys/fs/cgroup/non-systemd/user.slice/libpod-06cd.scope/container/cgroup.controllers: OCI runtime error";
+
+    #[tokio::test]
+    async fn a_pids_refusal_lifts_the_limit_and_starts_again() {
+        use crate::fake_runtime::FakeRuntime;
+        for restart in [false, true] {
+            let rt = FakeRuntime::failing_starts(&[Some(PIDS_ERROR)]);
+            let (result, lift) = start_lifting_pids(&rt, "mc", restart).await;
+            result.unwrap();
+            assert!(matches!(lift, Some(Ok(()))));
+            let first = if restart { "restart mc" } else { "start mc" };
+            assert_eq!(rt.calls(), [first, "update --pids-limit=0 mc", "start mc"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn other_start_errors_are_left_alone() {
+        use crate::fake_runtime::FakeRuntime;
+        let rt = FakeRuntime::failing_starts(&[Some(
+            "podman start failed: Error: rootlessport listen tcp 127.0.0.1:25566: bind: address already in use",
+        )]);
+        let (result, lift) = start_lifting_pids(&rt, "mc", false).await;
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("address already in use"));
+        assert!(lift.is_none());
+        assert_eq!(rt.calls(), ["start mc"]);
+
+        // A clean start never touches the container.
+        let rt = FakeRuntime::default();
+        let (result, lift) = start_lifting_pids(&rt, "mc", false).await;
+        result.unwrap();
+        assert!(lift.is_none());
+        assert_eq!(rt.calls(), ["start mc"]);
+    }
+
+    #[tokio::test]
+    async fn an_unliftable_limit_says_what_to_run() {
+        use crate::fake_runtime::FakeRuntime;
+        let rt = FakeRuntime {
+            update_failure: Some("Error: unknown flag: --pids-limit".into()),
+            ..FakeRuntime::failing_starts(&[Some(PIDS_ERROR)])
+        };
+        let (result, lift) = start_lifting_pids(&rt, "mc", false).await;
+        let message = result.unwrap_err().to_string();
+        assert!(message.starts_with(PIDS_ERROR), "{message}");
+        assert!(
+            message.ends_with(&pids_unliftable_sentence("podman", "mc")),
+            "{message}"
+        );
+        assert!(message.contains("`podman update --pids-limit=0 mc`"));
+        assert!(lift
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("unknown flag"));
+        assert_eq!(rt.calls(), ["start mc", "update --pids-limit=0 mc"]);
+    }
+
+    #[tokio::test]
+    async fn the_retry_happens_once() {
+        use crate::fake_runtime::FakeRuntime;
+        let rt = FakeRuntime::failing_starts(&[Some(PIDS_ERROR), Some(PIDS_ERROR)]);
+        let (result, lift) = start_lifting_pids(&rt, "mc", false).await;
+        assert!(result.is_err());
+        assert!(matches!(lift, Some(Ok(()))));
+        assert_eq!(
+            rt.calls(),
+            ["start mc", "update --pids-limit=0 mc", "start mc"]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_lift_is_audited_only_when_it_ran() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = crate::Core::init(tmp.path().join("config"), tmp.path().join("data"))
+            .await
+            .unwrap();
+        audit_pids_lift(&core, AuditSource::User, "mc", &None).await;
+        audit_pids_lift(&core, AuditSource::Scheduler, "mc", &Some(Ok(()))).await;
+        audit_pids_lift(
+            &core,
+            AuditSource::User,
+            "mc",
+            &Some(Err(Error::Internal("no update verb".into()))),
+        )
+        .await;
+        let log = crate::audit::recent(&core, None).await.unwrap();
+        let lifts: Vec<_> = log
+            .entries
+            .iter()
+            .filter(|e| e.action == "container.update")
+            .collect();
+        assert_eq!(lifts.len(), 2);
+        for e in &lifts {
+            assert_eq!(e.target.as_deref(), Some("mc"));
+            assert_eq!(e.detail.as_deref(), Some(PIDS_LIFTED_DETAIL));
+        }
+        assert!(lifts
+            .iter()
+            .any(|e| e.ok && e.source == AuditSource::Scheduler));
+        assert!(lifts
+            .iter()
+            .any(|e| !e.ok && e.error.as_deref() == Some("INTERNAL: no update verb")));
     }
 }
