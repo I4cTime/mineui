@@ -1,8 +1,11 @@
 "use client";
 
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
-import { ChevronRight, FileText, Folder, FolderOpen, Search } from "lucide-react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import type { Key, Selection } from "react-aria-components";
+import { FileText, Folder, FolderOpen, Search } from "lucide-react";
 import { Input, Label, TextField } from "@heroui/react";
+import { FileTree } from "@heroui-pro/react";
+import { firstKey } from "@/app/lib/keys";
 
 // Paths are relative and forward-slash (contract §3.7).
 
@@ -114,9 +117,6 @@ interface ConfigFileTreeProps {
   onSelect: (file: string) => void;
 }
 
-const ROW =
-  "flex w-full items-start gap-1.5 rounded-md py-1 pr-2 text-left text-sm hover:bg-default focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
-
 export default function ConfigFileTree({
   files,
   selected,
@@ -144,108 +144,83 @@ export default function ConfigFileTree({
     [needle, overrides, selected],
   );
 
-  // Visible rows in order, for the roving tabindex and arrow keys.
-  const visibleKeys = useMemo(() => {
-    const keys: string[] = [...tree.rootFiles.map((f) => `f:${f}`)];
+  const folderPaths = useMemo(() => {
+    const paths: string[] = [];
     const walk = (folders: FolderNode[]) => {
       for (const folder of folders) {
-        keys.push(`d:${folder.path}`);
-        if (isOpen(folder.path)) {
-          walk(folder.folders);
-          keys.push(...folder.files.map((f) => `f:${f}`));
-        }
+        paths.push(folder.path);
+        walk(folder.folders);
       }
     };
     walk(tree.folders);
-    return keys;
-  }, [tree, isOpen]);
+    return paths;
+  }, [tree]);
 
-  const [focusKey, setFocusKey] = useState<string | null>(null);
-  const activeKey =
-    focusKey && visibleKeys.includes(focusKey)
-      ? focusKey
-      : selected && visibleKeys.includes(`f:${selected}`)
-        ? `f:${selected}`
-        : (visibleKeys[0] ?? null);
+  const expandedKeys = useMemo(
+    () => new Set(folderPaths.filter(isOpen).map((path) => `d:${path}`)),
+    [folderPaths, isOpen],
+  );
 
-  const listRef = useRef<HTMLDivElement>(null);
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
-      return;
-    }
-    const items = Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-tree-key]") ?? []);
-    if (!items.length) return;
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    let next = at;
-    if (event.key === "ArrowDown") next = Math.min(items.length - 1, at + 1);
-    else if (event.key === "ArrowUp") next = Math.max(0, at - 1);
-    else if (event.key === "Home") next = 0;
-    else next = items.length - 1;
-    event.preventDefault();
-    items[next]?.focus();
-  };
-
-  const toggle = (path: string) => {
+  const setExpanded = (keys: Set<Key>) => {
     if (needle) return;
-    setOverrides((prev) => ({ ...prev, [path]: !isOpen(path) }));
+    setOverrides((prev) => {
+      const next = { ...prev };
+      for (const path of folderPaths) next[path] = keys.has(`d:${path}`);
+      return next;
+    });
   };
 
-  const fileRow = (file: string, depth: number) => {
-    const key = `f:${file}`;
+  // Folders toggle; files open in the editor. The selection itself stays
+  // controlled by `selected`, so a folder press never moves it.
+  const onSelectionChange = (keys: Selection) => {
+    const key = firstKey(keys);
+    if (!key) return;
+    if (key.startsWith("f:")) onSelect(key.slice(2));
+    else if (key.startsWith("d:") && !needle) {
+      const path = key.slice(2);
+      setOverrides((prev) => ({ ...prev, [path]: !isOpen(path) }));
+    }
+  };
+
+  const fileItem = (file: string) => {
     const isSelected = file === selected;
     return (
-      <button
-        key={key}
-        type="button"
-        data-tree-key={key}
-        tabIndex={activeKey === key ? 0 : -1}
-        aria-current={isSelected ? "true" : undefined}
-        title={file}
-        onFocus={() => setFocusKey(key)}
-        onClick={() => onSelect(file)}
-        className={`${ROW} ${isSelected ? "bg-accent/15 font-medium text-accent" : "text-foreground"}`}
-        style={{ paddingLeft: 8 + depth * 14 }}
-      >
-        <FileText size={14} className={`mt-0.5 shrink-0 ${isSelected ? "" : "text-muted"}`} aria-hidden />
-        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-          <Highlight text={baseName(file)} needle={needle} />
-        </span>
-        {isSelected && dirty && (
-          <span className="mt-1.5 flex shrink-0 items-center" title="Unsaved changes">
-            <span aria-hidden className="size-2 rounded-full bg-warning" />
-            <span className="sr-only">edited</span>
+      <FileTree.Item
+        key={`f:${file}`}
+        id={`f:${file}`}
+        textValue={baseName(file)}
+        icon={<FileText size={14} aria-hidden />}
+        title={
+          <span className="flex min-w-0 items-start gap-1.5" title={file}>
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+              <Highlight text={baseName(file)} needle={needle} />
+            </span>
+            {isSelected && dirty && (
+              <span className="mt-1.5 flex shrink-0 items-center" title="Unsaved changes">
+                <span aria-hidden className="size-2 rounded-full bg-warning" />
+                <span className="sr-only">edited</span>
+              </span>
+            )}
           </span>
-        )}
-      </button>
+        }
+      />
     );
   };
 
-  const folderRow = (folder: FolderNode, depth: number) => {
-    const key = `d:${folder.path}`;
-    const open = isOpen(folder.path);
-    return (
-      <Fragment key={key}>
-        <button
-          type="button"
-          data-tree-key={key}
-          tabIndex={activeKey === key ? 0 : -1}
-          aria-expanded={open}
-          title={folder.path}
-          onFocus={() => setFocusKey(key)}
-          onClick={() => toggle(folder.path)}
-          className={`${ROW} text-foreground`}
-          style={{ paddingLeft: 4 + depth * 14 }}
-        >
-          <ChevronRight
-            size={14}
-            aria-hidden
-            className={`mt-0.5 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
-          />
-          {open ? (
-            <FolderOpen size={14} aria-hidden className="mt-0.5 shrink-0 text-accent" />
-          ) : (
-            <Folder size={14} aria-hidden className="mt-0.5 shrink-0 text-accent" />
-          )}
+  const folderItem = (folder: FolderNode): React.ReactElement => (
+    <FileTree.Item
+      key={`d:${folder.path}`}
+      id={`d:${folder.path}`}
+      textValue={folder.label}
+      icon={({ isExpanded }: { isExpanded: boolean }) =>
+        isExpanded ? (
+          <FolderOpen size={14} aria-hidden className="text-accent" />
+        ) : (
+          <Folder size={14} aria-hidden className="text-accent" />
+        )
+      }
+      title={
+        <span className="flex min-w-0 items-start gap-1.5" title={folder.path}>
           <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
             <Highlight text={folder.label} needle={needle} />
           </span>
@@ -253,16 +228,13 @@ export default function ConfigFileTree({
             {folder.count}
             <span className="sr-only"> files</span>
           </span>
-        </button>
-        {open && (
-          <>
-            {folder.folders.map((child) => folderRow(child, depth + 1))}
-            {folder.files.map((file) => fileRow(file, depth + 1))}
-          </>
-        )}
-      </Fragment>
-    );
-  };
+        </span>
+      }
+    >
+      {folder.folders.map(folderItem)}
+      {folder.files.map(fileItem)}
+    </FileTree.Item>
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -282,32 +254,31 @@ export default function ConfigFileTree({
           {shown.length} of {files.length} files
         </span>
       )}
-      <div
-        ref={listRef}
-        onKeyDown={onKeyDown}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden text-sm"
-      >
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden text-sm">
         {shown.length ? (
-          <div className="flex flex-col gap-0.5">
+          <FileTree
+            aria-label="Config files"
+            size="sm"
+            showGuideLines="hover"
+            selectionMode="single"
+            selectedKeys={selected ? [`f:${selected}`] : []}
+            onSelectionChange={onSelectionChange}
+            expandedKeys={expandedKeys}
+            onExpandedChange={setExpanded}
+          >
             {tree.rootFiles.length > 0 && (
-              <>
-                <span className="px-2 pt-1 pb-0.5 text-xs font-medium uppercase tracking-wide text-muted">
-                  Server folder
-                </span>
-                {tree.rootFiles.map((file) => fileRow(file, 0))}
-              </>
+              <FileTree.Section>
+                <FileTree.Header>Server folder</FileTree.Header>
+                {tree.rootFiles.map(fileItem)}
+              </FileTree.Section>
             )}
             {tree.folders.length > 0 && (
-              <>
-                {tree.rootFiles.length > 0 && (
-                  <span className="px-2 pt-3 pb-0.5 text-xs font-medium uppercase tracking-wide text-muted">
-                    Folders
-                  </span>
-                )}
-                {tree.folders.map((folder) => folderRow(folder, 0))}
-              </>
+              <FileTree.Section>
+                {tree.rootFiles.length > 0 && <FileTree.Header>Folders</FileTree.Header>}
+                {tree.folders.map(folderItem)}
+              </FileTree.Section>
             )}
-          </div>
+          </FileTree>
         ) : (
           <span className="text-muted">
             {files.length
