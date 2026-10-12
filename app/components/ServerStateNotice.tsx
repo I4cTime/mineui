@@ -8,11 +8,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Play, Square } from "lucide-react";
-import { Alert, Button, toast } from "@heroui/react";
+import { Alert, Button } from "@heroui/react";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import { useServers } from "@/app/components/ServerProvider";
 import { useUISound } from "@/app/hooks/useUISound";
-import { IpcError, startServer, stopServer } from "@/app/lib/ipc";
+import { startServer, stopServer } from "@/app/lib/ipc";
 
 interface ServerStateNoticeProps {
   /** What the page needs the server to be. */
@@ -43,7 +44,7 @@ export default function ServerStateNotice({ need, what }: ServerStateNoticeProps
       await refreshOverview();
     } catch (error) {
       play("error");
-      toast.danger(error instanceof IpcError ? error.message : failure);
+      reportLifecycleError(error, failure, active.name);
     } finally {
       setBusy(false);
     }

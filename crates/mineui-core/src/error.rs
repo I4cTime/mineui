@@ -19,6 +19,11 @@ pub enum Error {
     ContainerExists(String),
     #[error("{0}")]
     ContainerCreateFailed(String),
+    /// crun refused to start the container because this machine gives
+    /// containers no `pids` cgroup controller, and the in-place lift did not
+    /// get past it (§1, §3.2).
+    #[error("{0}")]
+    PidsControllerUnavailable(String),
     #[error("{0}")]
     ServerNotRunning(String),
     #[error("{0}")]
@@ -71,6 +76,7 @@ impl Error {
             Error::ContainerNotFound(_) => "CONTAINER_NOT_FOUND",
             Error::ContainerExists(_) => "CONTAINER_EXISTS",
             Error::ContainerCreateFailed(_) => "CONTAINER_CREATE_FAILED",
+            Error::PidsControllerUnavailable(_) => "PIDS_CONTROLLER_UNAVAILABLE",
             Error::ServerNotRunning(_) => "SERVER_NOT_RUNNING",
             Error::ServerRunning(_) => "SERVER_RUNNING",
             Error::RconUnavailable(_) => "RCON_UNAVAILABLE",
@@ -134,6 +140,12 @@ mod tests {
         let e = Error::RuntimeUnavailable("docker is installed but not responding".into());
         assert_eq!(e.code(), "RUNTIME_UNAVAILABLE");
         assert_ne!(e.code(), Error::RuntimeNotFound(String::new()).code());
+    }
+
+    #[test]
+    fn the_pids_refusal_has_its_own_code() {
+        let e = Error::PidsControllerUnavailable("crun: controller pids".into());
+        assert_eq!(e.code(), "PIDS_CONTROLLER_UNAVAILABLE");
     }
 
     #[test]

@@ -22,6 +22,7 @@ import "./globals.css";
 import Navbar from "@/app/components/Navbar";
 import ModeProvider, { PageBoundary } from "@/app/components/ModeProvider";
 import ServerProvider from "@/app/components/ServerProvider";
+import PidsControllerHelp from "@/app/components/PidsControllerHelp";
 
 export const metadata: Metadata = {
   title: "MineUI",
@@ -56,6 +57,7 @@ export default function RootLayout({
               <Navbar />
               <PageBoundary>{children}</PageBoundary>
               <Toast.Provider placement="bottom end" />
+              <PidsControllerHelp />
             </ModeProvider>
           </ServerProvider>
         </MotionConfig>
