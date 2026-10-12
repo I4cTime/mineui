@@ -7,7 +7,7 @@
 //   3. what happened (progress, errors in place, what was added so far).
 // The dialog stays open after a success so several files can be added in a
 // row. IPC: upload_mod / download_mod / unpack_mod_archive (contract §3.5).
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
   AlertTriangle,
   Blocks,
@@ -33,7 +33,8 @@ import {
 import { useUISound } from "@/app/hooks/useUISound";
 import ChoiceCards from "@/app/components/ChoiceCards";
 import { identityLine, useServers } from "@/app/components/ServerProvider";
-import { pickModFile } from "@/app/lib/dialog";
+import { onFileDrag, pickModFile } from "@/app/lib/dialog";
+import { DropZone } from "@heroui-pro/react";
 import { formatBytes } from "@/app/lib/format";
 import {
   downloadMod,
@@ -295,20 +296,64 @@ function AddModForm({
     try {
       const sourcePath = await pickModFile();
       if (sourcePath === null) return; // cancelled
-      setPendingZip(null);
-      if (isZip(sourcePath)) {
-        // A zip is either one mod or many: ask before doing anything.
-        setPendingZip(sourcePath);
-        return;
-      }
-      const { filename } = await uploadMod(sourcePath, target);
-      finish(filename);
+      await addFromPath(sourcePath);
     } catch (err) {
       fail(err, "The file could not be added.");
     } finally {
       setBusy(false);
     }
   };
+
+  /** A picked or dropped host path: add a .jar, ask about a .zip. */
+  const addFromPath = async (sourcePath: string) => {
+    setPendingZip(null);
+    if (isZip(sourcePath)) {
+      // A zip is either one mod or many: ask before doing anything.
+      setPendingZip(sourcePath);
+      return;
+    }
+    const { filename } = await uploadMod(sourcePath, target);
+    finish(filename);
+  };
+
+  // Files dragged onto the window while the file tab is open.
+  const [dragOver, setDragOver] = useState(false);
+  const onDrop = useEffectEvent((paths: string[]) => {
+    if (busy) return;
+    const file = paths.find((path) => /\.(jar|zip)$/i.test(path));
+    if (!file) {
+      play("error");
+      setError("Only a .jar or .zip file can be added.");
+      return;
+    }
+    play("click_confirm");
+    setBusy(true);
+    setError(null);
+    addFromPath(file)
+      .catch((err) => fail(err, "The file could not be added."))
+      .finally(() => setBusy(false));
+  });
+  useEffect(() => {
+    if (source !== "file") return;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    onFileDrag((event) => {
+      if (event.type === "enter") setDragOver(true);
+      else if (event.type === "leave") setDragOver(false);
+      else {
+        setDragOver(false);
+        onDrop(event.paths);
+      }
+    }).then((fn) => {
+      if (disposed) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+      setDragOver(false);
+    };
+  }, [source]);
 
   const handlePendingZip = async (as: ZipAs) => {
     if (busy || pendingZip === null) return;
@@ -486,15 +531,24 @@ function AddModForm({
 
             <Tabs.Panel id="file" className="pt-4">
               {pendingZip === null ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
-                  <FolderOpen size={22} className="text-accent" />
-                  <p className="text-sm">Pick a .jar or .zip from this computer.</p>
-                  <p className="text-xs text-muted">
-                    MineUI copies it into the server&apos;s {target} folder. Your
-                    original file stays where it is. A .zip holding several
-                    mods can be unpacked.
-                  </p>
-                </div>
+                <DropZone>
+                  <DropZone.Area
+                    isDisabled={busy}
+                    className={dragOver ? "border-accent bg-accent/10" : undefined}
+                  >
+                    <DropZone.Icon>
+                      <FolderOpen size={22} className="text-accent" />
+                    </DropZone.Icon>
+                    <DropZone.Label>
+                      {dragOver ? "Drop it to add it" : "Drop a .jar or .zip here, or choose one below."}
+                    </DropZone.Label>
+                    <DropZone.Description>
+                      MineUI copies it into the server&apos;s {target} folder. Your
+                      original file stays where it is. A .zip holding several
+                      mods can be unpacked.
+                    </DropZone.Description>
+                  </DropZone.Area>
+                </DropZone>
               ) : (
                 <div
                   className="flex flex-col gap-3 rounded-lg border border-accent p-4"

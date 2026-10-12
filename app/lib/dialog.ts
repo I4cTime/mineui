@@ -72,3 +72,27 @@ export async function pickFile(title: string): Promise<string | null> {
   const selected = await open({ multiple: false, directory: false, title });
   return typeof selected === "string" ? selected : null;
 }
+
+/** Files dragged onto the window: `enter`/`drop` carry host paths. */
+export type FileDrag =
+  | { type: "enter"; paths: string[] }
+  | { type: "drop"; paths: string[] }
+  | { type: "leave" };
+
+/**
+ * Listens for files dragged onto the app window. Tauri takes OS file drops
+ * before the page sees them and hands over host paths, which is what
+ * upload_mod needs (contract §3.5), so drop zones read drops from here
+ * rather than from HTML drag events. Outside Tauri this never fires.
+ */
+export async function onFileDrag(handler: (event: FileDrag) => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+  return getCurrentWebview().onDragDropEvent(({ payload }) => {
+    if (payload.type === "enter" || payload.type === "drop") {
+      handler({ type: payload.type, paths: payload.paths });
+    } else if (payload.type === "leave") {
+      handler({ type: "leave" });
+    }
+  });
+}

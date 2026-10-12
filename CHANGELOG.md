@@ -3,6 +3,23 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Drop a mod onto Add a mod or plugin.** Dragging a .jar or .zip onto the
+  window while the file tab is open adds it, the same as choosing it.
+- **Trend lines on Status.** CPU, memory and game speed show a small line
+  of the readings taken while the page has been open. The dashboard's
+  Players card shows one too, with how the count changed.
+
+### Changed
+
+- **Pickers, the color mode toggle and the config file tree use HeroUI
+  Pro components** (RadioButtonGroup, Segment, FileTree). They look and
+  behave the same across all four styles, with the keyboard handling
+  React Aria provides.
+
 ## [2.11.1] - 2026-10-05
 
 ### Fixed
