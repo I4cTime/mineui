@@ -281,13 +281,15 @@ async fn acquire(
         Source::Url(url) => {
             let allow_private = core.settings().await.allow_private_download_hosts;
             let parsed = crate::validate::download_url(url)?;
-            crate::validate::ensure_public_download_host(&parsed, allow_private)?;
+            // Check the name before the host so a non-zip link is refused
+            // without a DNS lookup.
             let name = crate::validate::download_filename(&parsed, filename)?;
             if !name.to_ascii_lowercase().ends_with(".zip") {
                 return Err(Error::InvalidInput(
                     "only a .zip archive can be unpacked - the link (or the file name given) must end in .zip".into(),
                 ));
             }
+            crate::validate::ensure_public_download_host(&parsed, allow_private)?;
             let download_id = uuid::Uuid::new_v4().to_string();
             let request = crate::download::DownloadRequest {
                 url: parsed,

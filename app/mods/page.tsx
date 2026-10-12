@@ -24,6 +24,7 @@ import {
   Input,
   toast,
 } from "@heroui/react";
+import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import AddModDialog from "@/app/components/AddModDialog";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import ModCard from "@/app/components/ModCard";
@@ -189,7 +190,7 @@ export default function ModsPage() {
       await refreshOverview();
     } catch (error) {
       play("error");
-      toast.danger(error instanceof IpcError ? error.message : "Could not restart the server.");
+      reportLifecycleError(error, "Could not restart the server.", active.name);
     } finally {
       setRestarting(false);
     }

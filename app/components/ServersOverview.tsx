@@ -10,6 +10,7 @@ import { motion } from "motion/react";
 import { Layers, Play, Square } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, toast } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
+import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import { usePageMotion } from "@/app/lib/motion";
 import {
   identityLine,
@@ -18,7 +19,6 @@ import {
   useServers,
 } from "@/app/components/ServerProvider";
 import {
-  IpcError,
   startServerById,
   stopServerById,
   type ServerOverview,
@@ -74,9 +74,7 @@ export default function ServersOverview() {
       toast.success(`${name}: ${verb}`);
     } catch (error) {
       play("error");
-      toast.danger(
-        error instanceof IpcError ? `${name}: ${error.message}` : `${name}: failed`,
-      );
+      reportLifecycleError(error, "failed", name, true);
     } finally {
       setBusyId(null);
       refreshOverview();

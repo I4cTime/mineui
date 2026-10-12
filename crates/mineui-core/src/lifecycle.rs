@@ -19,6 +19,11 @@ pub fn pids_unliftable_sentence(runtime_kind: &str, name: &str) -> String {
     )
 }
 
+/// The sentence added to the start error when the limit was lifted but the
+/// runtime still refused: the machine gives containers no `pids` controller
+/// at all, which only the host can change (§3.2).
+pub const PIDS_STILL_REFUSED_SENTENCE: &str = "MineUI lifted the container's process limit, but the runtime still cannot start it because this machine gives containers no `pids` cgroup controller; turn on pids delegation for your containers and start the server again.";
+
 /// What the pids fallback did, for the audit: `None` = not needed.
 pub(crate) type PidsLift = Option<Result<()>>;
 
@@ -28,6 +33,9 @@ pub(crate) type PidsLift = Option<Result<()>>;
 /// `update --pids-limit=0` and start once more (§3.2, 2.11.1). Only once.
 /// Containers created before the 2.7.1 create retry, and any container the
 /// user made elsewhere, carry the runtime's default limit and land here.
+/// When the fallback cannot get past the refusal (the lift fails, or the
+/// second start is refused the same way) the error is
+/// `PIDS_CONTROLLER_UNAVAILABLE`, so the app can show the fix.
 pub(crate) async fn start_lifting_pids(
     runtime: &dyn Runtime,
     name: &str,
@@ -47,11 +55,20 @@ pub(crate) async fn start_lifting_pids(
             "{original} {}",
             pids_unliftable_sentence(runtime.kind(), name)
         );
-        return (Err(Error::Internal(message)), Some(Err(lift_error)));
+        return (
+            Err(Error::PidsControllerUnavailable(message)),
+            Some(Err(lift_error)),
+        );
     }
     // The failed attempt left the container stopped, so a plain start is
     // the retry for a restart too.
-    (runtime.start(name).await, Some(Ok(())))
+    let retry = match runtime.start(name).await {
+        Err(e) if crate::runtime::is_pids_controller_unavailable(&e.to_string()) => Err(
+            Error::PidsControllerUnavailable(format!("{e} {PIDS_STILL_REFUSED_SENTENCE}")),
+        ),
+        other => other,
+    };
+    (retry, Some(Ok(())))
 }
 
 /// Record the fallback's `container.update` entry when it ran (§3.11).
@@ -422,7 +439,9 @@ mod tests {
             ..FakeRuntime::failing_starts(&[Some(PIDS_ERROR)])
         };
         let (result, lift) = start_lifting_pids(&rt, "mc", false).await;
-        let message = result.unwrap_err().to_string();
+        let error = result.unwrap_err();
+        assert_eq!(error.code(), "PIDS_CONTROLLER_UNAVAILABLE");
+        let message = error.to_string();
         assert!(message.starts_with(PIDS_ERROR), "{message}");
         assert!(
             message.ends_with(&pids_unliftable_sentence("podman", "mc")),
@@ -442,12 +461,32 @@ mod tests {
         use crate::fake_runtime::FakeRuntime;
         let rt = FakeRuntime::failing_starts(&[Some(PIDS_ERROR), Some(PIDS_ERROR)]);
         let (result, lift) = start_lifting_pids(&rt, "mc", false).await;
-        assert!(result.is_err());
+        let error = result.unwrap_err();
         assert!(matches!(lift, Some(Ok(()))));
         assert_eq!(
             rt.calls(),
             ["start mc", "update --pids-limit=0 mc", "start mc"]
         );
+        // Still refused after the lift: the host has no pids controller for
+        // containers, and the error says so with its own code.
+        assert_eq!(error.code(), "PIDS_CONTROLLER_UNAVAILABLE");
+        let message = error.to_string();
+        assert!(message.starts_with(PIDS_ERROR), "{message}");
+        assert!(message.ends_with(PIDS_STILL_REFUSED_SENTENCE), "{message}");
+    }
+
+    #[tokio::test]
+    async fn another_failure_after_the_lift_keeps_its_own_code() {
+        use crate::fake_runtime::FakeRuntime;
+        let rt = FakeRuntime::failing_starts(&[
+            Some(PIDS_ERROR),
+            Some("podman start failed: Error: rootlessport listen tcp 127.0.0.1:25566: bind: address already in use"),
+        ]);
+        let (result, lift) = start_lifting_pids(&rt, "mc", true).await;
+        let error = result.unwrap_err();
+        assert!(matches!(lift, Some(Ok(()))));
+        assert_ne!(error.code(), "PIDS_CONTROLLER_UNAVAILABLE");
+        assert!(!error.to_string().contains(PIDS_STILL_REFUSED_SENTENCE));
     }
 
     #[tokio::test]
