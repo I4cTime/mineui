@@ -20,6 +20,8 @@ import { formatBytes, formatDateTime } from "@/app/lib/format";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import { useMode } from "@/app/components/ModeProvider";
 import { usePageMotion } from "@/app/lib/motion";
+import { recordSample, seriesOf, useMetricHistory } from "@/app/lib/metricHistory";
+import Sparkline from "@/app/components/Sparkline";
 import {
   getAuditLog,
   getMetrics,
@@ -86,12 +88,15 @@ function MetricRing({
   label,
   title,
   tone,
+  trend,
 }: {
   value: number;
   label: string;
   /** Full caption under the ring. */
   title: string;
   tone: RingTone;
+  /** Recent samples, drawn as a sparkline under the caption. */
+  trend?: { data: { at: number; value: number }[]; domain?: [number, number] };
 }) {
   return (
     <div className="flex w-36 flex-col items-center gap-2 text-center">
@@ -107,6 +112,14 @@ function MetricRing({
         </div>
       </div>
       <span className="text-xs text-muted">{title}</span>
+      {trend && (
+        <Sparkline
+          data={trend.data}
+          domain={trend.domain}
+          tone={tone}
+          label={`${title}, last ${trend.data.length} readings`}
+        />
+      )}
     </div>
   );
 }
@@ -171,6 +184,7 @@ export default function StatusPage() {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const { overview, activeId } = useServers();
+  const history = useMetricHistory(activeId);
   const serverEntry = overview.find((item) => item.id === activeId);
   // Shared app-wide mode (app/components/ModeProvider.tsx), not the
   // payload's own `serverState.mode` - this is what makes the "Container:"/
@@ -197,7 +211,14 @@ export default function StatusPage() {
           setStatusError(message(statusRes.reason));
         }
         if (metricsRes.status === "fulfilled") {
-          setMetrics(metricsRes.value);
+          const m = metricsRes.value;
+          recordSample(activeId, {
+            cpu: m.cpuPercent,
+            mem: m.mem.percent,
+            tps: m.tps?.one ?? null,
+            players: m.players?.online ?? null,
+          });
+          setMetrics(m);
           setMetricsError(null);
         } else {
           setMetrics(null);
@@ -226,7 +247,8 @@ export default function StatusPage() {
     };
     // Re-run on a mode toggle so this page refetches immediately instead of
     // showing data fetched under the previous mode until the next poll/event.
-  }, [mode]);
+    // `activeId` never changes within a mount (pages re-key per server).
+  }, [mode, activeId]);
 
   const stateSummary = useMemo(() => {
     if (!serverState) return "unknown";
@@ -334,12 +356,14 @@ export default function StatusPage() {
                 label={formatPercent(metrics?.cpuPercent ?? null)}
                 title="CPU"
                 tone={ringsTone.cpu}
+                trend={{ data: seriesOf(history, "cpu"), domain: [0, 100] }}
               />
               <MetricRing
                 value={metrics?.mem.percent ?? 0}
                 label={formatPercent(metrics?.mem.percent ?? null)}
                 title={isSimple ? "Memory (of this computer)" : "Memory"}
                 tone={ringsTone.mem}
+                trend={{ data: seriesOf(history, "mem"), domain: [0, 100] }}
               />
               <MetricRing
                 value={metrics?.disk?.percent ?? 0}
@@ -352,11 +376,13 @@ export default function StatusPage() {
                 label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "-"}
                 title="Game speed (TPS)"
                 tone={ringsTone.tps}
+                trend={{ data: seriesOf(history, "tps"), domain: [0, 20] }}
               />
             </div>
             <p className="text-xs text-muted">
               CPU, Memory and Disk: a fuller ring means busier. Game speed: a full ring is
-              good (20 is perfect).
+              good (20 is perfect). The lines underneath show the readings taken while
+              this page has been open, every 30 seconds.
             </p>
           </Card>
         </motion.section>
