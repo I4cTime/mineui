@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { FileCode2 } from "lucide-react";
 import { Card, toast } from "@heroui/react";
+import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import ConfigEditor from "@/app/components/ConfigEditor";
 import ConfigFileTree from "@/app/components/ConfigFileTree";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
@@ -132,7 +133,7 @@ export default function ConfigPage() {
       toast.success("Server restart triggered");
     } catch (error) {
       play("error");
-      toast.danger(error instanceof IpcError ? error.message : "Restart failed.");
+      reportLifecycleError(error, "Restart failed.");
     } finally {
       setRestarting(false);
     }

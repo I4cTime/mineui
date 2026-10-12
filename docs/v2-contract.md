@@ -50,6 +50,7 @@ type ErrorCode =
   | "CONTAINER_NOT_FOUND"      // configured container does not exist
   | "CONTAINER_EXISTS"         // create_container over an existing container (§3.13)
   | "CONTAINER_CREATE_FAILED"  // the runtime refused to create/start it (§3.13)
+  | "PIDS_CONTROLLER_UNAVAILABLE" // crun cannot apply the pids limit and the start fallback could not get past it (§3.2)
   | "SERVER_NOT_RUNNING"       // operation requires a running server
   | "SERVER_RUNNING"           // operation requires a stopped server (e.g. restore)
   | "RCON_UNAVAILABLE"         // connect/auth failure to RCON
@@ -521,10 +522,23 @@ Semantics:
   `start <name>` once more (also after a failed `restart`: the container is
   stopped). Once only; no other failure triggers it, and no container is removed or
   recreated. The second start's outcome is the command's outcome. If the `update`
-  itself fails, the original start error is returned (`INTERNAL`) with one sentence
-  added: "The container was made with a process limit this machine cannot apply,
-  and MineUI could not lift it; run `podman update --pids-limit=0 <name>` and start
-  the server again." (with `docker` under Docker and the real container name). The `update` is audited as `container.update`
+  itself fails, the original start error is returned as `PIDS_CONTROLLER_UNAVAILABLE`
+  (was `INTERNAL` in 2.11.1) with one sentence added: "The container was made with a
+  process limit this machine cannot apply, and MineUI could not lift it; run
+  `podman update --pids-limit=0 <name>` and start the server again." (with `docker`
+  under Docker and the real container name). If the `update` succeeds but the second
+  start is refused with the same pids error, that error is returned as
+  `PIDS_CONTROLLER_UNAVAILABLE` with one sentence added: "MineUI lifted the
+  container's process limit, but the runtime still cannot start it because this
+  machine gives containers no `pids` cgroup controller; turn on pids delegation for
+  your containers and start the server again." Any other failure of the second start
+  keeps its own code. On `PIDS_CONTROLLER_UNAVAILABLE` the frontend shows the fix in
+  place of a plain error toast (the `PidsControllerHelp` dialog): the per-container
+  command from the message, and on Linux the host fix - a systemd drop-in
+  `/etc/systemd/system/user@.service.d/delegate.conf` with
+  `Delegate=cpu cpuset io memory pids`, `systemctl daemon-reload`, then log out and
+  back in. MineUI never runs either for the user (both need the user's own shell, and
+  the host fix needs root). The `update` is audited as `container.update`
   (target = container name, detail = `process limit (pids) lifted`, with the
   update's error when it failed), with the source of the start (`user`, or
   `scheduler` for a scheduled restart); `server.start` / `server.restart` are
@@ -1908,7 +1922,7 @@ export function isTauri(): boolean {
 
 export type ErrorCode =
   | "RUNTIME_NOT_FOUND" | "RUNTIME_UNAVAILABLE" | "CONTAINER_NOT_FOUND" | "CONTAINER_EXISTS"
-  | "CONTAINER_CREATE_FAILED" | "SERVER_NOT_RUNNING"
+  | "CONTAINER_CREATE_FAILED" | "PIDS_CONTROLLER_UNAVAILABLE" | "SERVER_NOT_RUNNING"
   | "SERVER_RUNNING" | "RCON_UNAVAILABLE" | "RCON_COMMAND_BLOCKED"
   | "QUERY_UNAVAILABLE" | "JAVA_NOT_FOUND" | "JAVA_INCOMPATIBLE"
   | "EULA_NOT_ACCEPTED" | "INSTANCE_NOT_FOUND" | "INSTANCE_EXISTS"

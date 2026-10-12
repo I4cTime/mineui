@@ -20,6 +20,7 @@ import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/reac
 import { EmptyState, NumberValue } from "@heroui-pro/react";
 import { KPI } from "@heroui-pro/react/kpi";
 import { useUISound } from "@/app/hooks/useUISound";
+import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import { useMode } from "@/app/components/ModeProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
@@ -297,7 +298,11 @@ export default function Home() {
     } catch (error) {
       play("error");
       const fallback = { start: "Could not start", stop: "Could not stop", restart: "Could not restart", backup: "Backup failed" }[kind];
-      toast.danger(error instanceof IpcError ? error.message : fallback);
+      if (kind === "start" || kind === "restart") {
+        reportLifecycleError(error, fallback, name);
+      } else {
+        toast.danger(error instanceof IpcError ? error.message : fallback);
+      }
     } finally {
       setBusyAction(null);
     }

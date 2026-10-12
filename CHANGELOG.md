@@ -3,6 +3,22 @@
 All notable changes to MineUI are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **A container server that still will not start with
+  `crun: controller pids is not available` now shows how to fix it.**
+  MineUI already lifts the container's process limit and starts it again;
+  when that is not enough (the lift fails, or this computer gives containers
+  no `pids` controller at all), Start and Restart open a dialog instead of a
+  one-line error. It gives the command to lift the limit by hand when MineUI
+  could not, and on Linux the systemd setting that gives your containers the
+  controller, ready to copy. Nothing is run for you.
+- The error has its own code, `PIDS_CONTROLLER_UNAVAILABLE` (was
+  `INTERNAL`), and is now also raised when the second start after the lift is
+  refused the same way.
+
 ## [2.11.1] - 2026-10-05
 
 ### Fixed
