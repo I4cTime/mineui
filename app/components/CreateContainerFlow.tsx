@@ -39,6 +39,7 @@ import { exposeConsequence } from "@/app/components/NetworkPortsCard";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import OutLink from "@/app/components/OutLink";
 import { useUISound } from "@/app/hooks/useUISound";
+import ChoiceCards from "@/app/components/ChoiceCards";
 import { fadeUp } from "@/app/lib/motion";
 import {
   createContainer,
@@ -164,7 +165,6 @@ export default function CreateContainerFlow({
 
   const changeKind = (next: Kind) => {
     if (next === kind || creating) return;
-    play("toggle_on");
     setKind(next);
     setModpack(null);
     // A modpack needs a concrete version; a server type can take the latest.
@@ -280,43 +280,14 @@ export default function CreateContainerFlow({
         )}
 
         <Card.Content className="mt-4 grid gap-5 text-sm md:grid-cols-2">
-          <div
-            role="radiogroup"
+          <ChoiceCards
             aria-label="What the server runs"
-            className="grid gap-2 sm:grid-cols-2 md:col-span-2"
-          >
-            {KINDS.map((option) => {
-              const selected = option.id === kind;
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={creating}
-                  onClick={() => changeKind(option.id)}
-                  onMouseEnter={() => play("hover")}
-                  className="flex items-start gap-3 rounded-lg border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
-                  style={{
-                    borderColor: selected ? "var(--accent)" : "var(--border)",
-                    background: selected
-                      ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-                      : "var(--surface-secondary)",
-                    outlineColor: "var(--focus)",
-                    transition:
-                      "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
-                  }}
-                >
-                  <Icon size={16} className="mt-0.5 shrink-0 text-accent" />
-                  <span className="flex-1">
-                    <span className="block text-sm font-semibold">{option.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted">{option.description}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+            className="sm:grid-cols-2 md:col-span-2"
+            value={kind}
+            onChange={changeKind}
+            isDisabled={creating}
+            options={KINDS}
+          />
 
           {kind === "modpack" && (
             <div className="md:col-span-2">

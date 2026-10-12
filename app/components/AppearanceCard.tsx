@@ -4,8 +4,8 @@
 // choice and user accent override. Applies to the whole app, not to a server. The swatch fills are user-pickable data
 // values (see ACCENT_PRESETS), not UI styling; the surrounding chrome stays
 // on theme tokens.
-import { useMemo, useRef } from "react";
-import { Check, Monitor, Moon, Palette, Sun } from "lucide-react";
+import { useMemo } from "react";
+import { Monitor, Moon, Palette, Sun } from "lucide-react";
 import {
   Button,
   Card,
@@ -17,9 +17,12 @@ import {
   ColorSwatchPicker,
   Label,
 } from "@heroui/react";
+import { Segment } from "@heroui-pro/react";
+import ChoiceCards from "@/app/components/ChoiceCards";
+import { firstKey } from "@/app/lib/keys";
 import { useUISound } from "@/app/hooks/useUISound";
 import { ACCENT_PRESETS, useAccentColor } from "@/app/hooks/useAccentColor";
-import { THEMES, useTheme, type ThemeId } from "@/app/hooks/useTheme";
+import { THEMES, useTheme } from "@/app/hooks/useTheme";
 import {
   COLOR_MODES,
   useColorMode,
@@ -37,48 +40,10 @@ export default function AppearanceCard() {
   const { accent, setAccent } = useAccentColor();
   const { theme, setTheme } = useTheme();
   const { preference, mode, setPreference } = useColorMode();
-  const modeRefs = useRef<Record<ColorModePreference, HTMLButtonElement | null>>({
-    dark: null,
-    light: null,
-    system: null,
-  });
   const handleModeSelect = (next: ColorModePreference) => {
     if (next === preference) return;
     play("toggle_on");
     setPreference(next);
-  };
-  const handleModeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const index = COLOR_MODES.findIndex((m) => m.id === preference);
-    let nextIndex: number | null = null;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % COLOR_MODES.length;
-    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + COLOR_MODES.length) % COLOR_MODES.length;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    const next = COLOR_MODES[nextIndex].id;
-    handleModeSelect(next);
-    modeRefs.current[next]?.focus();
-  };
-  const themeRefs = useRef<Record<ThemeId, HTMLButtonElement | null>>({
-    deepslate: null,
-    phosphor: null,
-    quantum: null,
-    softglass: null,
-  });
-  const handleThemeSelect = (next: ThemeId) => {
-    if (next === theme) return;
-    play("toggle_on");
-    setTheme(next);
-  };
-  const handleThemeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const index = THEMES.findIndex((t) => t.id === theme);
-    let nextIndex: number | null = null;
-    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % THEMES.length;
-    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + THEMES.length) % THEMES.length;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    const next = THEMES[nextIndex].id;
-    handleThemeSelect(next);
-    themeRefs.current[next]?.focus();
   };
   // What the custom ColorPicker shows: the override when set, else the
   // current theme's own accent read from the DOM. Safe to read during
@@ -112,100 +77,43 @@ export default function AppearanceCard() {
       </Card.Header>
       <Card.Content className="mt-4 flex flex-col items-start gap-4">
         <Label className="text-sm">Mode</Label>
-        <div
-          role="radiogroup"
+        <Segment
           aria-label="Color mode"
-          className="grid w-full gap-3 sm:grid-cols-3"
-          onKeyDown={handleModeKeyDown}
+          selectedKey={preference}
+          onSelectionChange={(key: unknown) => {
+            const next = firstKey(key);
+            if (next) handleModeSelect(next as ColorModePreference);
+          }}
         >
           {COLOR_MODES.map((option) => {
-            const selected = option.id === preference;
             const Icon = MODE_ICONS[option.id];
             return (
-              <button
+              <Segment.Item
                 key={option.id}
-                ref={(node) => {
-                  modeRefs.current[option.id] = node;
-                }}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => handleModeSelect(option.id)}
+                id={option.id}
                 onMouseEnter={() => play("hover")}
-                className="flex items-center gap-2 rounded-lg border px-4 py-3 text-left text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{
-                  borderColor: selected ? "var(--accent)" : "var(--border)",
-                  background: selected
-                    ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-                    : "var(--surface-secondary)",
-                  outlineColor: "var(--focus)",
-                  transition:
-                    "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
-                }}
               >
-                <Icon size={15} className={selected ? "text-accent" : "text-muted"} />
-                <span className="flex-1">{option.label}</span>
+                <Icon size={15} />
+                {option.label}
                 {option.id === "system" && (
-                  <span className="text-xs font-normal text-muted">
-                    now {mode}
-                  </span>
+                  <span className="text-xs font-normal text-muted">now {mode}</span>
                 )}
-              </button>
+              </Segment.Item>
             );
           })}
-        </div>
-        <Label className="text-sm">Style</Label>
-        <div
-          role="radiogroup"
-          aria-label="Style"
-          className="grid w-full gap-3 sm:grid-cols-2"
-          onKeyDown={handleThemeKeyDown}
-        >
-          {THEMES.map((option) => {
-            const selected = option.id === theme;
-            return (
-              <button
-                key={option.id}
-                ref={(node) => {
-                  themeRefs.current[option.id] = node;
-                }}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => handleThemeSelect(option.id)}
-                onMouseEnter={() => play("hover")}
-                className="relative flex items-start gap-3 rounded-lg border p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{
-                  borderColor: selected ? "var(--accent)" : "var(--border)",
-                  background: selected
-                    ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-                    : "var(--surface-secondary)",
-                  outlineColor: "var(--focus)",
-                  transition:
-                    "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
-                }}
-              >
-                <span className="flex-1">
-                  <span className="block text-sm font-semibold">{option.label}</span>
-                  <span className="mt-1 block text-xs text-muted">
-                    {mode === "light" ? option.descriptionLight : option.description}
-                  </span>
-                </span>
-                {selected && (
-                  <span
-                    aria-hidden
-                    className="flex size-5 shrink-0 items-center justify-center rounded-full"
-                    style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-                  >
-                    <Check size={12} />
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        </Segment>
+        <Label id="appearance-style" className="text-sm">Style</Label>
+        <ChoiceCards
+          aria-labelledby="appearance-style"
+          className="sm:grid-cols-2"
+          value={theme}
+          onChange={setTheme}
+          options={THEMES.map((option) => ({
+            id: option.id,
+            title: option.label,
+            description: mode === "light" ? option.descriptionLight : option.description,
+          }))}
+        />
         <Label className="text-sm">Accent override</Label>
         {/* Preset swatches. The transparent sentinel keeps the picker
             controlled while matching no preset when no override is

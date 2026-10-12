@@ -31,6 +31,7 @@ import {
   TextField,
 } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
+import ChoiceCards from "@/app/components/ChoiceCards";
 import { identityLine, useServers } from "@/app/components/ServerProvider";
 import { pickModFile } from "@/app/lib/dialog";
 import { formatBytes } from "@/app/lib/format";
@@ -355,46 +356,14 @@ function AddModForm({
           <span id="add-mod-kind" className="text-xs uppercase tracking-[0.2em] text-muted">
             1 · What are you adding?
           </span>
-          <div
-            role="radiogroup"
+          <ChoiceCards
             aria-labelledby="add-mod-kind"
-            className="grid gap-2 sm:grid-cols-2"
-          >
-            {TARGETS.map((option) => {
-              const selected = option.id === target;
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={busy}
-                  onClick={() => {
-                    play("toggle_on");
-                    setTarget(option.id);
-                  }}
-                  onMouseEnter={() => play("hover")}
-                  className="flex items-start gap-3 rounded-lg border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
-                  style={{
-                    borderColor: selected ? "var(--accent)" : "var(--border)",
-                    background: selected
-                      ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-                      : "var(--surface-secondary)",
-                    outlineColor: "var(--focus)",
-                    transition:
-                      "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
-                  }}
-                >
-                  <Icon size={16} className="mt-0.5 shrink-0 text-accent" />
-                  <span className="flex-1">
-                    <span className="block text-sm font-semibold">{option.title}</span>
-                    <span className="mt-0.5 block text-xs text-muted">{option.description}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+            className="sm:grid-cols-2"
+            value={target}
+            onChange={setTarget}
+            isDisabled={busy}
+            options={TARGETS}
+          />
           {mismatch && (
             <p className="flex items-start gap-2 text-xs text-warning">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -496,43 +465,21 @@ function AddModForm({
                   <span id="add-mod-zip-as" className="text-sm font-medium">
                     This is a .zip. What is inside?
                   </span>
-                  <div
-                    role="radiogroup"
+                  <ChoiceCards
                     aria-labelledby="add-mod-zip-as"
-                    className="grid gap-2 sm:grid-cols-2"
-                  >
-                    {ZIP_CHOICES.map((choice) => {
-                      const selected = choice.id === zipAs;
-                      return (
-                        <button
-                          key={choice.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          disabled={busy}
-                          onClick={() => {
-                            play("toggle_on");
-                            setZipAs(choice.id);
-                          }}
-                          className="rounded-lg border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-60"
-                          style={{
-                            borderColor: selected ? "var(--accent)" : "var(--border)",
-                            background: selected
-                              ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-                              : "var(--surface-secondary)",
-                            outlineColor: "var(--focus)",
-                          }}
-                        >
-                          <span className="block text-sm font-semibold">
-                            {target === "plugins" ? choice.title.replace("mod", "plugin") : choice.title}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-muted">
-                            {target === "plugins" ? choice.description.replace(/mods?/g, (m) => (m === "mod" ? "plugin" : "plugins")) : choice.description}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                    className="sm:grid-cols-2"
+                    value={zipAs}
+                    onChange={setZipAs}
+                    isDisabled={busy}
+                    options={ZIP_CHOICES.map((choice) => ({
+                      id: choice.id,
+                      title: target === "plugins" ? choice.title.replace("mod", "plugin") : choice.title,
+                      description:
+                        target === "plugins"
+                          ? choice.description.replace(/mods?/g, (m) => (m === "mod" ? "plugin" : "plugins"))
+                          : choice.description,
+                    }))}
+                  />
                 </div>
               )}
             </Tabs.Panel>

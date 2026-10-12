@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import {
   Sparkles,
   Archive,
-  Check,
   ChevronDown,
   Clock,
   Container,
@@ -46,6 +45,7 @@ import PageHeader from "@/app/components/PageHeader";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import { formatDateTime } from "@/app/lib/format";
 import { useUISound } from "@/app/hooks/useUISound";
+import ChoiceCards from "@/app/components/ChoiceCards";
 import { useMode } from "@/app/components/ModeProvider";
 import { identityLine, phaseText, useServers } from "@/app/components/ServerProvider";
 import { setLeaveGuard } from "@/app/lib/leaveGuard";
@@ -189,89 +189,6 @@ const MODE_OPTIONS = [
 
 type ModeId = (typeof MODE_OPTIONS)[number]["id"];
 
-/**
- * One selectable card of the mode radio group. Custom control (not a HeroUI
- * ToggleButtonGroup) because the design is a rich card - icon tile, title,
- * description, check badge - not a segmented button. Radio semantics +
- * roving tabindex live on the group in SettingsPage.
- */
-function ModeOptionCard({
-  option,
-  selected,
-  disabled,
-  onSelect,
-  onHover,
-  buttonRef,
-}: {
-  option: (typeof MODE_OPTIONS)[number];
-  selected: boolean;
-  disabled: boolean;
-  onSelect: () => void;
-  onHover: () => void;
-  buttonRef: (node: HTMLButtonElement | null) => void;
-}) {
-  const Icon = option.icon;
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      tabIndex={selected ? 0 : -1}
-      disabled={disabled}
-      onClick={onSelect}
-      onMouseEnter={onHover}
-      className="relative flex items-start gap-3 rounded-lg border p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-      style={{
-        borderColor: selected ? "var(--accent)" : "var(--border)",
-        background: selected
-          ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-          : "var(--surface-secondary)",
-        outlineColor: "var(--focus)",
-        transition:
-          "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
-      }}
-    >
-      <span
-        aria-hidden
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg"
-        style={{
-          background: selected
-            ? "color-mix(in oklab, var(--accent) 16%, transparent)"
-            : "var(--segment)",
-          color: selected ? "var(--accent)" : "var(--muted)",
-          transition:
-            "background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease)",
-        }}
-      >
-        <Icon size={18} />
-      </span>
-      <span className="flex min-w-0 flex-col gap-1 pr-7">
-        <span className="font-display text-sm text-foreground">
-          {option.title}
-        </span>
-        <span className="text-xs leading-relaxed text-muted">
-          {option.description}
-        </span>
-      </span>
-      <span
-        aria-hidden
-        className="absolute top-3 right-3 flex size-4.5 items-center justify-center rounded-full"
-        style={{
-          background: selected ? "var(--accent)" : "transparent",
-          border: selected ? "none" : "1px solid var(--border)",
-          transition:
-            "background var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease)",
-        }}
-      >
-        {selected && (
-          <Check size={12} strokeWidth={3} style={{ color: "var(--accent-foreground)" }} />
-        )}
-      </span>
-    </button>
-  );
-}
-
 export default function SettingsPage() {
   const { containerMotion, cardMotion } = usePageMotion();
   const [loading, setLoading] = useState(true);
@@ -304,10 +221,6 @@ export default function SettingsPage() {
   const entry = overview.find((item) => item.id === activeId);
   const phase = entry?.phase ?? null;
   const serverBusy = phase === "running" || phase === "starting" || phase === "stopping";
-  const modeRefs = useRef<Record<ModeId, HTMLButtonElement | null>>({
-    simple: null,
-    advanced: null,
-  });
   const { play } = useUISound();
   // Shared app-wide mode (app/components/ModeProvider.tsx). Mode switching
   // lives here now, not in the draft/Save flow below - clicking Simple/
@@ -1640,32 +1553,18 @@ export default function SettingsPage() {
                       {serverBusy ? ` Stop ${active.name} first.` : ""}
                     </span>
                   </div>
-                  <div
-                    role="radiogroup"
+                  <ChoiceCards
                     aria-label="How this server is run"
-                    className="grid gap-3 sm:grid-cols-2"
-                    onKeyDown={(event: React.KeyboardEvent) => {
-                      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key))
-                        return;
-                      event.preventDefault();
-                      const next: ModeId = isSimple ? "advanced" : "simple";
-                      modeRefs.current[next]?.focus();
-                    }}
-                  >
-                    {MODE_OPTIONS.map((option) => (
-                      <ModeOptionCard
-                        key={option.id}
-                        option={option}
-                        selected={mode === option.id}
-                        disabled={modeSwitching || (serverBusy && mode !== option.id)}
-                        onSelect={() => requestModeChange(option.id)}
-                        onHover={() => play("hover")}
-                        buttonRef={(node) => {
-                          modeRefs.current[option.id] = node;
-                        }}
-                      />
-                    ))}
-                  </div>
+                    className="gap-3 sm:grid-cols-2"
+                    value={mode}
+                    onChange={requestModeChange}
+                    sound={false}
+                    isDisabled={modeSwitching}
+                    options={MODE_OPTIONS.map((option) => ({
+                      ...option,
+                      isDisabled: serverBusy && mode !== option.id,
+                    }))}
+                  />
                 </div>
               </div>
             )}
