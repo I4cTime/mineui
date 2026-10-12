@@ -32,6 +32,7 @@ import ContainerDeleteFields, {
   canDeleteContainer,
 } from "@/app/components/ContainerDeleteFields";
 import { useUISound } from "@/app/hooks/useUISound";
+import ChoiceCards from "@/app/components/ChoiceCards";
 import {
   identityLine,
   overviewSummary,
@@ -428,47 +429,12 @@ export default function ServersCard() {
                   />
                 </TextField>
 
-                <div
-                  role="radiogroup"
+                <ChoiceCards
                   aria-label="How this server is set up"
-                  className="flex flex-col gap-2"
-                >
-                  {ADD_KINDS.map((kind) => {
-                    const selected = kind.id === newKind;
-                    const Icon = kind.icon;
-                    return (
-                      <button
-                        key={kind.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => {
-                          play("toggle_on");
-                          setNewKind(kind.id);
-                        }}
-                        onMouseEnter={() => play("hover")}
-                        className="flex items-start gap-3 rounded-lg border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2"
-                        style={{
-                          borderColor: selected ? "var(--accent)" : "var(--border)",
-                          background: selected
-                            ? "color-mix(in oklab, var(--accent) 8%, transparent)"
-                            : "var(--surface-secondary)",
-                          outlineColor: "var(--focus)",
-                          transition:
-                            "border-color var(--motion-fast) var(--motion-ease), background var(--motion-fast) var(--motion-ease)",
-                        }}
-                      >
-                        <Icon size={16} className="mt-0.5 shrink-0 text-accent" />
-                        <span className="flex-1">
-                          <span className="block text-sm font-semibold">{kind.title}</span>
-                          <span className="mt-0.5 block text-xs text-muted">
-                            {kind.description}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                  value={newKind}
+                  onChange={setNewKind}
+                  options={ADD_KINDS}
+                />
               </form>
             </Modal.Body>
             <Modal.Footer>

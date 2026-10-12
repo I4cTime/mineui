@@ -17,7 +17,9 @@ import {
   Users,
 } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/react";
-import { EmptyState, NumberValue } from "@heroui-pro/react";
+import { EmptyState, NumberValue, TrendChip } from "@heroui-pro/react";
+import Sparkline from "@/app/components/Sparkline";
+import { recordSample, seriesOf, useMetricHistory } from "@/app/lib/metricHistory";
 import { KPI } from "@heroui-pro/react/kpi";
 import { useUISound } from "@/app/hooks/useUISound";
 import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
@@ -137,11 +139,17 @@ export default function Home() {
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
-  const { active: activeServer } = useServers();
+  const { active: activeServer, activeId } = useServers();
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
   const maxPlayers = status?.players.max ?? 0;
+  const playerSeries = seriesOf(useMetricHistory(activeId), "players");
+  // Change since the oldest reading kept, once there are two to compare.
+  const playerDelta =
+    playerSeries.length >= 2
+      ? playerSeries[playerSeries.length - 1].value - playerSeries[0].value
+      : null;
 
   const isSimple = mode === "simple";
   // Nothing to show yet: simple mode without an instance, or advanced mode
@@ -194,9 +202,13 @@ export default function Home() {
       getServerStatus(),
       listMods(),
     ]);
-    if (statusResult.status === "fulfilled") setStatus(statusResult.value);
+    if (statusResult.status === "fulfilled") {
+      const next = statusResult.value;
+      setStatus(next);
+      if (next.online) recordSample(activeId, { players: next.players.online });
+    }
     if (modsResult.status === "fulfilled") setMods(modsResult.value);
-  }, []);
+  }, [activeId]);
 
   useEffect(() => {
     if (!showDashboard) return;
@@ -725,6 +737,16 @@ export default function Home() {
                       <Users size={16} />
                     </KPI.Icon>
                     <KPI.Title>Players</KPI.Title>
+                    {playerDelta !== null && (
+                      <TrendChip
+                        className="ml-auto"
+                        trend={playerDelta > 0 ? "up" : playerDelta < 0 ? "down" : "neutral"}
+                        aria-label={`${Math.abs(playerDelta)} ${playerDelta < 0 ? "fewer" : "more"} than ${playerSeries.length} readings ago`}
+                      >
+                        <TrendChip.Indicator />
+                        {playerDelta > 0 ? `+${playerDelta}` : playerDelta}
+                      </TrendChip>
+                    )}
                   </KPI.Header>
                   <KPI.Content className="items-start">
                     <div className="flex-1">
@@ -736,6 +758,12 @@ export default function Home() {
                           </>
                         )}
                       </KPI.Value>
+                      <div className="mt-3 w-full">
+                        <Sparkline
+                          data={playerSeries}
+                          label={`Players online, last ${playerSeries.length} readings`}
+                        />
+                      </div>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {playerCount === 0 ? (
                           <EmptyState size="sm" className="items-start text-left">
