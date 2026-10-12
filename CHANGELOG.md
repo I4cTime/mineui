@@ -5,6 +5,8 @@ All notable changes to MineUI are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-10-12
+
 ### Added
 
 - **Drop a mod onto Add a mod or plugin.** Dragging a .jar or .zip onto the
@@ -19,6 +21,12 @@ All notable changes to MineUI are documented here. Format follows
   Pro components** (RadioButtonGroup, Segment, FileTree). They look and
   behave the same across all four styles, with the keyboard handling
   React Aria provides.
+- Frontend: Next.js 16.3.8, `@tauri-apps/api` / `cli` 2.12.1,
+  tauri-plugin-dialog 2.8.1, Tiptap 3.31.4, lucide-react 1.50, MapLibre GL
+  6.11.2, react-resizable-panels 4.14.2, shiki 4.5, streamdown 2.7.
+- Rust crates: tauri 2.12.1, tauri-build 2.7.1, tauri-plugin-dialog 2.8.1,
+  thiserror 2.0.21, uuid 1.27, rustls 0.23.45.
+- CI: CodeQL 4.38.2, dtolnay/rust-toolchain refreshed.
 
 ### Fixed
 
@@ -33,6 +41,9 @@ All notable changes to MineUI are documented here. Format follows
 - The error has its own code, `PIDS_CONTROLLER_UNAVAILABLE` (was
   `INTERNAL`), and is now also raised when the second start after the lift is
   refused the same way.
+- A modpack or mod archive link that does not end in `.zip` is refused
+  before MineUI looks up the download host, so a wrong link fails at once
+  with the "only a .zip archive" message instead of a lookup error.
 
 ## [2.11.1] - 2026-10-05
 
