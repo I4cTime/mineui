@@ -24,6 +24,7 @@ import { KPI } from "@heroui-pro/react/kpi";
 import { useUISound } from "@/app/hooks/useUISound";
 import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import { useMode } from "@/app/components/ModeProvider";
+import { useViewLevel } from "@/app/components/ViewLevelProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
@@ -140,6 +141,12 @@ export default function Home() {
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
   const { active: activeServer, activeId } = useServers();
+  // View level: Simple leaves out the numbers, the trend line and the live
+  // log (kept one click away). Display only - nothing here changes a server.
+  const { level } = useViewLevel();
+  const expertView = level === "advanced";
+  const [logOpen, setLogOpen] = useState(false);
+  const logVisible = expertView || logOpen;
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
@@ -278,7 +285,7 @@ export default function Home() {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
-  }, [logLines]);
+  }, [logLines, logVisible]);
 
   // What each action says when the *request* went through - which for Start
   // and Restart is not yet "the server is up".
@@ -377,7 +384,7 @@ export default function Home() {
                 Podman nor Docker on this computer. Your other servers are
                 unaffected. If you would rather not install anything, a plain
                 Minecraft server needs no containers: switch how this server
-                is run under <em>Advanced</em> in its settings.
+                is run in its settings (in Advanced view).
               </Card.Description>
             </Card.Header>
             <Card.Content className="mt-4 grid gap-4">
@@ -491,7 +498,7 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Chip variant="soft" color="accent">
-                {isSimple ? "Simple mode" : "Advanced mode"}
+                {isSimple ? "On this computer" : "In a container"}
               </Chip>
               {!needsOnboarding && (
                 <>
@@ -575,12 +582,31 @@ export default function Home() {
                 only ever mounted at first paint or after a full-page
                 setLoading(true) remount) - must drive its own enter
                 animation per the same fix as commit 1090c51. */}
+            {!expertView && (
+              <motion.section variants={cardMotion} initial="hidden" animate="show">
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  aria-expanded={logOpen}
+                  aria-controls="server-log"
+                  onPress={() => {
+                    play(logOpen ? "toggle_off" : "toggle_on");
+                    setLogOpen((open) => !open);
+                  }}
+                  onMouseEnter={() => play("hover")}
+                >
+                  <ScrollText size={14} />
+                  {logOpen ? "Hide the server log" : "Show the server log"}
+                </Button>
+              </motion.section>
+            )}
+            {logVisible && (
             <motion.section
               variants={cardMotion}
               initial="hidden"
               animate="show"
             >
-              <Card className="p-5">
+              <Card id="server-log" className="p-5">
                 <Card.Header className="flex flex-row items-center justify-between gap-3">
                   <div className="flex items-center gap-3 text-sm text-accent">
                     <ScrollText size={18} />
@@ -625,6 +651,7 @@ export default function Home() {
                 </Card.Content>
               </Card>
             </motion.section>
+            )}
 
             {/* Same late-mount rule as the Server Logs section above - this
                 stagger container itself must re-fire its entrance so its
@@ -653,17 +680,21 @@ export default function Home() {
                       {condition === "online" && (
                         <>
                           <div className="text-muted">Version: {status?.version ?? "unknown"}</div>
-                          <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
-                          <div className="text-muted font-pixel-num">
-                            Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "-"}
-                          </div>
+                          {expertView && (
+                            <>
+                              <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
+                              <div className="text-muted font-pixel-num">
+                                Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "-"}
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                       {condition === "warming" && (
                         <p className="text-muted" title={status?.error ?? undefined}>
                           The server is running but not taking players yet. The first
                           start of a modded server or modpack can take several minutes -
-                          watch the log above; it is ready when a line says{" "}
+                          watch the server log above; it is ready when a line says{" "}
                           <span className="font-mono">Done</span>.
                         </p>
                       )}
@@ -678,7 +709,7 @@ export default function Home() {
                       )}
                       {condition === "crashed" && (
                         <p className="text-muted">
-                          The server stopped unexpectedly. The last lines of the log
+                          The server stopped unexpectedly. The last lines of the server log
                           above usually say why; Start tries again.
                         </p>
                       )}
@@ -737,7 +768,7 @@ export default function Home() {
                       <Users size={16} />
                     </KPI.Icon>
                     <KPI.Title>Players</KPI.Title>
-                    {playerDelta !== null && (
+                    {expertView && playerDelta !== null && (
                       <TrendChip
                         className="ml-auto"
                         trend={playerDelta > 0 ? "up" : playerDelta < 0 ? "down" : "neutral"}
@@ -758,12 +789,14 @@ export default function Home() {
                           </>
                         )}
                       </KPI.Value>
-                      <div className="mt-3 w-full">
-                        <Sparkline
-                          data={playerSeries}
-                          label={`Players online, last ${playerSeries.length} readings`}
-                        />
-                      </div>
+                      {expertView && (
+                        <div className="mt-3 w-full">
+                          <Sparkline
+                            data={playerSeries}
+                            label={`Players online, last ${playerSeries.length} readings`}
+                          />
+                        </div>
+                      )}
                       <div className="mt-4 flex flex-wrap gap-2">
                         {playerCount === 0 ? (
                           <EmptyState size="sm" className="items-start text-left">

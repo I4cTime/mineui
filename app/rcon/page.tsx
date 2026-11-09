@@ -1,5 +1,9 @@
 "use client";
 
+import Term from "@/app/components/Term";
+
+import AdvancedOnly from "@/app/components/AdvancedOnly";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
@@ -26,7 +30,7 @@ const PRESETS: { label: string; command: string; needsArgument?: boolean }[] = [
 
 const firstWord = (value: string) => value.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
 
-export default function ConsolePage() {
+function ConsolePageInner() {
   const { containerMotion, cardMotion } = usePageMotion();
   const { activeId } = useServers();
   const { play } = useUISound();
@@ -173,7 +177,8 @@ export default function ConsolePage() {
             <Card.Header className="flex flex-col items-start gap-2">
               <p className="text-sm">
                 Send a command to the running server - the same as typing it in the server&apos;s
-                own console. No leading slash.
+                own console. No leading slash. MineUI sends it through{" "}
+                <Term term="RCON">RCON</Term>, so the server must be running.
               </p>
               {allowlist && (
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
@@ -299,5 +304,16 @@ export default function ConsolePage() {
         />
       </motion.main>
     </div>
+  );
+}
+
+export default function ConsolePage() {
+  return (
+    <AdvancedOnly
+      name="Console"
+      what="The Console lets you type commands straight to the running server."
+    >
+      <ConsolePageInner />
+    </AdvancedOnly>
   );
 }

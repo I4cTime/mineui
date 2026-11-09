@@ -1,5 +1,7 @@
 "use client";
 
+import Term from "@/app/components/Term";
+
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
@@ -344,10 +346,14 @@ export default function PlayersPage() {
             <Card.Header className="border-b border-border p-5">
               <div className="font-pixel text-xs tracking-wide text-accent">Players</div>
               <p className="mt-2 text-xs text-muted">
-                <strong className="font-semibold text-foreground">Whitelist</strong>: only
-                whitelisted players can join when the whitelist is on.{" "}
-                <strong className="font-semibold text-foreground">Admin (op)</strong>: can run any
-                command, including stopping the server.
+                <strong className="font-semibold text-foreground">
+                  <Term term="whitelist">Whitelist</Term>
+                </strong>
+                : only whitelisted players can join when the whitelist is on.{" "}
+                <strong className="font-semibold text-foreground">
+                  <Term term="op / admin">Admin (op)</Term>
+                </strong>
+                : can run any command, including stopping the server.
               </p>
               <div className="mt-4 flex flex-wrap gap-3 text-sm">
                 <div className="flex items-center gap-2">

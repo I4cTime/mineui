@@ -122,7 +122,7 @@ export default function ServersOverview() {
                         <span className="truncate text-sm font-semibold">{server.name}</span>
                       </div>
                       <Chip size="sm" variant="soft" color={isOpen ? "accent" : "default"}>
-                        {isOpen ? "Open" : entry?.mode === "simple" ? "Simple" : "Advanced"}
+                        {isOpen ? "Open" : entry?.mode === "simple" ? "On this computer" : "In a container"}
                       </Chip>
                     </div>
 

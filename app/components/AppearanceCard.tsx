@@ -18,6 +18,7 @@ import {
   Label,
 } from "@heroui/react";
 import { Segment } from "@heroui-pro/react";
+import ViewLevelSwitch from "@/app/components/ViewLevelSwitch";
 import ChoiceCards from "@/app/components/ChoiceCards";
 import { firstKey } from "@/app/lib/keys";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -76,6 +77,12 @@ export default function AppearanceCard() {
         </Card.Description>
       </Card.Header>
       <Card.Content className="mt-4 flex flex-col items-start gap-4">
+        <Label className="text-sm">How much MineUI shows</Label>
+        <ViewLevelSwitch />
+        <p className="-mt-2 text-xs text-muted">
+          Simple shows what you need to run a server with friends. Advanced
+          shows everything. It does not change any server.
+        </p>
         <Label className="text-sm">Mode</Label>
         <Segment
           aria-label="Color mode"

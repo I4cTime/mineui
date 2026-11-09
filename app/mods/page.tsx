@@ -35,6 +35,7 @@ import { SkeletonCard } from "@/app/components/Skeleton";
 import { useUISound } from "@/app/hooks/useUISound";
 import { useMode } from "@/app/components/ModeProvider";
 import { usePageMotion } from "@/app/lib/motion";
+import Term from "@/app/components/Term";
 import {
   deleteMod,
   listMods,
@@ -241,9 +242,11 @@ export default function ModsPage() {
               <Card.Content className="flex items-start gap-3 text-sm text-muted">
                 <Info size={16} className="mt-0.5 shrink-0 text-accent" />
                 <span>
-                  Simple mode runs a vanilla server, which does not load mods or
-                  plugins. Files you manage here are kept in the instance folder
-                  and picked up if you switch to a modded setup later.
+                  A server On this computer runs{" "}
+                  <Term term="Vanilla">vanilla</Term> Minecraft, which does not load{" "}
+                  <Term term="mod">mods</Term> or <Term term="plugin">plugins</Term>.
+                  Files you manage here are kept in the server folder and picked up
+                  if you run a modded server in a container later.
                 </span>
               </Card.Content>
             </Card>

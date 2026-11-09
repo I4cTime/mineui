@@ -1,5 +1,9 @@
 "use client";
 
+import Term from "@/app/components/Term";
+
+import AdvancedOnly from "@/app/components/AdvancedOnly";
+
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
@@ -173,7 +177,7 @@ const AUDIT_PHRASES: Record<string, string> = {
 
 const auditPhrase = (action: string) => AUDIT_PHRASES[action] ?? action;
 
-export default function StatusPage() {
+function StatusPageInner() {
   const { containerMotion, cardMotion } = usePageMotion();
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -446,7 +450,9 @@ export default function StatusPage() {
                 </div>
                 <div className="grid gap-0.5">
                   <div className="flex justify-between gap-3">
-                    <span>Game speed (TPS):</span>
+                    <span>
+                      Game speed (<Term term="TPS">TPS</Term>):
+                    </span>
                     <span className={metrics?.tps ? "font-pixel-num text-xs" : "text-xs"}>
                       {tpsDisplay}
                     </span>
@@ -458,7 +464,9 @@ export default function StatusPage() {
                 </div>
                 <div className="grid gap-0.5">
                   <div className="flex justify-between gap-3">
-                    <span>Time per tick (MSPT):</span>
+                    <span>
+                      Time per tick (<Term term="MSPT">MSPT</Term>):
+                    </span>
                     <span className="text-xs">
                       {metrics?.mspt
                         ? `${formatMspt(metrics.mspt.one)} / ${formatMspt(metrics.mspt.five)} / ${formatMspt(metrics.mspt.fifteen)}`
@@ -553,7 +561,7 @@ export default function StatusPage() {
                 ) : (
                   <span className="text-xs">
                     {isSimple
-                      ? "Container network stats are available in Advanced mode."
+                      ? "Network stats are only shown for servers In a container."
                       : "-"}
                   </span>
                 )}
@@ -583,7 +591,7 @@ export default function StatusPage() {
                 ) : (
                   <span className="text-xs">
                     {isSimple
-                      ? "Container block-IO stats are available in Advanced mode."
+                      ? "Disk stats are only shown for servers In a container."
                       : "-"}
                   </span>
                 )}
@@ -659,8 +667,9 @@ export default function StatusPage() {
                       items={audit}
                       renderEmptyState={() => (
                         <div className="p-6 text-center text-sm text-muted">
-                          Nothing recorded yet. Server control, player actions,
-                          RCON commands, backups and config edits show up here.
+                          Nothing recorded yet. Server control, player actions,{" "}
+                          <Term term="RCON">RCON</Term> commands, backups and config edits
+                          show up here.
                         </div>
                       )}
                     >
@@ -694,5 +703,16 @@ export default function StatusPage() {
         </motion.section>
       </motion.main>
     </div>
+  );
+}
+
+export default function StatusPage() {
+  return (
+    <AdvancedOnly
+      name="Status"
+      what="Status shows how well the server is running: speed, memory and what happened lately."
+    >
+      <StatusPageInner />
+    </AdvancedOnly>
   );
 }

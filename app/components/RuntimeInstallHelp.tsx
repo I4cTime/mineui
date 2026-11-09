@@ -213,7 +213,8 @@ export default function RuntimeInstallHelp({ onRecheck, checking = false }: Runt
           launcher can have a shorter PATH than your terminal. Put the full
           path to <code className="font-mono">podman</code> or{" "}
           <code className="font-mono">docker</code> in this server&apos;s Settings →
-          Advanced → Runtime binary override, save, then check again.
+          Advanced (in Advanced view) → Runtime binary override, save, then
+          check again.
         </span>
         <Button
           variant="secondary"
