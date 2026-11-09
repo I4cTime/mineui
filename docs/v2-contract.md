@@ -61,11 +61,11 @@ type ErrorCode =
   | "EULA_NOT_ACCEPTED"        // simple-mode start/create without EULA acceptance
   | "INSTANCE_NOT_FOUND"       // simple-mode instance dir missing/uninitialized
   | "INSTANCE_EXISTS"          // create_instance over an existing instance
-  | "DOWNLOAD_FAILED"          // network failure fetching manifest/jar/mod
-  | "CHECKSUM_MISMATCH"        // downloaded jar failed sha1 verification
+  | "DOWNLOAD_FAILED"          // network failure fetching manifest/jar/mod/Java; unsafe Java archive (§6.3a)
+  | "CHECKSUM_MISMATCH"        // downloaded jar failed sha1 verification, Java archive sha256 (2.13.0)
   | "SERVER_UTILS_UNAVAILABLE" // serverUtilsUrl set but unreachable/non-OK
   | "PATH_NOT_ALLOWED"         // config-editor path rejected by validation (§6)
-  | "FILE_TOO_LARGE"           // config write > 1.5 MB, upload > 256 MB
+  | "FILE_TOO_LARGE"           // config write > 1.5 MB, upload > 256 MB, Java archive > 300 MB
   | "WRONG_MODE"               // command not available in active mode (§5)
   | "INVALID_INPUT"            // failed argument validation
   | "SETTINGS_INVALID"         // set_settings payload failed validation
@@ -393,6 +393,7 @@ the current target, §7); the null fallback exists for robustness, not for use.
 | `set_settings` | `{ settings: Settings }` | `Settings` (normalized) | both | `settings::save` | POST /api/settings |
 | `detect_runtimes` | - | `RuntimeProbe` | both | `runtime::detect` | - (new) |
 | `java_check` | - | `JavaCheck` | both | `java::check` | - (new) |
+| `install_java` (2.13.0) | `{ major: number }` | `JavaCheck` | both (only servers on this computer use it) | `javainstall::install` | - (new) |
 
 Notes:
 
@@ -432,10 +433,38 @@ Notes:
   Windows/macOS, "start the Docker service" on Linux; Podman → "run
   `podman machine start`" on Windows/macOS, "check the Podman service/socket" on
   Linux (no machine there).
-- `java_check` resolves `simple.javaPath` override → `JAVA_HOME/bin/java` → `java` on
-  PATH; parses `java -version` stderr. `requiredMajor` comes from the current instance
-  metadata (`mineui-instance.json`, §3.6) when present, else `null` and
-  `compatible: null`.
+- `java_check` resolves, in order (2.13.0): the `simple.javaPath` override (used as
+  is, never substituted); then **MineUI-managed Java** (below) of a compatible
+  major - the exact `requiredMajor` first, else the smallest managed major above it
+  (with `requiredMajor` unknown, the highest managed major); then `JAVA_HOME/bin/java`,
+  every `java` on PATH and the well-known install roots (`/usr/lib/jvm`, sdkman,
+  `/Library/Java/JavaVirtualMachines`, `Program Files\Eclipse Adoptium`, ...), the
+  best of those winning (a compatible one, else the highest major). It parses
+  `java -version` stderr. `requiredMajor` comes from the current instance metadata
+  (`mineui-instance.json`, §3.6) when present, else `null` and `compatible: null`.
+  Simple-mode start, `create_instance` and `change_instance_version` use the same
+  resolution, so a Java MineUI installed is the one they run. `managed` is true when
+  the Java found lies inside the managed Java folder.
+- **MineUI-managed Java (2.13.0)** lives at `<appDataDir>/java/temurin-<major>-jre/`,
+  where `<appDataDir>` is the data root the shell injects (`app_data_dir`, the
+  `default` profile's data dir) - never a `servers/<id>/` folder: one download serves
+  every server profile. Inside it is the archive's tree as extracted (e.g.
+  `jdk-21.0.13+9-jre/bin/java`); the binary is located, not assumed (§6.3a rule 7).
+- `install_java` (2.13.0) downloads the Eclipse Temurin JRE of `major` from Adoptium
+  into the managed folder (§6.3a), then returns this server's `java_check` result.
+  When the server has no instance yet, that check runs with `requiredMajor = major`
+  so `compatible` says whether the install fixed it. If a working managed Java of
+  `major` is already there nothing is downloaded. It is a host-side install for
+  servers that run on this computer (Simple mode); it works the same whatever the
+  targeted profile's mode, but a container server never uses it (its image brings
+  its own Java). Progress: `mineui://download-progress` with `kind: "java"`, carrying
+  the requesting server's id (§4.3). One install per major at a time, app-wide: a
+  second request for the same major (from any server) waits for the first and then
+  reuses what it installed, or tries again if it failed. `major` outside `8..=30` →
+  `INVALID_INPUT`; no Temurin JRE for this OS/architecture, a network failure, an
+  unsafe archive or a binary that does not report `major` → `DOWNLOAD_FAILED`; a
+  sha256 mismatch → `CHECKSUM_MISMATCH`; an archive over 300 MB → `FILE_TOO_LARGE`.
+  Every message is plain enough to show as is. Audited as `java.install` (§3.11).
 
 ```ts
 type RuntimeProbe = {
@@ -453,6 +482,8 @@ type JavaCheck = {
   majorVersion: number | null;  // e.g. 21
   requiredMajor: number | null; // from instance metadata, if an instance exists
   compatible: boolean | null;   // null when requiredMajor unknown
+  /** 2.13.0 - the Java found is one MineUI downloaded (install_java). */
+  managed: boolean;
 };
 ```
 
@@ -1113,7 +1144,9 @@ type AuditEntry = {
   `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
   `server.add`, `server.rename`, `server.remove` (§3.12), `container.create`,
   `container.delete`, `container.ports` (§3.13), `container.update` (§3.2 start
-  fallback, 2.11.1).
+  fallback, 2.11.1), `java.install` (§3.1, 2.13.0: target `temurin-<major>-jre`,
+  detail e.g. `Temurin JRE 21.0.13+9`; written when a download was attempted, not
+  when an existing install was reused).
 
 ### 3.12 Server profiles (2.6.0)
 
@@ -1749,12 +1782,13 @@ full detail. Frontend pattern: fetch state on mount, subscribe for invalidation.
 
 ### 4.3 `mineui://download-progress`
 
-Emitted for server-jar downloads (`create_instance`) and mod downloads
-(`download_mod`). Throttled to ≥ 150 ms between progress events per download; the
+Emitted for server-jar downloads (`create_instance`), mod downloads
+(`download_mod`) and the Java runtime download (`install_java`, 2.13.0 - carrying
+the requesting server's id although the install is app-wide). Throttled to ≥ 150 ms between progress events per download; the
 terminal event (`done` or `error`) is always emitted.
 
 ```ts
-type DownloadKind = "server-jar" | "mod";
+type DownloadKind = "server-jar" | "mod" | "java"; // "java": 2.13.0
 
 type DownloadProgressEvent = {
   downloadId: string;          // uuid, unique per download
@@ -1771,7 +1805,10 @@ type DownloadProgressEvent = {
 
 `download_mod` returns its `downloadId`; `create_instance` does not (its jar download
 is identified by `kind: "server-jar"` - only one can run at a time, enforced by
-`INSTANCE_EXISTS`).
+`INSTANCE_EXISTS`). `install_java` does not either: its download is identified by
+`kind: "java"`, `filename` being the Adoptium archive name (e.g.
+`OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz`); a request that waits for
+another server's install of the same major sees no events.
 
 Subscription lifecycle (all events): `listen()` returns an unlisten fn; every page/hook
 that subscribes MUST unlisten on unmount. Events carry no secrets.
@@ -1799,6 +1836,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | Instance commands (§3.6) | full | `WRONG_MODE` |
 | `open_app_dir` `"server"` (§3.15, 2.10.0) | opens `instanceDir` | `WRONG_MODE` (no host folder) |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
+| `install_java` (§3.1, 2.13.0) | downloads Temurin JRE into the app-wide managed folder; start/create/change version then use it | available but unused (the container image brings its own Java) |
 | Container create/pull | - | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
 | Ports and joining (§3.16, 2.11.0) | `get_join_info`: `serverPort`, reach from `server-ip`, nothing to publish | `get_join_info` from the container's bindings; `update_container_ports` rebuilds a stopped MineUI container with other ports, on explicit confirmation |
 
@@ -1882,6 +1920,47 @@ jar, ≤ 2 GiB in total. Encrypted or unreadable archives → `INVALID_INPUT`.
    (`download::build_public_client`). Unresolvable host → `DOWNLOAD_FAILED`. Mojang
    server-jar downloads always use the strict client (their URLs come from the
    HTTPS manifest and content is SHA-1 pinned).
+
+### 6.3a Java downloads (`install_java`, 2.13.0)
+
+Fixed hosts, no user-supplied URL. Error codes as listed in §3.1.
+
+1. `major` is an integer in `8..=30` (`INVALID_INPUT`).
+2. OS and architecture come from the build (`cfg!`): `linux` / `mac` / `windows`;
+   `x86_64` → `x64`, `aarch64` → `aarch64`. Any other target → `DOWNLOAD_FAILED`
+   ("no Temurin build for this computer").
+3. One GET of `https://api.adoptium.net/v3/assets/latest/<major>/hotspot?architecture=<arch>&image_type=jre&os=<os>&vendor=eclipse`.
+   The first asset whose `binary.image_type` is `jre`, `binary.os`/`architecture`
+   match and `version.major` is `major` is used; none → `DOWNLOAD_FAILED`
+   ("Adoptium has no Java <major> runtime for this computer"). From it:
+   `binary.package.link` (the archive), `binary.package.checksum` (sha256, 64 hex
+   chars), `binary.package.size`, `binary.package.name` (ends `.tar.gz` or `.zip`,
+   else `DOWNLOAD_FAILED`) and `version.openjdk_version` (for the audit detail).
+4. https only. The API URL and the archive link must be on the host allowlist, and
+   every redirect hop is re-checked against it (≤ 5 hops, https, allowlisted host):
+   `api.adoptium.net`, `github.com`, `release-assets.githubusercontent.com`. Observed
+   chain on 2026-11-09: the API answers 200 itself; the archive link is
+   `https://github.com/adoptium/temurin<major>-binaries/releases/download/...`, which
+   302-redirects once to `release-assets.githubusercontent.com` (200). A hop anywhere
+   else fails the download (`DOWNLOAD_FAILED`).
+5. Size cap 300 MB: an announced `size` or `Content-Length` over it is refused before
+   streaming, and the stream is cut at the cap (`FILE_TOO_LARGE`). The streamed
+   bytes' sha256 must equal `checksum` (`CHECKSUM_MISMATCH`). 60 s idle timeout as §6.3.
+6. Extraction (off the async runtime) into `<appDataDir>/java/.tmp-temurin-<major>-jre-<uuid>/`,
+   beside the target: `.tar.gz` (Linux, macOS) with `tar` + `flate2`, `.zip`
+   (Windows) with `zip`. The whole install is refused (`DOWNLOAD_FAILED`) when any
+   entry path is absolute, has a drive/root prefix or a `..` component (zip: no
+   `enclosed_name`); when a symlink target is absolute or resolves outside the
+   extraction dir; when a hard link names a path outside it. Other entry types
+   (devices, fifos) are skipped. At most 20 000 entries and 1 GiB written. File modes
+   are kept (`bin/java` stays executable).
+7. The binary is located, not assumed: `bin/java` (`bin/java.exe` on Windows) or
+   `Contents/Home/bin/java` (macOS bundle) at most three folders below the
+   extraction dir (Temurin's top folder is `jdk-<version>-jre`). `java -version` run
+   on it must report `major` (`DOWNLOAD_FAILED` otherwise).
+8. Then the temp dir is renamed to `<appDataDir>/java/temurin-<major>-jre/`. A
+   previous folder there (one that failed the reuse check) is renamed aside first
+   and removed after. On every failure the archive and the temp dir are removed.
 
 ### 6.4 RCON commands
 
@@ -2071,6 +2150,8 @@ export type JavaCheck = {
   majorVersion: number | null;
   requiredMajor: number | null;
   compatible: boolean | null;
+  /** 2.13.0 - the Java found is one MineUI downloaded (installJava). */
+  managed: boolean;
 };
 
 export const getSettings = () => scoped<Settings>("get_settings");
@@ -2078,6 +2159,9 @@ export const setSettings = (settings: Settings) =>
   scoped<Settings>("set_settings", { settings });
 export const detectRuntimes = () => scoped<RuntimeProbe>("detect_runtimes");
 export const javaCheck = () => scoped<JavaCheck>("java_check");
+/** 2.13.0 - download Temurin JRE `major` into MineUI's own folder (app-wide);
+ *  resolves with this server's Java check after the install. */
+export const installJava = (major: number) => scoped<JavaCheck>("install_java", { major });
 
 /* ---------- server state / lifecycle / status ---------- */
 
@@ -2561,7 +2645,7 @@ export type ServerStateEvent = {
   exitCode: number | null;
 };
 
-export type DownloadKind = "server-jar" | "mod";
+export type DownloadKind = "server-jar" | "mod" | "java";
 export type DownloadProgressEvent = {
   serverId: string;
   downloadId: string;
@@ -2643,7 +2727,8 @@ Frontend rules:
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
 | `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback |
-| `java` | java discovery + `-version` parsing |
+| `java` | java discovery + `-version` parsing; the managed-Java lookup and resolution order (§3.1, 2.13.0) |
+| `javainstall` | `install_java` (§3.1, §6.3a, 2.13.0): Adoptium API query, the host-allowlisted client, sha256-verified download, safe tar.gz/zip extraction, locate + probe, rename into place, per-major install lock, `java.install` audit |
 | `instance` | create/delete/status, change version in place (2.10.0), `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
 | `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3) |
 | `mod_archive` | `unpack_mod_archive`: entry selection, bounded host-side extraction, placement (§3.5, §6.2a) |

@@ -171,6 +171,8 @@ export type JavaCheck = {
   majorVersion: number | null;
   requiredMajor: number | null;
   compatible: boolean | null;
+  /** 2.13.0 - the Java found is one MineUI downloaded (installJava). */
+  managed: boolean;
 };
 
 export const getSettings = () => scoped<Settings>("get_settings");
@@ -178,6 +180,9 @@ export const setSettings = (settings: Settings) =>
   scoped<Settings>("set_settings", { settings });
 export const detectRuntimes = () => scoped<RuntimeProbe>("detect_runtimes");
 export const javaCheck = () => scoped<JavaCheck>("java_check");
+/** 2.13.0 - download Temurin JRE `major` into MineUI's own folder (app-wide);
+ *  resolves with this server's Java check after the install. */
+export const installJava = (major: number) => scoped<JavaCheck>("install_java", { major });
 
 /* ---------- server state / lifecycle / status ---------- */
 
@@ -661,7 +666,7 @@ export type ServerStateEvent = {
   exitCode: number | null;
 };
 
-export type DownloadKind = "server-jar" | "mod";
+export type DownloadKind = "server-jar" | "mod" | "java";
 export type DownloadProgressEvent = {
   serverId: string;
   downloadId: string;
