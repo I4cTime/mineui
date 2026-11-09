@@ -205,7 +205,13 @@ async fn create_inner(core: &crate::Core, args: &CreateInstanceArgs) -> Result<I
     let required_major = detail.java_version.as_ref().map(|j| j.major_version);
 
     // 4. Java check against the required major (report, don't bundle).
-    let java = crate::java::check(settings.simple.java_path.as_deref(), required_major).await?;
+    let managed_root = crate::javainstall::managed_root(core);
+    let java = crate::java::check(
+        settings.simple.java_path.as_deref(),
+        Some(&managed_root),
+        required_major,
+    )
+    .await?;
     if !java.found {
         return Err(Error::JavaNotFound(
             "no java binary found on PATH or JAVA_HOME; install a JRE/JDK first".into(),
@@ -429,8 +435,7 @@ async fn change_version_inner(
     ensure_direction_allowed(&from, target, direction, allow_downgrade)?;
 
     // 4. Java.
-    let java_path = core.settings().await.simple.java_path.clone();
-    let java = crate::java::check(java_path.as_deref(), required_major).await?;
+    let java = crate::java::check_for(core, required_major).await?;
     if !java.found {
         return Err(Error::JavaNotFound(
             "no java binary found on PATH or JAVA_HOME; install a JRE/JDK first".into(),

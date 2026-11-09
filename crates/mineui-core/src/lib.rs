@@ -19,6 +19,7 @@ pub mod hub;
 pub mod identity;
 pub mod instance;
 pub mod java;
+pub mod javainstall;
 pub mod joininfo;
 pub mod lifecycle;
 pub mod logs;
@@ -62,6 +63,11 @@ pub struct Paths {
 /// Shared application core. One instance per app, wrapped in `Arc`.
 pub struct Core {
     pub paths: Paths,
+    /// The app-level data root the shell injected (`app_data_dir`): equal to
+    /// `paths.data_dir` for the `default` profile, the parent of
+    /// `servers/<id>/` for the others. App-wide state lives here, e.g.
+    /// MineUI-managed Java (§3.1, 2.13.0).
+    app_data_dir: PathBuf,
     pub http: reqwest::Client,
     /// Strict variant of `http` for user-supplied download URLs: its
     /// redirect policy blocks hops onto private/loopback hosts (§6.3).
@@ -91,7 +97,19 @@ impl Core {
     /// `<config_dir>/settings.json`. Must be called on a Tokio runtime.
     pub async fn init(config_dir: PathBuf, data_dir: PathBuf) -> Result<Arc<Core>> {
         let loaded = settings::load(&config_dir, &data_dir).await?;
-        Ok(Self::build(config_dir, data_dir, loaded))
+        let app_data_dir = data_dir.clone();
+        Ok(Self::build(config_dir, data_dir, app_data_dir, loaded))
+    }
+
+    /// `init` for a server profile whose dirs sit under the app roots
+    /// (§2.5): `app_data_dir` is the shell-injected data root.
+    pub async fn init_in_app(
+        config_dir: PathBuf,
+        data_dir: PathBuf,
+        app_data_dir: PathBuf,
+    ) -> Result<Arc<Core>> {
+        let loaded = settings::load(&config_dir, &data_dir).await?;
+        Ok(Self::build(config_dir, data_dir, app_data_dir, loaded))
     }
 
     /// Test/embedding constructor: skips disk I/O for settings.
@@ -100,10 +118,16 @@ impl Core {
         data_dir: PathBuf,
         settings: Settings,
     ) -> Arc<Core> {
-        Self::build(config_dir, data_dir, settings)
+        let app_data_dir = data_dir.clone();
+        Self::build(config_dir, data_dir, app_data_dir, settings)
     }
 
-    fn build(config_dir: PathBuf, data_dir: PathBuf, loaded: Settings) -> Arc<Core> {
+    fn build(
+        config_dir: PathBuf,
+        data_dir: PathBuf,
+        app_data_dir: PathBuf,
+        loaded: Settings,
+    ) -> Arc<Core> {
         let (events, _keepalive) = tokio::sync::broadcast::channel::<CoreEvent>(512);
         let logs = logs::Manager::new(events.clone());
         let supervisor = supervisor::Supervisor::new(events.clone(), logs.sink());
@@ -112,6 +136,7 @@ impl Core {
                 config_dir,
                 data_dir,
             },
+            app_data_dir,
             http: download::build_client(),
             http_public: download::build_public_client(),
             supervisor,
@@ -126,6 +151,11 @@ impl Core {
             scheduler: scheduler::Engine::new(),
             settings: tokio::sync::RwLock::new(loaded),
         })
+    }
+
+    /// The app-level data root (see the field).
+    pub fn app_data_dir(&self) -> &std::path::Path {
+        &self.app_data_dir
     }
 
     /// Snapshot of the current settings.

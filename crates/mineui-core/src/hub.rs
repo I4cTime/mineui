@@ -271,7 +271,8 @@ impl Hub {
         let mut cores = HashMap::new();
         for profile in &index.servers {
             let paths = profile_paths(&root, &profile.id);
-            let core = Core::init(paths.config_dir, paths.data_dir).await?;
+            let core =
+                Core::init_in_app(paths.config_dir, paths.data_dir, root.data_dir.clone()).await?;
             spawn_forwarder(profile.id.clone(), &core, events.clone());
             cores.insert(profile.id.clone(), core);
         }
@@ -315,6 +316,13 @@ impl Hub {
     pub async fn check_for_update(&self) -> Result<crate::model::UpdateCheck> {
         let core = self.core(None).await?;
         crate::appinfo::check_for_update(&core.http).await
+    }
+
+    /// `required_java_major` (§3.6, 2.13.0): app-wide, with the active
+    /// profile's Mojang manifest cache.
+    pub async fn required_java_major(&self, mc_version: &str) -> Option<u32> {
+        let core = self.core(None).await.ok()?;
+        crate::mojang::required_java_major(&core, mc_version).await
     }
 
     /// `get_public_address` (§3.16, 2.11.0): explicit user action only.
@@ -423,7 +431,12 @@ impl Hub {
             settings.advanced.query_port = game_port;
             settings.advanced.rcon_port = rcon_port;
             crate::settings::save(&paths.config_dir, settings).await?;
-            let core = Core::init(paths.config_dir.clone(), paths.data_dir.clone()).await?;
+            let core = Core::init_in_app(
+                paths.config_dir.clone(),
+                paths.data_dir.clone(),
+                self.root.data_dir.clone(),
+            )
+            .await?;
 
             index.servers.push(ServerProfile {
                 id: id.clone(),

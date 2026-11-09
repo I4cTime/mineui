@@ -107,6 +107,7 @@ pub fn run() {
             commands::set_settings,
             commands::detect_runtimes,
             commands::java_check,
+            commands::install_java,
             // §3.2 server state / lifecycle / status
             commands::get_server_state,
             commands::start_server,
@@ -133,6 +134,7 @@ pub fn run() {
             commands::delete_instance,
             commands::instance_status,
             commands::change_instance_version,
+            commands::required_java_major,
             // §3.7 config files
             commands::list_config_files,
             commands::read_config_file,

@@ -31,6 +31,8 @@ pub struct JavaCheck {
     pub major_version: Option<u32>,
     pub required_major: Option<u32>,
     pub compatible: Option<bool>,
+    /// 2.13.0: the Java found lies in MineUI's managed folder (§3.1).
+    pub managed: bool,
 }
 
 /* ---------- §3.2 server state / status ---------- */
@@ -487,6 +489,8 @@ pub struct ServerStateEvent {
 pub enum DownloadKind {
     ServerJar,
     Mod,
+    /// 2.13.0: `install_java` (§4.3).
+    Java,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -854,6 +858,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&DownloadKind::ServerJar).unwrap(),
             "\"server-jar\""
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadKind::Java).unwrap(),
+            "\"java\""
         );
     }
 

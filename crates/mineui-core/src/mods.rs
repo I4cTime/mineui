@@ -270,6 +270,8 @@ async fn download_inner(
         download_id: download_id.clone(),
         max_bytes: Some(MOD_MAX_BYTES),
         expected_sha1: None,
+        expected_sha256: None,
+        client: None,
         allow_private_hosts: allow_private,
     };
     let result = crate::download::to_temp_file(core, &request).await?;

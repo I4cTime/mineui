@@ -187,8 +187,10 @@ async fn start_inner(core: &crate::Core) -> Result<()> {
                     "accept the Minecraft EULA in settings before starting".into(),
                 ));
             }
+            let managed_root = crate::javainstall::managed_root(core);
             let java = crate::java::check(
                 settings.simple.java_path.as_deref(),
+                Some(&managed_root),
                 instance.required_java_major,
             )
             .await?;
