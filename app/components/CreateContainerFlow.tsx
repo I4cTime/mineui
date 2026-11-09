@@ -281,9 +281,8 @@ export default function CreateContainerFlow({
             {serverName} is not set up yet. Pick what it should run and MineUI
             creates the server in a <Term term="container">container</Term> (the
             widely used <code className="font-mono">itzg/minecraft-server</code>{" "}
-            image) and connects to it. Only want plain Minecraft with nothing to
-            install? Add a <em>Plain Minecraft server</em> in App Settings →
-            Servers instead.
+            image) and connects to it. Only want normal Minecraft with no mods? Add a
+            server <em>On this computer</em> in App Settings → Servers instead.
           </Card.Description>
         </Card.Header>
 

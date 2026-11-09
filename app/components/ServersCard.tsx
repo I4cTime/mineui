@@ -81,9 +81,9 @@ const ADD_KINDS: {
   },
   {
     id: "managed",
-    title: "Plain Minecraft server",
+    title: "Normal Minecraft, on this computer",
     description:
-      "The simplest: MineUI downloads the official (vanilla) server and runs it on this computer. Nothing else to install; no mods.",
+      "The simplest: MineUI downloads the official (vanilla) server and runs it on this computer. No mods. If this computer has no Java, MineUI can get it for you.",
     icon: Sparkles,
     mode: "simple",
     next: "/",
