@@ -509,6 +509,10 @@ export type InstanceStatus = {
 
 export const listMcVersions = (includeSnapshots?: boolean) =>
   scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
+/** 2.13.0, app-wide - the Java major a version ("LATEST" allowed) needs;
+ *  null when it cannot be resolved (offline, unknown version). */
+export const requiredJavaMajor = (mcVersion: string) =>
+  call<number | null>("required_java_major", { mcVersion });
 export const createInstance = (args: CreateInstanceArgs) =>
   scoped<InstanceStatus>("create_instance", { args });
 export const deleteInstance = () =>

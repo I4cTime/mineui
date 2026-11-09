@@ -791,6 +791,18 @@ Semantics:
 | `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | - (new) |
 | `instance_status` | - | `InstanceStatus` | simple | `instance::status` | - (new) |
 | `change_instance_version` | `{ mcVersion: string; allowDowngrade?: boolean }` | `ChangedInstanceVersion` (2.10.0) | simple | `instance::change_version` | - (new) |
+| `required_java_major` (2.13.0) | `{ mcVersion: string }` | `number \| null` | both, app-wide (no `serverId`) | `Hub::required_java_major` → `mojang::required_java_major` | - (new) |
+
+`required_java_major` (2.13.0) is app-wide: like §3.12 and §3.15 it takes **no**
+`serverId` (an exception to §3.0) and uses the active profile's Mojang manifest cache.
+It answers which Java major a Minecraft version needs before anything is created, so
+the UI can offer `install_java` (§3.1) up front. `mcVersion` is a Mojang version id,
+or `"LATEST"` (any case, or empty), which resolves to the manifest's latest release
+first. The answer is `javaVersion.majorVersion` from that version's detail JSON
+(`mojang::version_detail`, same cache and client as `create_instance`). It never
+rejects: offline with no cached manifest, an unknown version, or a detail without
+`javaVersion` (very old versions) all resolve to `null`. Not audited.
+`create_container` (§3.13) picks its image tag with the same function.
 
 ```ts
 type McVersion = {
@@ -1836,6 +1848,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | Instance commands (§3.6) | full | `WRONG_MODE` |
 | `open_app_dir` `"server"` (§3.15, 2.10.0) | opens `instanceDir` | `WRONG_MODE` (no host folder) |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
+| `required_java_major` (§3.6, 2.13.0) | app-wide: the Java major a version needs, before `install_java` | app-wide: the same answer picks the image's Java tag (§3.13) |
 | `install_java` (§3.1, 2.13.0) | downloads Temurin JRE into the app-wide managed folder; start/create/change version then use it | available but unused (the container image brings its own Java) |
 | Container create/pull | - | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
 | Ports and joining (§3.16, 2.11.0) | `get_join_info`: `serverPort`, reach from `server-ip`, nothing to publish | `get_join_info` from the container's bindings; `update_container_ports` rebuilds a stopped MineUI container with other ports, on explicit confirmation |
@@ -2488,6 +2501,10 @@ export type InstanceStatus = {
 
 export const listMcVersions = (includeSnapshots?: boolean) =>
   scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
+/** 2.13.0, app-wide - the Java major a version ("LATEST" allowed) needs;
+ *  null when it cannot be resolved (offline, unknown version). */
+export const requiredJavaMajor = (mcVersion: string) =>
+  call<number | null>("required_java_major", { mcVersion });
 export const createInstance = (args: CreateInstanceArgs) =>
   scoped<InstanceStatus>("create_instance", { args });
 export const deleteInstance = () =>
@@ -2726,7 +2743,7 @@ Frontend rules:
 | `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2); the Windows build, once per process (§3.16, 2.11.1) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
-| `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback |
+| `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback; `required_java_major` (§3.6, 2.13.0, shared with `provision`) |
 | `java` | java discovery + `-version` parsing; the managed-Java lookup and resolution order (§3.1, 2.13.0) |
 | `javainstall` | `install_java` (§3.1, §6.3a, 2.13.0): Adoptium API query, the host-allowlisted client, sha256-verified download, safe tar.gz/zip extraction, locate + probe, rename into place, per-major install lock, `java.install` audit |
 | `instance` | create/delete/status, change version in place (2.10.0), `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
