@@ -672,7 +672,11 @@ export default function SettingsPage() {
                         className="w-fit"
                       >
                         {java.found
-                          ? `Java ${java.version ?? "?"}${
+                          ? `${
+                              java.managed
+                                ? `Using Java MineUI downloaded (${java.majorVersion ?? java.version ?? "?"})`
+                                : `Java ${java.version ?? "?"}`
+                            }${
                               java.requiredMajor !== null
                                 ? ` (needs ${java.requiredMajor}+)`
                                 : ""

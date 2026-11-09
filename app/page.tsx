@@ -28,7 +28,13 @@ import { useViewLevel } from "@/app/components/ViewLevelProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
+import GetJavaForMe from "@/app/components/GetJavaForMe";
+import GettingStartedCard, {
+  TARGET_BACKUP,
+  TARGET_START,
+} from "@/app/components/GettingStartedCard";
 import JoinInfoCard from "@/app/components/JoinInfoCard";
+import StartHere from "@/app/components/StartHere";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import ServerIdentity from "@/app/components/ServerIdentity";
 import ServersOverview from "@/app/components/ServersOverview";
@@ -44,6 +50,7 @@ import {
   listMods,
   onLogs,
   onServerState,
+  requiredJavaMajor,
   restartServer,
   startLogStream,
   startServer,
@@ -60,6 +67,15 @@ import {
 } from "@/app/lib/ipc";
 
 const MAX_LOG_LINES = 1000;
+
+/** A Start that failed because the Java is missing or too old. */
+type JavaProblem = {
+  message: string;
+  /** The Java major to download; null = could not be looked up (offline). */
+  major: number | null;
+  /** Java was downloaded: the next step is Start again. */
+  fixed: boolean;
+};
 
 // One statement of how the server is doing, from the two facts the backend
 // gives: the process/container phase and whether the game answers a ping.
@@ -140,7 +156,15 @@ export default function Home() {
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
-  const { active: activeServer, activeId } = useServers();
+  const { active: activeServer, activeId, servers } = useServers();
+  // Start here (first server, nothing set up): "I know what I want" skips it,
+  // and once it begins it stays on screen while the server's kind changes.
+  const [skipStartHere, setSkipStartHere] = useState(false);
+  const [startHereActive, setStartHereActive] = useState(false);
+  // After Start here: open the internet steps in How players join.
+  const [joinInternet, setJoinInternet] = useState(false);
+  const [landed, setLanded] = useState(false);
+  const [javaProblem, setJavaProblem] = useState<JavaProblem | null>(null);
   // View level: Simple leaves out the numbers, the trend line and the live
   // log (kept one click away). Display only - nothing here changes a server.
   const { level } = useViewLevel();
@@ -165,7 +189,9 @@ export default function Home() {
   const needsContainer =
     !isSimple && settings !== null && serverState?.phase === "not-created";
   const needsOnboarding = needsInstance || needsContainer;
-  const showDashboard = !loading && backendError === null && !needsOnboarding;
+  const showStartHere =
+    !skipStartHere && servers.length === 1 && (needsOnboarding || startHereActive);
+  const showDashboard = !loading && backendError === null && !needsOnboarding && !showStartHere;
 
   // Depends on `mode`/`modeLoading` so a live mode toggle (no remount) also
   // refetches the mode-dependent data below (instanceStatus is simple-mode
@@ -202,6 +228,18 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     bootstrap();
   }, [bootstrap]);
+
+  // Just made by Start here: bring How players join into view.
+  useEffect(() => {
+    if (!landed || !showDashboard) return;
+    const timer = setTimeout(() => {
+      document
+        .getElementById("join-info")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setLanded(false);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [landed, showDashboard]);
 
   // Pull data (status ping + mods list) - no events for these, poll lightly.
   const refreshPolled = useCallback(async () => {
@@ -317,7 +355,17 @@ export default function Home() {
     } catch (error) {
       play("error");
       const fallback = { start: "Could not start", stop: "Could not stop", restart: "Could not restart", backup: "Backup failed" }[kind];
-      if (kind === "start" || kind === "restart") {
+      if (
+        (kind === "start" || kind === "restart") &&
+        isSimple &&
+        error instanceof IpcError &&
+        (error.code === "JAVA_NOT_FOUND" || error.code === "JAVA_INCOMPATIBLE")
+      ) {
+        // Not a toast: the dashboard offers to get the Java it needs.
+        const version = instance?.mcVersion ?? "LATEST";
+        const major = await requiredJavaMajor(version).catch(() => null);
+        setJavaProblem({ message: error.message, major, fixed: false });
+      } else if (kind === "start" || kind === "restart") {
         reportLifecycleError(error, fallback, name);
       } else {
         toast.danger(error instanceof IpcError ? error.message : fallback);
@@ -497,10 +545,12 @@ export default function Home() {
               <ServerIdentity className="relative mt-2" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Chip variant="soft" color="accent">
-                {isSimple ? "On this computer" : "In a container"}
-              </Chip>
-              {!needsOnboarding && (
+              {!showStartHere && (
+                <Chip variant="soft" color="accent">
+                  {isSimple ? "On this computer" : "In a container"}
+                </Chip>
+              )}
+              {!needsOnboarding && !showStartHere && (
                 <>
                   {/* One chip says how the server is doing. Signature moment:
                       a brief scale/glow whenever the condition changes,
@@ -536,6 +586,7 @@ export default function Home() {
                     <span className="hidden sm:inline">Refresh</span>
                   </Button>
                   <Button
+                    id={TARGET_BACKUP}
                     variant="tertiary"
                     onPress={() => runAction("backup")}
                     isDisabled={busy}
@@ -557,7 +608,22 @@ export default function Home() {
         {/* Every server at once (renders nothing with a single server). */}
         <ServersOverview />
 
-        {needsContainer && settings ? (
+        {showStartHere ? (
+          <StartHere
+            onActive={() => setStartHereActive(true)}
+            onSkip={() => {
+              setSkipStartHere(true);
+              setStartHereActive(false);
+            }}
+            onDone={({ friends }) => {
+              setStartHereActive(false);
+              setJoinInternet(friends);
+              setLanded(true);
+              setLoading(true);
+              bootstrap();
+            }}
+          />
+        ) : needsContainer && settings ? (
           <CreateContainerFlow
             serverName={activeServer.name}
             settings={settings}
@@ -582,6 +648,49 @@ export default function Home() {
                 only ever mounted at first paint or after a full-page
                 setLoading(true) remount) - must drive its own enter
                 animation per the same fix as commit 1090c51. */}
+            {javaProblem !== null && (
+              <motion.section variants={cardMotion} initial="hidden" animate="show">
+                <Card className="border border-warning p-5" data-testid="java-problem">
+                  <Card.Header className="flex-col items-start gap-1">
+                    <Card.Title>
+                      {javaProblem.fixed ? "Java is ready" : "The server needs Java"}
+                    </Card.Title>
+                    <Card.Description>
+                      {javaProblem.fixed
+                        ? "MineUI downloaded it. Press Start again."
+                        : javaProblem.message}
+                    </Card.Description>
+                  </Card.Header>
+                  <Card.Content className="mt-3 grid gap-3">
+                    {javaProblem.fixed ? (
+                      <div>
+                        <Button
+                          onPress={() => {
+                            setJavaProblem(null);
+                            void runAction("start");
+                          }}
+                        >
+                          <Play size={16} />
+                          Start again
+                        </Button>
+                      </div>
+                    ) : javaProblem.major !== null ? (
+                      <GetJavaForMe
+                        major={javaProblem.major}
+                        onInstalled={() =>
+                          setJavaProblem((p) => (p ? { ...p, fixed: true } : p))
+                        }
+                      />
+                    ) : (
+                      <p className="text-sm text-muted">
+                        MineUI cannot check which Java this server needs right now. Check
+                        your internet connection, then press Start again.
+                      </p>
+                    )}
+                  </Card.Content>
+                </Card>
+              </motion.section>
+            )}
             {!expertView && (
               <motion.section variants={cardMotion} initial="hidden" animate="show">
                 <Button
@@ -717,6 +826,7 @@ export default function Home() {
                   </KPI.Content>
                   <KPI.Footer className="mt-auto flex flex-wrap gap-2 pt-4">
                     <Button
+                      id={TARGET_START}
                       onPress={() => runAction("start")}
                       isDisabled={busy || !canStart}
                       onMouseEnter={() => play("hover")}
@@ -869,7 +979,16 @@ export default function Home() {
             </motion.section>
 
             <motion.section variants={cardMotion} initial="hidden" animate="show">
-              <JoinInfoCard online={serverOnline} />
+              <GettingStartedCard mode={mode} phase={phase} />
+            </motion.section>
+
+            <motion.section
+              id="join-info"
+              variants={cardMotion}
+              initial="hidden"
+              animate="show"
+            >
+              <JoinInfoCard online={serverOnline} startOpenInternet={joinInternet} />
             </motion.section>
           </>
         )}

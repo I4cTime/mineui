@@ -237,7 +237,14 @@ function ForwardingSteps({
   );
 }
 
-export default function JoinInfoCard({ online }: { online: boolean }) {
+export default function JoinInfoCard({
+  online,
+  startOpenInternet = false,
+}: {
+  online: boolean;
+  /** Open "From the internet" at first (after Start here, friends elsewhere). */
+  startOpenInternet?: boolean;
+}) {
   const router = useRouter();
   const { play } = useUISound();
   const { activeId, overview } = useServers();
@@ -249,7 +256,7 @@ export default function JoinInfoCard({ online }: { online: boolean }) {
   );
   const [info, setInfo] = useState<JoinInfo | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [internetOpen, setInternetOpen] = useState(false);
+  const [internetOpen, setInternetOpen] = useState(startOpenInternet);
   const [looking, setLooking] = useState(false);
   const [publicIp, setPublicIp] = useState<string | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);

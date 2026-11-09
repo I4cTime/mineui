@@ -38,7 +38,9 @@ import PortsEditor, { portsProblems } from "@/app/components/PortsEditor";
 import { exposeConsequence } from "@/app/components/NetworkPortsCard";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import OutLink from "@/app/components/OutLink";
+import Term from "@/app/components/Term";
 import { useUISound } from "@/app/hooks/useUISound";
+import type { GlossaryTerm } from "@/app/lib/glossary";
 import ChoiceCards from "@/app/components/ChoiceCards";
 import { fadeUp } from "@/app/lib/motion";
 import {
@@ -53,14 +55,14 @@ import {
   type Settings,
 } from "@/app/lib/ipc";
 
-const LATEST = "LATEST";
-const DEFAULT_CONTAINER_NAME = "minecraft-server";
+export const LATEST = "LATEST";
+export const DEFAULT_CONTAINER_NAME = "minecraft-server";
 const MEMORY_MIN = 1024;
 const MEMORY_MAX = 16384;
 const MEMORY_STEP = 512;
-const MEMORY_DEFAULT = 4096;
+export const MEMORY_DEFAULT = 4096;
 /** Modpacks are heavier than a bare loader. */
-const MEMORY_DEFAULT_MODPACK = 6144;
+export const MEMORY_DEFAULT_MODPACK = 6144;
 
 /** What the new container runs. */
 type Kind = "type" | "modpack";
@@ -80,18 +82,18 @@ const KINDS: { id: Kind; title: string; description: string; icon: LucideIcon }[
   },
 ];
 
-const LOADERS: { id: ContainerLoader; label: string; hint: string }[] = [
-  { id: "vanilla", label: "Vanilla", hint: "Mojang's own server. No mods or plugins." },
-  { id: "paper", label: "Paper", hint: "Plugins (Bukkit/Spigot), tuned for performance." },
-  { id: "purpur", label: "Purpur", hint: "Paper with extra gameplay switches." },
-  { id: "fabric", label: "Fabric", hint: "Lightweight mod loader for Fabric mods." },
-  { id: "quilt", label: "Quilt", hint: "Fabric-compatible mod loader." },
-  { id: "forge", label: "Forge", hint: "The classic mod loader; most large modpacks." },
-  { id: "neoforge", label: "NeoForge", hint: "Forge's successor, for 1.20.2 and newer." },
+const LOADERS: { id: ContainerLoader; label: string; term: GlossaryTerm; hint: string }[] = [
+  { id: "vanilla", label: "Vanilla", term: "Vanilla", hint: "Mojang's own server. No mods or plugins." },
+  { id: "paper", label: "Paper", term: "Paper", hint: "Plugins (Bukkit/Spigot), tuned for performance." },
+  { id: "purpur", label: "Purpur", term: "Purpur", hint: "Paper with extra gameplay switches." },
+  { id: "fabric", label: "Fabric", term: "Fabric", hint: "Lightweight mod loader for Fabric mods." },
+  { id: "quilt", label: "Quilt", term: "Quilt", hint: "Fabric-compatible mod loader." },
+  { id: "forge", label: "Forge", term: "Forge", hint: "The classic mod loader; most large modpacks." },
+  { id: "neoforge", label: "NeoForge", term: "NeoForge", hint: "Forge's successor, for 1.20.2 and newer." },
 ];
 
 /** "Fabric survival" → "mc-fabric-survival" (container-name grammar). */
-const containerNameFor = (serverName: string) => {
+export const containerNameFor = (serverName: string) => {
   const slug = serverName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -137,6 +139,7 @@ export default function CreateContainerFlow({
   const [exposeToNetwork, setExposeToNetwork] = useState(true);
   const [extraPorts, setExtraPorts] = useState<ExtraPort[]>([]);
   const [portsOpen, setPortsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -208,6 +211,16 @@ export default function CreateContainerFlow({
   const workloadReady =
     kind === "type" || (modpack !== null && version !== "" && version !== LATEST);
   const portProblems = portsProblems(extraPorts, gamePort, rconPort);
+  // Problems with fields that live under "More options": named next to the
+  // Create button too, so a collapsed section never hides why it is disabled.
+  const moreProblem: string | null =
+    containerName.trim() === ""
+      ? "Give the container a name."
+      : gamePort <= 0 || rconPort <= 0
+        ? "Check the ports."
+        : portProblems.length > 0
+          ? `Extra ports: ${portProblems[0]}`
+          : null;
   const canCreate =
     eulaAccepted &&
     portProblems.length === 0 &&
@@ -266,10 +279,11 @@ export default function CreateContainerFlow({
           </div>
           <Card.Description>
             {serverName} is not set up yet. Pick what it should run and MineUI
-            creates the server in a container (the widely used{" "}
-            <code className="font-mono">itzg/minecraft-server</code> image) and
-            connects to it. Only want plain Minecraft with nothing to install? Add
-            a <em>Plain Minecraft server</em> in App Settings → Servers instead.
+            creates the server in a <Term term="container">container</Term> (the
+            widely used <code className="font-mono">itzg/minecraft-server</code>{" "}
+            image) and connects to it. Only want plain Minecraft with nothing to
+            install? Add a <em>Plain Minecraft server</em> in App Settings →
+            Servers instead.
           </Card.Description>
         </Card.Header>
 
@@ -324,7 +338,14 @@ export default function CreateContainerFlow({
                 </ListBox>
               </Select.Popover>
             </Select>
-            <span className="text-xs text-muted">{loaderMeta?.hint}</span>
+            <span className="text-xs text-muted">
+              {loaderMeta && (
+                <>
+                  <Term term={loaderMeta.term}>{loaderMeta.label}</Term>:{" "}
+                  {loaderMeta.hint}
+                </>
+              )}
+            </span>
           </div>
           )}
 
@@ -368,124 +389,7 @@ export default function CreateContainerFlow({
             <span className="text-xs text-muted">{versionHint}</span>
           </div>
 
-          <TextField
-            className="flex flex-col gap-2"
-            value={containerName}
-            onChange={setContainerName}
-            isDisabled={creating}
-          >
-            <Label>Container name</Label>
-            <Input className="font-mono" />
-          </TextField>
-
-          <div className="grid grid-cols-2 gap-3">
-            <TextField className="flex flex-col gap-2" isDisabled={creating}>
-              <Label>Game port</Label>
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={gamePort}
-                onChange={(event) => setGamePort(numberFrom(event))}
-              />
-            </TextField>
-            <TextField className="flex flex-col gap-2" isDisabled={creating}>
-              <Label>RCON port</Label>
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={rconPort}
-                onChange={(event) => setRconPort(numberFrom(event))}
-              />
-            </TextField>
-          </div>
-
-          <div className="grid gap-2 md:col-span-2">
-            <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
-              <HardDrive size={14} />
-              Memory
-            </span>
-            <Slider
-              className="w-full"
-              value={memoryMb}
-              minValue={MEMORY_MIN}
-              maxValue={MEMORY_MAX}
-              step={MEMORY_STEP}
-              isDisabled={creating}
-              formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
-              onChange={(value) => {
-                setMemoryTouched(true);
-                setMemoryMb(value as number);
-              }}
-            >
-              <Label className="sr-only">Server memory in megabytes</Label>
-              <Slider.Output />
-              <Slider.Track>
-                <Slider.Fill />
-                <Slider.Thumb />
-              </Slider.Track>
-            </Slider>
-            <span className="text-xs text-muted">
-              JVM heap. 2048 MB suits a small vanilla server; modded servers
-              usually want 4096 MB or more, large modpacks 6144–8192 MB.
-            </span>
-          </div>
-
-          <div className="grid gap-3 md:col-span-2">
-            <Switch
-              isSelected={exposeToNetwork}
-              isDisabled={creating}
-              onChange={(selected: boolean) => {
-                play(selected ? "toggle_on" : "toggle_off");
-                setExposeToNetwork(selected);
-              }}
-            >
-              <Switch.Content>
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-                <Label>Let other devices join</Label>
-              </Switch.Content>
-            </Switch>
-            <span className="text-xs text-muted">
-              {exposeConsequence(exposeToNetwork, gamePort)}{" "}
-              RCON - the channel MineUI itself uses to send commands - always stays
-              on this computer, with a password MineUI generates.
-            </span>
-
-            <Disclosure
-              isExpanded={portsOpen}
-              onExpandedChange={(open) => {
-                play(open ? "toggle_on" : "toggle_off");
-                setPortsOpen(open);
-              }}
-            >
-              <Disclosure.Heading>
-                <Disclosure.Trigger
-                  className="flex w-fit items-center gap-1.5 text-xs text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{ outlineColor: "var(--focus)" }}
-                >
-                  Extra ports for mods
-                  {extraPorts.length > 0 && ` (${extraPorts.length})`}
-                  <Disclosure.Indicator className="ms-0 size-auto">
-                    <ChevronDown size={13} />
-                  </Disclosure.Indicator>
-                </Disclosure.Trigger>
-              </Disclosure.Heading>
-              <Disclosure.Content>
-                <Disclosure.Body style={{ padding: "0.5rem 0 0" }}>
-                  <PortsEditor
-                    value={extraPorts}
-                    onChange={setExtraPorts}
-                    gamePort={gamePort}
-                    rconPort={rconPort}
-                    isDisabled={creating}
-                  />
-                </Disclosure.Body>
-              </Disclosure.Content>
-            </Disclosure>
-
+          <div className="md:col-span-2">
             <label className="flex items-start gap-3 text-sm">
               <input
                 type="checkbox"
@@ -504,11 +408,164 @@ export default function CreateContainerFlow({
                 </OutLink>
                 .{" "}
                 <span className="text-muted">
-                  Mojang&apos;s rules for running a server - every Minecraft server has to
-                  agree to them.
+                  Mojang&apos;s rules for running a server (<Term term="EULA">what&apos;s the EULA?</Term>).
+                  Every Minecraft server has to agree to them.
                 </span>
               </span>
             </label>
+          </div>
+
+          <div className="md:col-span-2">
+            <Disclosure
+              isExpanded={moreOpen}
+              onExpandedChange={(open) => {
+                play(open ? "toggle_on" : "toggle_off");
+                setMoreOpen(open);
+              }}
+            >
+              <Disclosure.Heading>
+                <Disclosure.Trigger
+                  className="flex w-fit items-center gap-1.5 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ outlineColor: "var(--focus)" }}
+                >
+                  More options
+                  {moreProblem !== null && (
+                    <span className="text-xs font-normal text-danger">(needs a look)</span>
+                  )}
+                  <Disclosure.Indicator className="ms-0 size-auto">
+                    <ChevronDown size={14} />
+                  </Disclosure.Indicator>
+                </Disclosure.Trigger>
+              </Disclosure.Heading>
+              <Disclosure.Content>
+                <Disclosure.Body style={{ padding: "0.75rem 0 0" }}>
+                  <div className="grid gap-5 md:grid-cols-2">
+                  <TextField
+                    className="flex flex-col gap-2"
+                    value={containerName}
+                    onChange={setContainerName}
+                    isDisabled={creating}
+                  >
+                    <Label>Container name</Label>
+                    <Input className="font-mono" />
+                  </TextField>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <TextField className="flex flex-col gap-2" isDisabled={creating}>
+                      <Label>Game port</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={gamePort}
+                        onChange={(event) => setGamePort(numberFrom(event))}
+                      />
+                    </TextField>
+                    <TextField className="flex flex-col gap-2" isDisabled={creating}>
+                      <Label>RCON port</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={rconPort}
+                        onChange={(event) => setRconPort(numberFrom(event))}
+                      />
+                    </TextField>
+                  </div>
+                  <p className="text-xs text-muted md:col-span-2">
+                    The game <Term term="port">port</Term> is the one players connect to.
+                    The <Term term="RCON">RCON</Term> port is only for MineUI.
+                  </p>
+                  <div className="grid gap-2 md:col-span-2">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
+                      <HardDrive size={14} />
+                      Memory
+                    </span>
+                    <Slider
+                      className="w-full"
+                      value={memoryMb}
+                      minValue={MEMORY_MIN}
+                      maxValue={MEMORY_MAX}
+                      step={MEMORY_STEP}
+                      isDisabled={creating}
+                      formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
+                      onChange={(value) => {
+                        setMemoryTouched(true);
+                        setMemoryMb(value as number);
+                      }}
+                    >
+                      <Label className="sr-only">Server memory in megabytes</Label>
+                      <Slider.Output />
+                      <Slider.Track>
+                        <Slider.Fill />
+                        <Slider.Thumb />
+                      </Slider.Track>
+                    </Slider>
+                    <span className="text-xs text-muted">
+                      JVM heap. 2048 MB suits a small vanilla server; modded servers
+                      usually want 4096 MB or more, large modpacks 6144–8192 MB.
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 md:col-span-2">
+                    <Switch
+                      isSelected={exposeToNetwork}
+                      isDisabled={creating}
+                      onChange={(selected: boolean) => {
+                        play(selected ? "toggle_on" : "toggle_off");
+                        setExposeToNetwork(selected);
+                      }}
+                    >
+                      <Switch.Content>
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                        <Label>Let other devices join</Label>
+                      </Switch.Content>
+                    </Switch>
+                    <span className="text-xs text-muted">
+                      {exposeConsequence(exposeToNetwork, gamePort)}{" "}
+                      <Term term="RCON">RCON</Term> (the channel MineUI itself uses to send
+                      commands) always stays on this computer, with a password MineUI
+                      generates.
+                    </span>
+
+                    <Disclosure
+                      isExpanded={portsOpen}
+                      onExpandedChange={(open) => {
+                        play(open ? "toggle_on" : "toggle_off");
+                        setPortsOpen(open);
+                      }}
+                    >
+                      <Disclosure.Heading>
+                        <Disclosure.Trigger
+                          className="flex w-fit items-center gap-1.5 text-xs text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+                          style={{ outlineColor: "var(--focus)" }}
+                        >
+                          Extra ports for mods
+                          {extraPorts.length > 0 && ` (${extraPorts.length})`}
+                          <Disclosure.Indicator className="ms-0 size-auto">
+                            <ChevronDown size={13} />
+                          </Disclosure.Indicator>
+                        </Disclosure.Trigger>
+                      </Disclosure.Heading>
+                      <Disclosure.Content>
+                        <Disclosure.Body style={{ padding: "0.5rem 0 0" }}>
+                          <PortsEditor
+                            value={extraPorts}
+                            onChange={setExtraPorts}
+                            gamePort={gamePort}
+                            rconPort={rconPort}
+                            isDisabled={creating}
+                          />
+                        </Disclosure.Body>
+                      </Disclosure.Content>
+                    </Disclosure>
+                  </div>
+                  </div>
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
           </div>
 
           {creating && (
@@ -551,13 +608,11 @@ export default function CreateContainerFlow({
                     ? kind === "modpack" && modpack === null
                       ? "Pick a modpack."
                       : "Pick the Minecraft version."
-                    : containerName.trim() === ""
-                      ? "Give the container a name."
+                    : moreProblem !== null
+                      ? `${moreProblem} (in More options)`
                       : !eulaAccepted
                         ? "Accept the EULA to continue."
-                        : portProblems.length > 0
-                          ? `Extra ports: ${portProblems[0]}`
-                          : "Check the ports."}
+                        : "Check the options."}
               </span>
             )}
           <Button
