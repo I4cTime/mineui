@@ -63,7 +63,13 @@ pub fn read_manifest(path: &Path) -> Result<ModpackZipInfo> {
         .map_err(|e| Error::InvalidInput(format!("cannot open the zip: {e}")))?;
     let mut archive = zip::ZipArchive::new(file)
         .map_err(|e| Error::InvalidInput(format!("not a zip file: {e}")))?;
-    let names: Vec<String> = archive.file_names().map(str::to_string).collect();
+    // zip 9 decodes entry names lazily: a name that does not decode fails the
+    // whole archive instead of being guessed at.
+    let names: Vec<String> = archive
+        .file_names()
+        .map(|name| name.map(|n| n.into_owned()))
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|e| Error::InvalidInput(format!("not a zip file: {e}")))?;
     let (index, prefix) = find_manifest(&names).ok_or_else(|| {
         Error::InvalidInput(
             "no manifest.json in the zip - export the pack from the CurseForge app (profile → Export)"

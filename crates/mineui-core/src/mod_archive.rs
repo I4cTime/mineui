@@ -156,9 +156,15 @@ fn extract_with_limits(
     if zip.len() > MAX_ENTRIES {
         return Err(too_large(&format!("has more than {MAX_ENTRIES} entries")));
     }
+    // zip 9 decodes entry names lazily: a name that does not decode fails the
+    // whole archive instead of being guessed at.
     let names: Vec<String> = (0..zip.len())
-        .map(|i| zip.name_for_index(i).unwrap_or_default().to_string())
-        .collect();
+        .map(|i| match zip.name_for_index(i) {
+            Some(name) => name.map(|n| n.into_owned()),
+            None => Ok(String::new()),
+        })
+        .collect::<std::result::Result<_, _>>()
+        .map_err(unreadable)?;
     let selection = select_entries(&names, target);
 
     if selection.picked.is_empty() {
