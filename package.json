@@ -9,7 +9,7 @@
     "email": "i4cdeath660@gmail.com"
   },
   "description": "A container-first desktop app for managing Minecraft servers with Docker or Podman, or fully managed vanilla instances.",
-  "homepage": "https://github.com/I4cTime/mineui",
+  "homepage": "https://mineui.i4c.studio",
   "repository": {
     "type": "git",
     "url": "https://github.com/I4cTime/mineui.git"
