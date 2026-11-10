@@ -1,6 +1,6 @@
 {
   "name": "mineui",
-  "version": "2.12.0",
+  "version": "2.12.1",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "productName": "MineUI",
@@ -97,7 +97,8 @@
       "flatted": ">=3.4.2",
       "nanoid@3": ">=3.3.18",
       "dompurify@3": ">=3.4.13",
-      "mermaid": ">=11.16.1"
+      "mermaid": ">=11.16.1",
+      "figlet": ">=1.11.3"
     }
   }
 }
