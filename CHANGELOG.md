@@ -5,6 +5,38 @@ All notable changes to MineUI are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.12.1] - 2026-11-10
+
+### Security
+
+- **Modpack and mod archives are unpacked with zip 9.5.0** (was 8.6.0).
+  The older version had a critical flaw where a crafted .zip could show one
+  set of files to a check and unpack another, and several where an entry
+  could be written outside the folder it was unpacked into. MineUI reads
+  CurseForge modpack zips and mod archives with it. An archive with an entry
+  name that cannot be read is now refused instead of being guessed at.
+- rustls 0.23.46 (the TLS layer under every download): fixes for TLS
+  secrets shown in debug output and three lower-severity handshake issues.
+- Next.js 16.4.5. The advisories fixed are in server features MineUI does
+  not ship (it is a static export), so this clears the alerts rather than
+  closing a hole in the app.
+- figlet pinned to 1.11.3 or newer. It only comes in with the HeroUI Pro
+  installer and is not part of the app.
+
+### Changed
+
+- Frontend: React 19.3.1, motion 14.10.1 (was 13.4.2),
+  `@heroui/react` / `styles` 3.2.7, react-aria-components 1.22.1,
+  `@tauri-apps/api` / `cli` 2.12.4, `@tauri-apps/plugin-dialog` 2.8.4,
+  Tiptap 3.33.0,
+  lucide-react 1.70, MapLibre GL 6.16.0, marked 18.1.3,
+  react-resizable-panels 4.19.1, shiki 4.6, streamdown 2.7.1,
+  Tailwind CSS 4.3.5.
+- Rust crates: tauri 2.12.2, tauri-build 2.7.2, tokio 1.54.1,
+  serde_json 1.0.154, uuid 1.29.
+- CI: CodeQL 4.39.3, actions/setup-node 7.1.0, pnpm/action-setup 6.1.1,
+  Swatinem/rust-cache 2.9.3, dtolnay/rust-toolchain refreshed.
+
 ## [2.12.0] - 2026-10-12
 
 ### Added
