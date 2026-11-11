@@ -5,6 +5,60 @@ All notable changes to MineUI are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Simple and Advanced view.** A switch in the header, Simple by default,
+  remembered between runs. Simple hides the Status, Console and Config
+  pages; Scheduled tasks, Network and ports and the Advanced section in
+  Server Settings; and the Dashboard's MOTD, ping, trend chip and
+  sparklines. The server log sits behind "Show the server log". Opening a
+  hidden page shows a notice with a "Show Advanced" button. It is a view
+  setting only and never changes a server.
+- **Start here.** With no server set up, the Dashboard asks "What do you
+  want to play?" (Normal Minecraft or Minecraft with mods) and "Who will
+  play?" (Just me, People at home, Friends in other places too), says what
+  it will set up, then creates and starts the server and shows How players
+  join. "I know what I want" opens the full create forms. It appears only
+  when the one server you have is not set up yet. "Just me" on a server On
+  this computer only changes the wording; container servers are limited to
+  this computer.
+- **MineUI gets Java.** A server On this computer with no suitable Java
+  offers "Get Java for me". MineUI downloads the Eclipse Temurin JRE of the
+  major the Minecraft version needs from Adoptium (api.adoptium.net and
+  GitHub release assets, https only), checks its sha256, refuses more than
+  300 MB, and keeps it in MineUI's own data folder, shared by all servers.
+  Java already on the computer is still used when present. Tested on a real
+  download on Linux; the Windows and macOS archive layouts are covered by
+  tests on synthetic archives only.
+- **What's this?** Short explanations for 25 terms, among them RCON, port,
+  whitelist, op, EULA, container, Java, the mod loaders, TPS and MSPT.
+- **Getting started checklist** on the Dashboard, per server: server made,
+  started, you joined, a friend joined, first backup. Steps tick from real
+  data, each open step has a Show me link, the card can be hidden, shows a
+  progress ring, and ends with an "All done!" moment at 5 of 5.
+- **Alive touches.** Player count, ping and TPS digits roll when they
+  change. A ring breathes around the status dot while the server runs (and
+  faster while it starts or stops). In-progress labels shimmer. Start, Stop,
+  Restart and the create buttons ripple when pressed. Toasts mark the first
+  server made and the first friend joining. The join address is shown as a
+  tilting "server pass" card with Copy. All of it stops under the system's
+  reduce-motion setting, and sounds follow the existing sound setting.
+- IPC: `install_java` and `required_java_major`, `JavaCheck.managed`, and
+  `DownloadKind` gains `"java"` (see `docs/v2-contract.md`).
+
+### Changed
+
+- **The two server kinds are called On this computer and In a container**
+  on screen (they were called Simple and Advanced, which now names the view
+  above).
+- **The create forms show less up front.** Server type, version, pack and
+  the Mojang agreement come first; the rest is under More options, with the
+  same defaults as before.
+- **macOS builds are signed with a Developer ID and notarized** by the
+  release workflow from this release on. Windows builds are still unsigned.
+- @heroui-pro/react 1.0.0-beta.11. The Java installer reads archive names
+  the way zip 9 returns them.
+
 ## [2.12.1] - 2026-11-10
 
 ### Security
