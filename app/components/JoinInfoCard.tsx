@@ -6,10 +6,11 @@
 // line was the server's address only for this computer; anyone else who
 // typed it could not connect. The public address is looked up only when the
 // user asks (contract §3.16).
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Check, Copy, Globe, Loader2, Users } from "lucide-react";
 import { Alert, Button, Card, Chip, Disclosure, toast } from "@heroui/react";
+import { HoloCard } from "@heroui-pro/react";
 import OutLink from "@/app/components/OutLink";
 import { useServers } from "@/app/components/ServerProvider";
 import { useUISound } from "@/app/hooks/useUISound";
@@ -97,6 +98,81 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       {copied ? <Check size={14} /> : <Copy size={14} />}
       {copied ? "Copied" : "Copy"}
     </Button>
+  );
+}
+
+// The pass is sized in CSS variables (docs: HoloCard). Colours are semantic
+// tokens only; the library's own dark gradient, white hairline and text shadow
+// are replaced so the pass reads in all four themes, dark and light. The
+// corner follows the theme's --radius.
+const PASS_STYLE = {
+  "--holo-card-width": "min(26rem, calc(100vw - 8rem))",
+  "--holo-card-height": "11rem",
+  "--holo-card-bleed": "0.75rem",
+  "--holo-card-radius": "max(0.25rem, calc(var(--radius) * 1.5))",
+  "--holo-card-inset-color": "var(--border)",
+  "--holo-card-content-text-shadow": "none",
+  "--holo-card-texture-opacity": "0.05",
+  "--holo-card-pattern-opacity": "0.5",
+} as CSSProperties;
+
+const PASS_GRADIENT =
+  "linear-gradient(140deg, color-mix(in oklab, var(--accent) 22%, var(--surface)) 0%, var(--surface) 55%, var(--surface-secondary) 100%)";
+
+/** The join address as a pass: server name, what to type, the version and a
+ *  Copy button. It tilts and glints with the pointer, and stays flat under
+ *  reduce-motion (HoloCard does that itself). Frame ignores the pointer and
+ *  the Surface takes it back, so the Copy button works while it tilts. */
+function ServerPass({
+  name,
+  address,
+  where,
+  version,
+}: {
+  name: string;
+  address: string;
+  where: string;
+  version: string | null;
+}) {
+  return (
+    <div className="flex justify-center" data-testid="server-pass">
+      <HoloCard
+        gradient={PASS_GRADIENT}
+        style={PASS_STYLE}
+        shineOpacity={0.3}
+        hoverScale={1.02}
+        maxTilt={9}
+      >
+        {/* The docs say Frame none, Surface auto. While the card tilts that is
+            not enough: the tilted Rotator itself wins the hit test over the
+            Copy button, so it is switched off as well. The tilt still follows
+            the pointer, because events from the Surface bubble to the root. */}
+        <HoloCard.Rotator className="pointer-events-none">
+          <HoloCard.Frame className="pointer-events-none">
+            <HoloCard.Surface className="pointer-events-auto border border-border text-foreground">
+              <HoloCard.Inset />
+              <HoloCard.Content className="flex-col items-start justify-start gap-1 p-5">
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted">
+                  Server pass
+                </span>
+                <span className="max-w-full truncate text-2xl font-semibold">{name}</span>
+                {version && <span className="text-sm text-muted">Minecraft {version}</span>}
+              </HoloCard.Content>
+              <HoloCard.Content className="flex-col justify-end gap-1 p-5">
+                <span className="text-xs text-muted">{where}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 break-all font-mono text-lg font-semibold">
+                    {address}
+                  </span>
+                  <CopyButton text={address} label="the server address" />
+                </div>
+              </HoloCard.Content>
+              <HoloCard.Shine />
+            </HoloCard.Surface>
+          </HoloCard.Frame>
+        </HoloCard.Rotator>
+      </HoloCard>
+    </div>
   );
 }
 
@@ -247,8 +323,9 @@ export default function JoinInfoCard({
 }) {
   const router = useRouter();
   const { play } = useUISound();
-  const { activeId, overview } = useServers();
-  const phase = overview.find((item) => item.id === activeId)?.phase ?? null;
+  const { active, activeId, overview } = useServers();
+  const entry = overview.find((item) => item.id === activeId);
+  const phase = entry?.phase ?? null;
   const os = useSyncExternalStore(
     () => () => {},
     detectOs,
@@ -342,6 +419,18 @@ export default function JoinInfoCard({
           </p>
         ) : (
           <>
+            <ServerPass
+              name={active.name}
+              address={
+                info.reach === "network" && lanPrimary ? withPort(lanPrimary, port) : localAddress
+              }
+              where={
+                info.reach === "network" && lanPrimary
+                  ? "Type this in Minecraft (same Wi-Fi or cable)"
+                  : "Type this in Minecraft (on this computer)"
+              }
+              version={entry?.mcVersion ?? entry?.status.version ?? null}
+            />
             <Row title="On this computer" address={localAddress} copyLabel="the address for this computer">
               <Muted>
                 {online

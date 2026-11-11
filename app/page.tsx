@@ -17,7 +17,11 @@ import {
   Users,
 } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/react";
-import { EmptyState, NumberValue, TrendChip } from "@heroui-pro/react";
+import { EmptyState, NumberValue, TextShimmer, TrendChip } from "@heroui-pro/react";
+import NumberFlow from "@number-flow/react";
+import Rolling from "@/app/components/Rolling";
+import PressRipple from "@/app/components/PressRipple";
+import StatusPulse from "@/app/components/StatusPulse";
 import Sparkline from "@/app/components/Sparkline";
 import { recordSample, seriesOf, useMetricHistory } from "@/app/lib/metricHistory";
 import { KPI } from "@heroui-pro/react/kpi";
@@ -101,6 +105,10 @@ const conditionOf = (phase: ServerPhase | undefined, online: boolean): Condition
       return "unknown";
   }
 };
+
+/** Something is in progress: the label shimmers and the dot beats faster. */
+const isBusyCondition = (condition: Condition) =>
+  condition === "warming" || condition === "starting" || condition === "stopping";
 
 const CONDITION_LABEL: Record<Condition, string> = {
   online: "Online",
@@ -566,11 +574,16 @@ export default function Home() {
                     <Chip variant="soft" color={conditionChipColor(condition)}>
                       {condition === "online" ? (
                         <span className="flex items-center gap-1.5">
-                          {/* The one sanctioned ambient loop on this screen
-                              (docs/theme-contract.md §6); reduced-motion
-                              guard in globals.css. */}
-                          <span className="inline-block h-2 w-2 rounded-full animate-pulse bg-accent" />
+                          {/* Breathing ring (StatusPulse): the one ambient
+                              loop on this screen, switched off for
+                              reduce-motion in globals.css. */}
+                          <StatusPulse phase="running" />
                           Online
+                        </span>
+                      ) : isBusyCondition(condition) ? (
+                        <span className="flex items-center gap-1.5">
+                          <StatusPulse phase="starting" />
+                          <TextShimmer>{CONDITION_LABEL[condition]}</TextShimmer>
                         </span>
                       ) : (
                         CONDITION_LABEL[condition]
@@ -785,7 +798,13 @@ export default function Home() {
                   </KPI.Header>
                   <KPI.Content className="items-start">
                     <div className="grid flex-1 gap-2 text-sm">
-                      <div className="text-lg font-semibold">{CONDITION_LABEL[condition]}</div>
+                      <div className="text-lg font-semibold">
+                        {isBusyCondition(condition) ? (
+                          <TextShimmer>{CONDITION_LABEL[condition]}</TextShimmer>
+                        ) : (
+                          CONDITION_LABEL[condition]
+                        )}
+                      </div>
                       {condition === "online" && (
                         <>
                           <div className="text-muted">Version: {status?.version ?? "unknown"}</div>
@@ -793,7 +812,12 @@ export default function Home() {
                             <>
                               <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
                               <div className="text-muted font-pixel-num">
-                                Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "-"}
+                                Ping:{" "}
+                                {status?.pingMs != null ? (
+                                  <Rolling value={status.pingMs} suffix="ms" />
+                                ) : (
+                                  "-"
+                                )}
                               </div>
                             </>
                           )}
@@ -831,6 +855,7 @@ export default function Home() {
                       isDisabled={busy || !canStart}
                       onMouseEnter={() => play("hover")}
                     >
+                      <PressRipple />
                       {busyAction === "start" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
@@ -844,6 +869,7 @@ export default function Home() {
                       isDisabled={busy || !canStop}
                       onMouseEnter={() => play("hover")}
                     >
+                      <PressRipple />
                       {busyAction === "stop" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
@@ -857,6 +883,7 @@ export default function Home() {
                       isDisabled={busy || !canRestart}
                       onMouseEnter={() => play("hover")}
                     >
+                      <PressRipple />
                       {busyAction === "restart" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
@@ -892,9 +919,9 @@ export default function Home() {
                   <KPI.Content className="items-start">
                     <div className="flex-1">
                       <KPI.Value className="font-pixel-num" value={playerCount}>
-                        {(formatted) => (
+                        {() => (
                           <>
-                            {formatted}
+                            <NumberFlow value={playerCount} />
                             <NumberValue.Suffix>/{maxPlayers || "?"}</NumberValue.Suffix>
                           </>
                         )}

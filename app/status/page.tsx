@@ -1,10 +1,11 @@
 "use client";
 
+import Rolling from "@/app/components/Rolling";
 import Term from "@/app/components/Term";
 
 import AdvancedOnly from "@/app/components/AdvancedOnly";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import {
   Activity,
@@ -90,12 +91,15 @@ const speedTone = (tps: number | null): RingTone =>
 function MetricRing({
   value,
   label,
+  display,
   title,
   tone,
   trend,
 }: {
   value: number;
   label: string;
+  /** What to draw in the middle instead of the plain label (rolling digits). */
+  display?: ReactNode;
   /** Full caption under the ring. */
   title: string;
   tone: RingTone;
@@ -112,7 +116,7 @@ function MetricRing({
           </ProgressCircle.Track>
         </ProgressCircle>
         <div className="absolute flex flex-col items-center justify-center text-center">
-          <span className={`font-pixel-num text-lg ${TONE_TEXT[tone]}`}>{label}</span>
+          <span className={`font-pixel-num text-lg ${TONE_TEXT[tone]}`}>{display ?? label}</span>
         </div>
       </div>
       <span className="text-xs text-muted">{title}</span>
@@ -267,7 +271,13 @@ function StatusPageInner() {
   const tpsDisplay = useMemo(() => {
     if (!metrics?.tps) return metrics && serverState?.phase === "running" ? NOT_REPORTED : "-";
     if (!Number.isFinite(metrics.tps.one)) return metrics.tps.raw;
-    return `${metrics.tps.one.toFixed(1)} / ${metrics.tps.five.toFixed(1)} / ${metrics.tps.fifteen.toFixed(1)}`;
+    return (
+      <>
+        <Rolling value={metrics.tps.one} decimals={1} /> /{" "}
+        <Rolling value={metrics.tps.five} decimals={1} /> /{" "}
+        <Rolling value={metrics.tps.fifteen} decimals={1} />
+      </>
+    );
   }, [metrics, serverState]);
 
   const dimensionsDisplay = useMemo(() => {
@@ -378,6 +388,11 @@ function StatusPageInner() {
               <MetricRing
                 value={Math.min((metrics?.tps?.one ?? 0) * 5, 100)}
                 label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "-"}
+                display={
+                  metrics?.tps?.one != null && Number.isFinite(metrics.tps.one) ? (
+                    <Rolling value={metrics.tps.one} decimals={1} />
+                  ) : undefined
+                }
                 title="Game speed (TPS)"
                 tone={ringsTone.tps}
                 trend={{ data: seriesOf(history, "tps"), domain: [0, 20] }}
@@ -416,12 +431,14 @@ function StatusPageInner() {
                 <div className="flex justify-between">
                   <span>Players:</span>
                   <span className="font-pixel-num">
-                    {status?.players.online ?? 0}/{status?.players.max ?? "?"}
+                    <Rolling value={status?.players.online ?? 0} />/{status?.players.max ?? "?"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Ping:</span>
-                  <span className="font-pixel-num">{status?.pingMs != null ? `${status.pingMs}ms` : "-"}</span>
+                  <span className="font-pixel-num">
+                    {status?.pingMs != null ? <Rolling value={status.pingMs} suffix="ms" /> : "-"}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>MOTD:</span>

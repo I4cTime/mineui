@@ -4,6 +4,7 @@
 // its own folder (install_java, contract 2.13.0) and shows the progress. Used
 // by Start here, the Create server flow and a failed Start on the Dashboard.
 // The caller decides when Java is "ready" from the JavaCheck handed back.
+import { TextShimmer } from "@heroui-pro/react";
 import { useState } from "react";
 import { CheckCircle2, Download, Loader2, RefreshCw } from "lucide-react";
 import { Button, ProgressBar } from "@heroui/react";
@@ -91,7 +92,7 @@ export default function GetJavaForMe({
             ) : (
               <Download size={16} />
             )}
-            {busy ? "Getting Java..." : error ? "Try again" : label}
+            {busy ? <TextShimmer>Getting Java...</TextShimmer> : error ? "Try again" : label}
           </Button>
           {!busy && !error && (
             <span className="text-xs text-muted">

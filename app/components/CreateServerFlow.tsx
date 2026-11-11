@@ -1,5 +1,8 @@
 "use client";
 
+import { announceServerMade } from "@/app/lib/milestones";
+import { TextShimmer } from "@heroui-pro/react";
+import PressRipple from "@/app/components/PressRipple";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -150,7 +153,7 @@ export default function CreateServerFlow({
         memoryMb,
       });
       play("success");
-      toast.success(`Server ${selectedVersion} created`);
+      announceServerMade(`Server ${selectedVersion} is ready. Press Start when you are.`);
       setCreated(true);
       onCreated();
     } catch (error) {
@@ -492,9 +495,11 @@ export default function CreateServerFlow({
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span className="flex items-center gap-2">
                       <Download size={14} />
-                      {progress
-                        ? `Downloading ${progress.filename}`
-                        : "Preparing download..."}
+                      <TextShimmer>
+                        {progress
+                          ? `Downloading ${progress.filename}`
+                          : "Preparing download..."}
+                      </TextShimmer>
                       {/* Completion tick - HeroUI's own CSS already animates
                           the fill's width (progress-bar.css), so this is a
                           separate element rather than layering a second
@@ -571,10 +576,11 @@ export default function CreateServerFlow({
               isPending={creating}
               onMouseEnter={() => play("hover")}
             >
+              <PressRipple />
               {creating ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Creating...
+                  <TextShimmer>Creating...</TextShimmer>
                 </>
               ) : (
                 <>

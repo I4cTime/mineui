@@ -24,6 +24,9 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Button, Card, Input, Label, ProgressBar, TextField } from "@heroui/react";
+import { TextShimmer } from "@heroui-pro/react";
+import PressRipple from "@/app/components/PressRipple";
+import { announceServerMade } from "@/app/lib/milestones";
 import ChoiceCards from "@/app/components/ChoiceCards";
 import {
   containerNameFor,
@@ -331,6 +334,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
       setStep("starting");
       await startServer();
       play("success");
+      announceServerMade("It is starting now. Give it a minute.");
       onDone({ friends: who === "friends" });
     } catch (e) {
       play("error");
@@ -372,6 +376,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
           <fieldset className="grid gap-2" disabled={busy}>
             <legend className="mb-2 text-sm font-semibold">1. What do you want to play?</legend>
             <ChoiceCards
+              ripple
               aria-label="What do you want to play?"
               className="sm:grid-cols-2"
               options={PLAY_OPTIONS}
@@ -384,6 +389,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
           <fieldset className="grid gap-2" disabled={busy}>
             <legend className="mb-2 text-sm font-semibold">2. Who will play?</legend>
             <ChoiceCards
+              ripple
               aria-label="Who will play?"
               className="sm:grid-cols-3"
               options={WHO_OPTIONS}
@@ -515,6 +521,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                       Which mods do you want?
                     </legend>
                     <ChoiceCards
+              ripple
                       aria-label="Which mods do you want?"
                       className="sm:grid-cols-2"
                       options={MODS_OPTIONS}
@@ -565,13 +572,15 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
             <div className="grid gap-2" role="status" data-testid="start-here-progress">
               <span className="flex items-center gap-2 text-xs text-muted">
                 <Loader2 size={14} className="animate-spin" />
-                {step === "starting"
-                  ? "Starting your server..."
-                  : what === "mods"
-                    ? "Making your server. The first time, MineUI downloads the server files (about 1 GB), which can take a few minutes."
-                    : progress
-                      ? `Downloading ${progress.filename}`
-                      : "Making your server..."}
+                <TextShimmer>
+                  {step === "starting"
+                    ? "Starting your server..."
+                    : what === "mods"
+                      ? "Making your server. The first time, MineUI downloads the server files (about 1 GB), which can take a few minutes."
+                      : progress
+                        ? `Downloading ${progress.filename}`
+                        : "Making your server..."}
+                </TextShimmer>
                 {step !== "starting" && what === "normal" && progress?.totalBytes
                   ? ` ${formatBytes(progress.receivedBytes)} / ${formatBytes(progress.totalBytes)}`
                   : ""}
@@ -629,10 +638,11 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                 isPending={busy}
                 onMouseEnter={() => play("hover")}
               >
+                <PressRipple />
                 {busy ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    Working...
+                    <TextShimmer>Working...</TextShimmer>
                   </>
                 ) : (
                   <>

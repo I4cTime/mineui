@@ -5,6 +5,9 @@
 // pick a server type or a modpack, MineUI does the `run` and wires the
 // server up. Without Podman or Docker it explains how to get one instead.
 // The simple-mode counterpart is CreateServerFlow.
+import { announceServerMade } from "@/app/lib/milestones";
+import { TextShimmer } from "@heroui-pro/react";
+import PressRipple from "@/app/components/PressRipple";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
@@ -252,7 +255,7 @@ export default function CreateContainerFlow({
             : null,
       });
       play("success");
-      toast.success(`${containerName.trim()} created - the server is installing`);
+      announceServerMade(`${containerName.trim()} is installing. This can take a few minutes.`);
       onCreated();
     } catch (error) {
       play("error");
@@ -570,8 +573,8 @@ export default function CreateContainerFlow({
           {creating && (
             <div className="grid gap-2 md:col-span-2">
               <span className="text-xs text-muted">
-                Creating the container… The first time, the server image
-                (about 1 GB) is downloaded, which can take a few minutes.
+                <TextShimmer>Creating the container…</TextShimmer> The first time, the
+                server image (about 1 GB) is downloaded, which can take a few minutes.
               </span>
               <ProgressBar
                 className="progress-bar-steps"
@@ -620,10 +623,11 @@ export default function CreateContainerFlow({
             isPending={creating}
             onMouseEnter={() => play("hover")}
           >
+            <PressRipple />
             {creating ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Creating...
+                <TextShimmer>Creating...</TextShimmer>
               </>
             ) : (
               <>
