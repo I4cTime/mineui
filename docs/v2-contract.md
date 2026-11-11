@@ -975,7 +975,7 @@ a supported type whose Minecraft version is unknown.
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_mc_versions` | `{ includeSnapshots?: boolean }` | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `mojang::list_versions` | - (new) |
+| `list_mc_versions` | `{ includeSnapshots?: boolean; serverType?: ContainerLoader }` (`serverType` 2.13.0) | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `loader_versions::list_versions` → `mojang::list_versions` | - (new) |
 | `create_instance` | `CreateInstanceArgs` | `InstanceStatus` | simple | `instance::create` | - (new) |
 | `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | - (new) |
 | `instance_status` | - | `InstanceStatus` | simple | `instance::status` | - (new) |
@@ -1041,6 +1041,44 @@ Semantics:
   `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`; filter to
   `release` unless `includeSnapshots`; cache in memory for 15 minutes; network failure
   with warm cache → serve cache, otherwise `DOWNLOAD_FAILED`.
+- `list_mc_versions` with `serverType` (2.13.0): the versions a server of that type
+  can really be created with (§3.13), so the UI never offers one the itzg image
+  cannot install. `serverType` is a `ContainerLoader` wire name (§3.13); any other
+  string → `INVALID_INPUT`. Absent or `"vanilla"`: the plain list above, unchanged.
+  Otherwise the result is that same list (same `McVersion` shape, same order, newest
+  first, same `includeSnapshots` meaning, `latest` still marking Mojang's latest
+  release / snapshot) restricted to the ids the type publishes builds for. The type's
+  own list comes from one GET of a fixed URL (§6.3c):
+
+  | `serverType` | URL | Minecraft versions it has builds for |
+  | --- | --- | --- |
+  | `paper` | `https://fill.papermc.io/v3/projects/paper` | every string in the arrays of the `versions` object (family → versions) |
+  | `purpur` | `https://api.purpurmc.org/v2/purpur` | the `versions` array |
+  | `fabric` | `https://meta.fabricmc.net/v2/versions/game` | `version` of every entry |
+  | `quilt` | `https://meta.quiltmc.org/v3/versions/game` | `version` of every entry |
+  | `forge` | `https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json` | the keys of `promos` without their `-latest` / `-recommended` suffix |
+  | `neoforge` | `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge` | derived from each entry of `versions` (below), plus `1.20.1` |
+
+  NeoForge versions name their Minecraft version (NeoForge's versioning docs, and the
+  same rule as the image's `mc-image-helper install-neoforge`): three numbers
+  `A.B.n` (before 26) → `1.A.B`, or `1.A` when `B` is `0` (`21.1.209` → `1.21.1`,
+  `21.0.167` → `1.21`); four numbers `Y.A.B.n` (26 and later) → `Y.A.B`, or `Y.A`
+  when `B` is `0` (`26.1.2.5` → `26.1.2`, `26.3.0.102` → `26.3`). Only entries with
+  no suffix count: the image installs the newest such build by default
+  (`NEOFORGE_VERSION=latest`), and it skips `-beta` and `-alpha…` builds, so a line
+  with only betas (today `26.1` and `26.1.1`) cannot be created. Entries of any
+  other shape are skipped. `1.20.1` is added because the image installs NeoForge
+  for 1.20.1 from NeoForge's older `net.neoforged:forge` artifact, which this list
+  does not include.
+
+  Each type's list is cached in memory for 15 minutes, per profile like the
+  manifest; when a refresh fails, a cached list of any age is used. The filter must
+  never make creation impossible: when the type's list cannot be fetched or read
+  (network, non-2xx, a body over the size cap, an unreadable or empty answer) and
+  nothing is cached, or when the filter would leave nothing, the call returns the
+  unfiltered list and logs one line (`mineui: … versions …`) to stderr. Only the
+  Mojang manifest's own failure is an error (`DOWNLOAD_FAILED`, as above). Not
+  audited.
 - `create_instance` sequence (each failure uses the listed code, partial dirs cleaned up
   best-effort):
   1. `acceptEula !== true` → `EULA_NOT_ACCEPTED`.
@@ -1491,6 +1529,12 @@ type ModpackRef = {
   project: string;
 };
 ```
+
+Picking `mcVersion` (2.13.0): for a server type the UI offers only the versions
+`list_mc_versions` returns with `serverType` set to the chosen `loader` (§3.6), and
+sends `LATEST` only when that list contains Mojang's latest release; otherwise it
+picks the newest version in the list. Core does not repeat the check here (the image
+stays the authority on what it can install). Modpacks keep their own versions.
 
 Sequence (first failure wins; nothing is created before step 7):
 
@@ -2209,6 +2253,23 @@ Fixed hosts, no user-supplied URL. Error codes as listed in §3.5a.
    `<dataDir>/tmp/modrinth-<uuid>/` under their final names; the staging folder and
    every temp file are removed whether the install succeeds or fails.
 
+### 6.3c Server-type version lists (`list_mc_versions` with `serverType`, 2.13.0)
+
+Fixed URLs (the table in §3.6), no caller input in any URL. Never an error of its own:
+every failure below makes `list_mc_versions` fall back to the unfiltered list (§3.6).
+
+1. One client for all six: https only, no credentials, the default port, and the hosts
+   `fill.papermc.io`, `api.purpurmc.org`, `meta.fabricmc.net`, `meta.quiltmc.org`,
+   `files.minecraftforge.net`, `maven.neoforged.net`. Every redirect hop is re-checked
+   against the same rule (≤ 5 hops). Observed on 2026-11-10: all six answer 200
+   directly, no redirect.
+2. 10 s timeout per request; the `User-Agent` `I4cTime/mineui/<version>
+   (mineui.i4c.studio)` of §6.3b (Fill refuses generic ones).
+3. The body is read up to 4 MiB and refused beyond it (the largest today, NeoForge's,
+   is about 26 KB). The parsed list must hold at least one id; ids are kept only when
+   they are 1-64 characters of `[0-9A-Za-z._+-]`, and only ids that also appear in the
+   Mojang manifest ever reach the UI.
+
 ### 6.4 RCON commands
 
 See §3.4: trim, strip one leading `/`, ≤ 200 chars, first token lowercased ∈
@@ -2820,8 +2881,11 @@ export type InstanceStatus = {
   createdAt: string | null;
 };
 
-export const listMcVersions = (includeSnapshots?: boolean) =>
-  scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
+/** 2.13.0 serverType: only the versions that server type has builds for;
+ *  absent or "vanilla" = every Mojang version (the list falls back to that
+ *  when the type's own list cannot be had). */
+export const listMcVersions = (includeSnapshots?: boolean, serverType?: ContainerLoader) =>
+  scoped<McVersion[]>("list_mc_versions", { includeSnapshots, serverType });
 /** 2.13.0, app-wide - the Java major a version ("LATEST" allowed) needs;
  *  null when it cannot be resolved (offline, unknown version). */
 export const requiredJavaMajor = (mcVersion: string) =>
@@ -3065,6 +3129,7 @@ Frontend rules:
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
 | `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback; `required_java_major` (§3.6, 2.13.0, shared with `provision`) |
+| `loader_versions` | `list_mc_versions` with `serverType` (§3.6, §6.3c, 2.13.0): the six fixed version-list URLs and their host-allowlisted client, one parser per type, the NeoForge → Minecraft version rule, the per-type 15-minute cache, the intersection with the Mojang list in Mojang order, and the fall-back to the unfiltered list |
 | `java` | java discovery + `-version` parsing; the managed-Java lookup and resolution order (§3.1, 2.13.0) |
 | `javainstall` | `install_java` (§3.1, §6.3a, 2.13.0): Adoptium API query, the host-allowlisted client, sha256-verified download, safe tar.gz/zip extraction, locate + probe, rename into place, per-major install lock, `java.install` audit |
 | `instance` | create/delete/status, change version in place (2.10.0), `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
