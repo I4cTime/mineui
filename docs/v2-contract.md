@@ -61,12 +61,12 @@ type ErrorCode =
   | "EULA_NOT_ACCEPTED"        // simple-mode start/create without EULA acceptance
   | "INSTANCE_NOT_FOUND"       // simple-mode instance dir missing/uninitialized
   | "INSTANCE_EXISTS"          // create_instance over an existing instance
-  | "DOWNLOAD_FAILED"          // network failure fetching manifest/jar/mod/Java; unsafe Java archive (§6.3a)
-  | "CHECKSUM_MISMATCH"        // downloaded jar failed sha1 verification, Java archive sha256 (2.13.0)
+  | "DOWNLOAD_FAILED"          // network failure fetching manifest/jar/mod/Java; unsafe Java archive (§6.3a); Modrinth unreachable or a file off its hosts (§6.3b)
+  | "CHECKSUM_MISMATCH"        // downloaded jar failed sha1 verification, Java archive sha256, Modrinth file sha512 (2.13.0)
   | "SERVER_UTILS_UNAVAILABLE" // serverUtilsUrl set but unreachable/non-OK
   | "PATH_NOT_ALLOWED"         // config-editor path rejected by validation (§6)
   | "FILE_TOO_LARGE"           // config write > 1.5 MB, upload > 256 MB, Java archive > 300 MB
-  | "WRONG_MODE"               // command not available in active mode (§5)
+  | "WRONG_MODE"               // command not available in active mode (§5); Find mods on a server that cannot load mods or plugins (§3.5a)
   | "INVALID_INPUT"            // failed argument validation
   | "SETTINGS_INVALID"         // set_settings payload failed validation
   | "SERVER_NOT_FOUND"         // serverId names no server profile (§2.5, §3.0)
@@ -702,6 +702,10 @@ Semantics:
 | `download_mod` | `{ url: string; filename?: string; target: ModTarget }` | `{ filename: string; downloadId: string }` | both | `mods::download` | POST /api/mods/download |
 | `delete_mod` | `{ filename: string; target: ModTarget }` | `void` | both | `mods::delete` | POST /api/mods/delete |
 | `unpack_mod_archive` | `{ sourcePath?: string; url?: string; filename?: string; target: ModTarget }` | `UnpackedMods` | both | `mod_archive::unpack` | - (new, 2.7.0) |
+| `set_mod_enabled` (2.13.0) | `{ filename: string; target: ModTarget; enabled: boolean }` | `{ filename: string }` | both | `mods::set_enabled` | - (new) |
+| `get_mod_support` (2.13.0) | - | `ModSupport` | both | `modrinth::support` | - (new, §3.5a) |
+| `search_mods` (2.13.0) | `{ query: string; offset?: number; limit?: number }` | `ModSearchPage` | both (a server that can load mods or plugins, §3.5a) | `modrinth::search` | - (new, §3.5a) |
+| `install_mod` (2.13.0) | `{ projectId: string }` | `ModInstall` | both (a server that can load mods or plugins, §3.5a) | `modrinth::install` | - (new, §3.5a) |
 
 ```ts
 type ModTarget = "mods" | "plugins";
@@ -781,6 +785,189 @@ Semantics:
   those list mods to download instead of containing them, and belong in §3.13.
   Config files and anything else in the archive are not installed. Audited as
   `mod.unpack` (target = archive name, detail = `<target>: N installed, M skipped`).
+- `set_mod_enabled` (2.13.0): turns a mod or plugin off and on by renaming it, the
+  convention every loader follows (a file ending `.disabled` is not loaded).
+  `enabled: false` renames `<name>.jar` to `<name>.jar.disabled`; `enabled: true`
+  renames `<name>.jar.disabled` back to `<name>.jar`. `filename` is the name
+  `list_mods` reported (which lists disabled files under their full name, so
+  `ModEntry.filename` ends `.jar.disabled` for a disabled mod). Validation
+  (`INVALID_INPUT`): bare filename as `delete_mod` (§6.2 rules 1, 3 and 4 applied to
+  `<name>.jar`); with `enabled: false` it must end `.jar`, with `enabled: true`
+  `.jar.disabled` (case-insensitive; `.zip` mods cannot be switched). A missing
+  source file → `INVALID_INPUT` (`<filename> does not exist`); an existing file (or
+  link, or folder) at the new name → `INVALID_INPUT`, nothing is overwritten.
+  Advanced → one constant script through `run_in_container` (exec when running,
+  the stopped-container helper otherwise), the two paths passed as positional
+  arguments, never written into the script:
+  `sh -c '[ -f "$1" ] || exit 3; if [ -e "$2" ] || [ -L "$2" ]; then exit 4; fi; mv -- "$1" "$2"' sh <root>/<from> <root>/<to>`
+  (exit 3 → does not exist, 4 → already exists, any other failure → `IO`); simple →
+  the same checks then `std::fs::rename`. Returns the new filename. Works whatever
+  the server type (it is not gated on §3.5a). Audited as `mod.disable` /
+  `mod.enable` (target = the filename before, detail = `<target> → <new filename>`).
+
+### 3.5a Find mods on Modrinth (2.13.0)
+
+Search Modrinth for mods or plugins this server can load, and install one with its
+required dependencies. Every request goes to fixed Modrinth hosts and every file is
+checked against the sha512 Modrinth publishes (§6.3b). Scope is deliberately small:
+no update checks, no datapacks, no CurseForge / Hangar / Spiget, no `.mrpack` files.
+
+```ts
+type ModSupport = {
+  /** False when this server cannot load mods or plugins (see `reason`). */
+  supported: boolean;
+  /** Where installs go: "mods" (Fabric, Quilt, Forge, NeoForge) or
+   *  "plugins" (Paper, Purpur); null when not supported. */
+  target: ModTarget | null;
+  /** The server type MineUI read, lowercase ("fabric", "paper", "vanilla",
+   *  "modrinth", ...); null when it could not tell. */
+  serverType: string | null;
+  /** The Minecraft version results must have a build for; null when unknown. */
+  mcVersion: string | null;
+  /** Modrinth loader tags a version must carry, preferred first; empty when
+   *  not supported. */
+  loaders: string[];
+  /** Why not, in a plain sentence; null when supported. */
+  reason: string | null;
+};
+
+/** Whether a mod's players need it too, as Modrinth reports it. */
+type ModClientSide = "required" | "optional" | "unsupported" | "unknown";
+
+type ModSearchHit = {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** "required": every player must install the mod too. */
+  clientSide: ModClientSide;
+  /** Already in this server's folder (enabled or disabled). */
+  installed: boolean;
+};
+
+type ModSearchPage = {
+  hits: ModSearchHit[];
+  /** Echo of the request after clamping; the next page starts at
+   *  offset + limit. */
+  offset: number;
+  limit: number;
+  /** Modrinth's count of matches (client-only projects it still reports are
+   *  dropped from `hits`, so a page can be shorter than `limit`). */
+  totalHits: number;
+};
+
+type InstalledModFile = {
+  filename: string;
+  projectId: string;
+  slug: string;
+  title: string;
+  versionId: string;
+  versionNumber: string;
+  /** True when installed because another file needs it. */
+  dependency: boolean;
+  /** The id its download-progress events carried. */
+  downloadId: string;
+};
+
+type ModInstall = {
+  target: ModTarget;
+  /** The project asked for first, then its dependencies. */
+  installed: InstalledModFile[];
+  /** Titles of required dependencies that were already installed. */
+  alreadyInstalled: string[];
+};
+```
+
+**What the server can load.** Read from the server's own state, never from the
+caller: a server on this computer (simple) runs the vanilla jar; a container's type
+and version are its `TYPE` and `VERSION` env (the itzg convention, the same read as
+the §3.12 overview identity; `VERSION` empty or `LATEST` = unknown).
+
+| `TYPE` | `target` | `loaders` (preferred first) |
+| --- | --- | --- |
+| `FABRIC` | `mods` | `fabric` |
+| `QUILT` | `mods` | `quilt`, `fabric` |
+| `FORGE` | `mods` | `forge` |
+| `NEOFORGE` | `mods` | `neoforge` |
+| `PAPER` | `plugins` | `paper`, `spigot`, `bukkit` |
+| `PURPUR` | `plugins` | `purpur`, `paper`, `spigot`, `bukkit` |
+
+Anything else is not supported, with a `reason`: a simple server (vanilla on this
+computer), `VANILLA`, a modpack container (`MODRINTH`, `AUTO_CURSEFORGE`: the pack
+decides its mods and MineUI cannot tell its loader), any other or missing `TYPE`, or
+a supported type whose Minecraft version is unknown.
+
+- `get_mod_support`: the table above for the targeted server, no network. Not
+  supported is a result, not an error. Rejects only when the server's state cannot
+  be read: `RUNTIME_NOT_FOUND`, `RUNTIME_UNAVAILABLE`, `CONTAINER_NOT_FOUND` (the
+  configured container does not exist).
+- `search_mods`: one GET of `https://api.modrinth.com/v2/search` with
+  `query` (trimmed, ≤ 100 chars, else `INVALID_INPUT`), `offset` (default 0, clamped to
+  0-10 000), `limit` (default 20, clamped to 1-50), `index` = `downloads` for an empty
+  query else `relevance`, and facets
+  `[["project_type:mod"|"project_type:plugin"], [<"categories:<loader>" for each loader>], ["versions:<mcVersion>"], ["server_side:required","server_side:optional"]]`
+  (`project_type:mod` for target `mods`, `project_type:plugin` for `plugins`; inner
+  arrays are OR, outer AND). Modrinth's `server_side` facet still lets through a few
+  projects whose summary `server_side` is `unsupported`; those hits are dropped. `installed`
+  is true when the hit's project id is among the projects of the files already in the
+  target folder (below); when that lookup fails, every `installed` is false and the
+  search still answers. Not supported → `WRONG_MODE` (message = `reason`); network,
+  non-2xx or an unreadable answer → `DOWNLOAD_FAILED`. Read-only, not audited.
+- **Installed projects** (used by `search_mods` and `install_mod`): the sha1 of
+  every file in the target folder (advanced: the constant script
+  `for f in <root>/*; do [ -f "$f" ] || continue; sha1sum "$f"; done` through
+  `run_in_container`; simple: hashed host-side), sent in one
+  `POST https://api.modrinth.com/v2/version_files` `{ "hashes": [...], "algorithm": "sha1" }`;
+  (at most 1000 hashes; files past that are only matched by name), and
+  the answer maps each known hash to its version and so its `project_id`. A file
+  Modrinth does not know (an upload, a jar from elsewhere) is simply not a project.
+  The answer is cached on the server's core for the same set of hashes.
+- `install_mod`: `projectId` is a Modrinth project id or slug,
+  `^[A-Za-z0-9_-]{1,64}$` (`INVALID_INPUT`). Steps:
+  1. Not supported → `WRONG_MODE`.
+  2. Version choice for a project: `GET /v2/project/<id>/version` with
+     `loaders=<JSON array of loaders>`, `game_versions=["<mcVersion>"]`,
+     `include_changelog=false`. Of the versions whose `status` is `listed` (or
+     absent), whose `game_versions` contain `mcVersion`, whose `loaders` share a tag
+     with `loaders` and whose primary file (the `primary: true` one, else the first)
+     is a `.jar`: the best by version type (`release` over `beta` over `alpha`),
+     then by loader (earlier in `loaders` first), then the newest `date_published`.
+     None → `INVALID_INPUT` naming the project, the Minecraft version and the
+     server type. A project Modrinth does not know (404) → `INVALID_INPUT`.
+  3. Dependencies, breadth first from the chosen version: only
+     `dependency_type: "required"` (`optional`, `embedded`, `incompatible` are not
+     followed). A dependency naming a `version_id` uses exactly that version
+     (`GET /v2/version/<id>`); it must share a loader tag with `loaders` (its game
+     versions are the author's call and are not checked). Otherwise its
+     `project_id` goes through step 2. A dependency with neither (only a
+     `file_name`) cannot be resolved. A project already planned is not visited
+     again (cycles end there); a dependency whose project is already installed, or
+     whose chosen file name is already in the folder, is skipped and reported in
+     `alreadyInstalled`. A required dependency that cannot be resolved fails the
+     whole install with `INVALID_INPUT` naming it and the mod that needs it. More
+     than 50 files in total → `INVALID_INPUT`.
+  4. The project asked for is refused when it is already installed (its project id
+     is in the folder, enabled or disabled) or its file name is already taken
+     (`INVALID_INPUT`): MineUI never overwrites a file here.
+  5. Each planned file is downloaded host-side under §6.3b (progress events with
+     `kind: "mod"`, one `downloadId` per file), all of them before any is placed.
+  6. Then all are placed like `unpack_mod_archive` (advanced: one
+     `runtime cp <staging>/. <name>:<root>`; simple: file copies). If placing fails,
+     the files this install placed are removed again (advanced: `rm -f -- <paths>`
+     through `run_in_container`); nothing that was in the folder before is touched.
+  Any failure leaves nothing of this install behind (temp files, staging folder,
+  placed files) and its message names the mod it concerns. Errors: `WRONG_MODE`,
+  `INVALID_INPUT`, `DOWNLOAD_FAILED` (network, non-2xx, unreadable answer, a file
+  link or redirect off the Modrinth hosts, a file without a sha512),
+  `CHECKSUM_MISMATCH`, `FILE_TOO_LARGE` (over 256 MB), `IO` and the runtime errors
+  of `list_mods` while placing. The mod only loads after a restart; the server is
+  not restarted. Audited as `mod.install`, one entry per placed file (target = the
+  filename, detail = `<target>: <slug> <versionNumber>`, plus
+  `, needed by <slug>` for a dependency), or one failed entry (target = `projectId`)
+  when the install fails.
 
 ### 3.6 Simple-mode instance management (`WRONG_MODE` outside simple, except `list_mc_versions`)
 
@@ -1150,7 +1337,11 @@ type AuditEntry = {
   token, detail = full command), `player.<verb>` for `kick`/`ban`/`pardon`/`op`/
   `deop`/`whitelist` issued through `run_rcon_command` (target = username),
   `backup.create`, `backup.restore`, `backup.delete`, `backup.prune`, `backup.copy`,
-  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `mod.unpack`, `settings.update`,
+  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `mod.unpack`,
+  `mod.install` (§3.5a, 2.13.0: one entry per placed file, target = filename, detail
+  `<target>: <slug> <versionNumber>[, needed by <slug>]`; on failure one entry with
+  target = the `projectId` asked for), `mod.enable` / `mod.disable` (§3.5, 2.13.0:
+  target = the filename before, detail = `<target> → <new filename>`), `settings.update`,
   `instance.create`, `instance.delete`, `instance.change-version` (2.10.0, §3.6),
   `note.set`, `note.clear`,
   `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
@@ -1795,7 +1986,8 @@ full detail. Frontend pattern: fetch state on mount, subscribe for invalidation.
 ### 4.3 `mineui://download-progress`
 
 Emitted for server-jar downloads (`create_instance`), mod downloads
-(`download_mod`) and the Java runtime download (`install_java`, 2.13.0 - carrying
+(`download_mod`, `unpack_mod_archive` from a URL, and each file of `install_mod`,
+2.13.0) and the Java runtime download (`install_java`, 2.13.0 - carrying
 the requesting server's id although the install is app-wide). Throttled to ≥ 150 ms between progress events per download; the
 terminal event (`done` or `error`) is always emitted.
 
@@ -1821,6 +2013,9 @@ is identified by `kind: "server-jar"` - only one can run at a time, enforced by
 `kind: "java"`, `filename` being the Adoptium archive name (e.g.
 `OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz`); a request that waits for
 another server's install of the same major sees no events.
+`install_mod` (2.13.0) returns each file's `downloadId` in `ModInstall` once it is
+done; while it runs, its files are the `kind: "mod"` events whose `filename` is a
+Modrinth file name, one download after the other.
 
 Subscription lifecycle (all events): `listen()` returns an unlisten fn; every page/hook
 that subscribes MUST unlisten on unmount. Events carry no secrets.
@@ -1840,6 +2035,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | RCON (players, history, commands) | full - auto-configured at create/start | full - user-supplied credentials |
 | Player history log source | `<instanceDir>/logs/latest.log` | exec `tail` in container |
 | Mods/plugins management | file ops work; **vanilla jar loads none** (UI note) | full |
+| Find mods (§3.5a, 2.13.0) | `get_mod_support` says not supported (vanilla); `search_mods` / `install_mod` → `WRONG_MODE` | by the container's `TYPE`: Fabric, Quilt, Forge, NeoForge (mods), Paper, Purpur (plugins); other types as simple |
 | Config editor | host fs under `instanceDir` | exec/cp in container |
 | Backups create/list/restore/delete | host-side tar | argv-exec tar in container |
 | Metrics base | process CPU/RSS via sysinfo | container stats via runtime |
@@ -1974,6 +2170,37 @@ Fixed hosts, no user-supplied URL. Error codes as listed in §3.1.
 8. Then the temp dir is renamed to `<appDataDir>/java/temurin-<major>-jre/`. A
    previous folder there (one that failed the reuse check) is renamed aside first
    and removed after. On every failure the archive and the temp dir are removed.
+
+### 6.3b Modrinth requests and files (`search_mods`, `install_mod`, 2.13.0)
+
+Fixed hosts, no user-supplied URL. Error codes as listed in §3.5a.
+
+1. The caller supplies only search text, two numbers and a project id or slug. The
+   text and numbers travel as URL-encoded query parameters; the id or slug must match
+   `^[A-Za-z0-9_-]{1,64}$` (`INVALID_INPUT`) before it becomes a path segment. Version
+   and project ids taken from Modrinth's own answers are held to the same pattern
+   before they become path segments (`DOWNLOAD_FAILED` otherwise).
+2. Every request and every file goes through one client whose hosts are
+   `api.modrinth.com` (search, project versions, a version, `version_files`, the
+   projects batch) and `cdn.modrinth.com` (files): https only, no credentials, the
+   default port. Every redirect hop is re-checked against the same rule (≤ 5 hops);
+   a hop anywhere else fails the request (`DOWNLOAD_FAILED`). A version file whose
+   `url` is not on `cdn.modrinth.com` is refused before any request
+   (`DOWNLOAD_FAILED`). Observed on 2026-11-10: files are served 200 by
+   `cdn.modrinth.com` directly.
+3. API calls: 10 s timeout, the `User-Agent` `I4cTime/mineui/<version>
+   (mineui.i4c.studio)` that Modrinth's rules ask for (300 requests per minute per
+   IP; an install makes 2 + one per resolved project, at most about 55).
+4. A file is used only with a 128-hex-digit `hashes.sha512` (`DOWNLOAD_FAILED`
+   otherwise). The streamed bytes' sha512 must equal it, and the sha1 too when
+   Modrinth gives one (`CHECKSUM_MISMATCH`, message naming the mod). Size cap 256 MB:
+   an announced `size` or `Content-Length` over it is refused before streaming and
+   the stream is cut at the cap (`FILE_TOO_LARGE`). 60 s idle timeout as §6.3.
+5. The file name is Modrinth's `filename` after §6.2 sanitization; it must end
+   `.jar` (a version whose primary file is not a `.jar` is not a candidate, §3.5a).
+6. Downloads land in `<dataDir>/tmp/` and are moved into a staging folder
+   `<dataDir>/tmp/modrinth-<uuid>/` under their final names; the staging folder and
+   every temp file are removed whether the install succeeds or fails.
 
 ### 6.4 RCON commands
 
@@ -2472,6 +2699,93 @@ export type ModArchiveSource =
 export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
   scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
 
+/** Renames name.jar to name.jar.disabled (enabled false) or back
+ *  (enabled true); returns the new filename (§3.5, 2.13.0). */
+export const setModEnabled = (filename: string, target: ModTarget, enabled: boolean) =>
+  scoped<{ filename: string }>("set_mod_enabled", { filename, target, enabled });
+
+/* ---------- find mods on Modrinth (§3.5a, 2.13.0) ---------- */
+
+/** What Find mods can do for this server. */
+export type ModSupport = {
+  /** False when this server cannot load mods or plugins (see `reason`). */
+  supported: boolean;
+  /** Where installs go: "mods" (Fabric, Quilt, Forge, NeoForge) or
+   *  "plugins" (Paper, Purpur); null when not supported. */
+  target: ModTarget | null;
+  /** The server type MineUI read, lowercase ("fabric", "paper", "vanilla",
+   *  "modrinth", ...); null when it could not tell. */
+  serverType: string | null;
+  /** The Minecraft version results must have a build for; null when unknown. */
+  mcVersion: string | null;
+  /** Modrinth loader tags a version must carry, preferred first; empty when
+   *  not supported. */
+  loaders: string[];
+  /** Why not, in a plain sentence; null when supported. */
+  reason: string | null;
+};
+
+/** Whether a mod's players need it too, as Modrinth reports it. */
+export type ModClientSide = "required" | "optional" | "unsupported" | "unknown";
+
+export type ModSearchHit = {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** "required": every player must install the mod too. */
+  clientSide: ModClientSide;
+  /** Already in this server's folder (enabled or disabled). */
+  installed: boolean;
+};
+
+export type ModSearchPage = {
+  hits: ModSearchHit[];
+  /** Echo of the request after clamping; the next page starts at
+   *  offset + limit. */
+  offset: number;
+  limit: number;
+  /** Modrinth's count of matches (client-only projects it still reports are
+   *  dropped from `hits`, so a page can be shorter than `limit`). */
+  totalHits: number;
+};
+
+export type InstalledModFile = {
+  filename: string;
+  projectId: string;
+  slug: string;
+  title: string;
+  versionId: string;
+  versionNumber: string;
+  /** True when installed because another file needs it. */
+  dependency: boolean;
+  /** The id its download-progress events carried. */
+  downloadId: string;
+};
+
+export type ModInstall = {
+  target: ModTarget;
+  /** The project asked for first, then its dependencies. */
+  installed: InstalledModFile[];
+  /** Titles of required dependencies that were already installed. */
+  alreadyInstalled: string[];
+};
+
+/** No network; "not supported" is a result with a reason, not an error. */
+export const getModSupport = () => scoped<ModSupport>("get_mod_support");
+/** Modrinth mods or plugins this server can load. Empty query = most
+ *  downloaded. Rejects WRONG_MODE when the server cannot load any. */
+export const searchMods = (query: string, offset?: number, limit?: number) =>
+  scoped<ModSearchPage>("search_mods", { query, offset, limit });
+/** Installs the newest compatible version of a Modrinth project (id or
+ *  slug) with its required dependencies, each checked against Modrinth's
+ *  sha512. Takes effect after a restart. */
+export const installMod = (projectId: string) =>
+  scoped<ModInstall>("install_mod", { projectId });
+
 /* ---------- instance (simple mode) ---------- */
 
 export type McVersion = {
@@ -2747,7 +3061,8 @@ Frontend rules:
 | `java` | java discovery + `-version` parsing; the managed-Java lookup and resolution order (§3.1, 2.13.0) |
 | `javainstall` | `install_java` (§3.1, §6.3a, 2.13.0): Adoptium API query, the host-allowlisted client, sha256-verified download, safe tar.gz/zip extraction, locate + probe, rename into place, per-major install lock, `java.install` audit |
 | `instance` | create/delete/status, change version in place (2.10.0), `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
-| `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3) |
+| `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3); `set_mod_enabled` renames (2.13.0) |
+| `modrinth` | Find mods (§3.5a, §6.3b, 2.13.0): server type → target and loader tags, the Modrinth host-allowlisted client, search facets, installed projects from `version_files`, version choice, dependency resolution, sha512-checked downloads, staged placement with rollback, `mod.install` audit |
 | `mod_archive` | `unpack_mod_archive`: entry selection, bounded host-side extraction, placement (§3.5, §6.2a) |
 | `config_files` | list/read/write over `Runtime` or host fs (§3.7, §6.1) |
 | `backups` | create/list/restore/delete (§3.8) |
