@@ -296,7 +296,7 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 327 unit tests);
+`crates/mineui-core` is pure Rust (no Tauri dependency, 328 unit tests);
 `src-tauri` is a thin `#[tauri::command]` shell (61 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) - binding, not a suggestion; see
@@ -325,7 +325,7 @@ Other commands:
 - `pnpm build` - static export to `out/` (what Tauri bundles)
 - `pnpm lint` - ESLint
 - `pnpm tauri build` - production desktop bundle
-- `cargo test -p mineui-core` - Rust unit tests (327 tests; must stay green)
+- `cargo test -p mineui-core` - Rust unit tests (328 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

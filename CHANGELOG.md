@@ -70,6 +70,12 @@ All notable changes to MineUI are documented here. Format follows
 - **The create forms show less up front.** Server type, version, pack and
   the Mojang agreement come first; the rest is under More options, with the
   same defaults as before.
+- **"Latest release" in the container create form is the newest release at
+  the time you create the server.** The picker shows which version that is
+  next to "Latest release", and the container is created with that version,
+  so it stays on it instead of moving to each new Minecraft release on a
+  restart. Only when the server type's version list cannot be fetched does
+  the server follow the latest release, as before.
 - **Adding a mod from a link is in the Advanced view only**, with a warning
   that MineUI cannot check a file from a link the way it checks files from
   Find.
