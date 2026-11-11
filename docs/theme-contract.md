@@ -326,6 +326,12 @@ Servers). It sits first. **There is no mode toggle in the header (2.9.0):** a
 one-click Simple/Advanced flip re-pointed the open server at the other kind,
 which looked like the server had been deleted; how a server is run is changed
 in Server Settings → Advanced only, never while it runs, and asks first.
+The header does carry a **view level** switch (2.13.0, `ViewLevelSwitch`,
+a Pro `Segment` labelled "How much MineUI shows": Simple / Advanced, default
+Simple, kept in `localStorage` as `mineui-view-level`). It only shows or hides
+parts of the app and never changes how a server is run, so it is not the mode
+toggle this paragraph rules out. On screen the two server kinds read "On this
+computer" and "In a container".
 Tiers: the name shows at T1–T2
 (`header-mid:` and up, truncated at 7rem) and is CSS-hidden at T3–T4, leaving
 dot + chevron; the trigger itself is rendered at every tier, so no
