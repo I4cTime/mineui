@@ -5,6 +5,8 @@ All notable changes to MineUI are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-11-10
+
 ### Added
 
 - **Simple and Advanced view.** A switch in the header, Simple by default,

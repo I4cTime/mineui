@@ -63,11 +63,11 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.12.1_amd64.AppImage` - `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.12.1_amd64.deb` - `sudo apt install ./MineUI_2.12.1_amd64.deb` |
-| Windows x64 | `MineUI_2.12.1_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.12.1_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.12.1_x64.dmg` |
+| Linux x86_64 | `MineUI_2.13.0_amd64.AppImage` - `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.13.0_amd64.deb` - `sudo apt install ./MineUI_2.13.0_amd64.deb` |
+| Windows x64 | `MineUI_2.13.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.13.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.13.0_x64.dmg` |
 
 A server On this computer needs Java. If the computer has none that fits
 the Minecraft version you pick, MineUI offers *Get Java for me* and downloads
