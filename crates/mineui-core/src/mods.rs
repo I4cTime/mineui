@@ -287,28 +287,55 @@ async fn download_inner(
     })
 }
 
+/// §6.2 rules 1, 3 and 3a for `delete_mod`: a bare clean `.jar`/`.zip`
+/// name, or (2.13.0) a disabled mod `<name>.jar.disabled`.
+pub(crate) fn delete_filename(filename: &str) -> Result<String> {
+    if !filename.to_ascii_lowercase().ends_with(".jar.disabled") {
+        return crate::validate::mod_filename(filename, false);
+    }
+    if filename.len() > 255 {
+        return Err(Error::InvalidInput("filename exceeds 255 bytes".into()));
+    }
+    // The suffix is ASCII, so this cut is on a char boundary; the base
+    // check covers the bare name, the charset and the leading character,
+    // and the base ends in `.jar` by construction.
+    let base = &filename[..filename.len() - DISABLED_SUFFIX.len()];
+    crate::validate::mod_filename(base, false)?;
+    Ok(filename.to_string())
+}
+
+/// Container side of `delete_mod`: `rm -f --` through `run_in_container`.
+async fn delete_in_container(
+    runtime: &dyn crate::runtime::Runtime,
+    name: &str,
+    target: ModTarget,
+    filename: &str,
+) -> Result<()> {
+    let path = format!("{}/{}", container_root(target), filename);
+    let out = crate::runtime::run_in_container(runtime, name, &["rm", "-f", "--", &path]).await?;
+    if !out.success() {
+        return Err(Error::Io(format!(
+            "failed to delete {filename}: {}",
+            out.stderr
+        )));
+    }
+    Ok(())
+}
+
 /// `delete_mod` (§3.5): filename must already be a bare clean name (§6.2).
 async fn delete_inner(core: &crate::Core, filename: &str, target: ModTarget) -> Result<()> {
-    let filename = crate::validate::mod_filename(filename, false)?;
+    let filename = delete_filename(filename)?;
     let settings = core.settings().await;
     match settings.active_mode {
         Mode::Advanced => {
             let runtime = crate::runtime::resolve(&settings.advanced).await?;
-            let name = &settings.advanced.container_name;
-            let path = format!("{}/{}", container_root(target), filename);
-            let out = crate::runtime::run_in_container(
+            delete_in_container(
                 runtime.as_ref(),
-                name,
-                &["rm", "-f", "--", &path],
+                &settings.advanced.container_name,
+                target,
+                &filename,
             )
-            .await?;
-            if !out.success() {
-                return Err(Error::Io(format!(
-                    "failed to delete {filename}: {}",
-                    out.stderr
-                )));
-            }
-            Ok(())
+            .await
         }
         Mode::Simple => {
             let path = settings
@@ -670,6 +697,97 @@ mod tests {
         file.set_len(UPLOAD_MAX_BYTES).unwrap();
         drop(file);
         assert!(validate_upload_source(&ok).await.is_ok());
+    }
+
+    /* ---------- delete_mod of a disabled mod (§6.2 rule 3a, 2.13.0) ---------- */
+
+    #[test]
+    fn delete_accepts_a_disabled_jar_and_nothing_else_new() {
+        for ok in [
+            "lithium.jar",
+            "pack.zip",
+            "lithium-0.14.jar.disabled",
+            "Chunky-1.4.23.JAR.Disabled",
+        ] {
+            assert_eq!(delete_filename(ok).unwrap(), ok);
+        }
+        for bad in [
+            "x.disabled",
+            "x.jar.disabled.disabled",
+            "x.txt.disabled",
+            "x.zip.disabled",
+            ".jar.disabled",
+            "-x.jar.disabled",
+            "../x.jar.disabled",
+            "mods/x.jar.disabled",
+            "..\\x.jar.disabled",
+            "/data/mods/x.jar.disabled",
+            "bad name.jar.disabled",
+            "x.jar.disabled ",
+            "x.txt",
+        ] {
+            assert_eq!(
+                delete_filename(bad).unwrap_err().code(),
+                "INVALID_INPUT",
+                "{bad:?}"
+            );
+        }
+        let long = format!("{}.jar.disabled", "a".repeat(250));
+        assert_eq!(delete_filename(&long).unwrap_err().code(), "INVALID_INPUT");
+    }
+
+    #[tokio::test]
+    async fn delete_a_disabled_mod_on_this_computer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = crate::Core::init(tmp.path().join("config"), tmp.path().join("data"))
+            .await
+            .unwrap();
+        let mods = core.settings().await.simple.instance_dir.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("sodium.jar.disabled"), b"jar").unwrap();
+        std::fs::write(mods.join("keep.jar"), b"jar").unwrap();
+        delete(&core, "sodium.jar.disabled", ModTarget::Mods)
+            .await
+            .unwrap();
+        assert!(!mods.join("sodium.jar.disabled").exists());
+        assert!(mods.join("keep.jar").exists());
+        assert_eq!(
+            delete(&core, "x.txt.disabled", ModTarget::Mods)
+                .await
+                .unwrap_err()
+                .code(),
+            "INVALID_INPUT"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_a_disabled_mod_in_a_container() {
+        use crate::fake_runtime::FakeRuntime;
+        let name = delete_filename("sodium.jar.disabled").unwrap();
+        // Stopped: the volumes-from helper.
+        let rt = FakeRuntime::default();
+        delete_in_container(&rt, "mc", ModTarget::Mods, &name)
+            .await
+            .unwrap();
+        assert_eq!(
+            rt.calls(),
+            ["ps mc", "helper mc rm -f -- /data/mods/sodium.jar.disabled"]
+        );
+        // Running: exec.
+        let rt = FakeRuntime {
+            ps: Ok(Some("running".into())),
+            ..Default::default()
+        };
+        delete_in_container(&rt, "mc", ModTarget::Plugins, &name)
+            .await
+            .unwrap();
+        assert_eq!(
+            rt.calls(),
+            [
+                "ps mc",
+                "exec mc rm -f -- /data/plugins/sodium.jar.disabled"
+            ]
+        );
     }
 
     /* ---------- set_mod_enabled (§3.5, 2.13.0) ---------- */
