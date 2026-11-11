@@ -13,9 +13,10 @@ use mineui_core::model::{
     AppDir, AppInfo, AuditLog, BackupEntry, ChangedInstanceVersion, ConfigFileContent,
     ConfigFileList, CreateContainerArgs, CreateInstanceArgs, CreatedBackup, DeletedContainer,
     DownloadedMod, ExtraPort, InstanceStatus, JavaCheck, JobRunResult, JoinInfo, LogsTail,
-    McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory, PlayerNote,
-    PlayerNotes, PlayersResult, PublicAddress, RconOutput, RuntimeProbe, SchedulerStatus,
-    ServerList, ServerOverview, ServerState, ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
+    McVersion, Metrics, ModInstall, ModSearchPage, ModSupport, ModTarget, ModpackHit,
+    ModpackZipInfo, ModsList, PlayerHistory, PlayerNote, PlayerNotes, PlayersResult, PublicAddress,
+    RconOutput, RenamedMod, RuntimeProbe, SchedulerStatus, ServerList, ServerOverview, ServerState,
+    ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
 };
 use mineui_core::settings::Mode;
 use mineui_core::{Core, Error, Hub, Settings};
@@ -59,15 +60,23 @@ pub async fn detect_runtimes(
 #[tauri::command]
 pub async fn java_check(hub: HubState<'_>, server_id: Option<String>) -> CmdResult<JavaCheck> {
     let core = core_for(&hub, server_id).await?;
-    let settings = core.settings().await;
     // Ungated probe: java_check is available in both modes and reads the
     // instance metadata only when present (§3.1).
     let instance = mineui_core::instance::probe(&core).await?;
-    mineui_core::java::check(
-        settings.simple.java_path.as_deref(),
-        instance.required_java_major,
-    )
-    .await
+    mineui_core::java::check_for(&core, instance.required_java_major).await
+}
+
+/// 2.13.0: download Temurin JRE `major` into the app-wide managed folder.
+/// `major` arrives as i64 so an out-of-range number reaches core's
+/// validation (`INVALID_INPUT`) instead of failing deserialization.
+#[tauri::command]
+pub async fn install_java(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    major: i64,
+) -> CmdResult<JavaCheck> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::javainstall::install(&core, major).await
 }
 
 /* ---------- §3.2 server state / lifecycle / status ---------- */
@@ -222,6 +231,52 @@ pub async fn unpack_mod_archive(
     .await
 }
 
+/// 2.13.0: `name.jar` ⇄ `name.jar.disabled`.
+#[tauri::command]
+pub async fn set_mod_enabled(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    filename: String,
+    target: ModTarget,
+    enabled: bool,
+) -> CmdResult<RenamedMod> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::mods::set_enabled(&core, &filename, target, enabled).await
+}
+
+/* ---------- §3.5a find mods on Modrinth (2.13.0) ---------- */
+
+#[tauri::command]
+pub async fn get_mod_support(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+) -> CmdResult<ModSupport> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modrinth::support(&core).await
+}
+
+#[tauri::command]
+pub async fn search_mods(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    query: String,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> CmdResult<ModSearchPage> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modrinth::search(&core, &query, offset, limit).await
+}
+
+#[tauri::command]
+pub async fn install_mod(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    project_id: String,
+) -> CmdResult<ModInstall> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modrinth::install(&core, &project_id).await
+}
+
 /* ---------- §3.6 instance (simple mode only; WRONG_MODE enforced in core) ---------- */
 
 #[tauri::command]
@@ -229,9 +284,15 @@ pub async fn list_mc_versions(
     hub: HubState<'_>,
     server_id: Option<String>,
     include_snapshots: Option<bool>,
+    server_type: Option<String>,
 ) -> CmdResult<Vec<McVersion>> {
     let core = core_for(&hub, server_id).await?;
-    mineui_core::mojang::list_versions(&core, include_snapshots.unwrap_or(false)).await
+    mineui_core::loader_versions::list_versions(
+        &core,
+        include_snapshots.unwrap_or(false),
+        server_type.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -521,6 +582,12 @@ pub async fn get_servers_overview(hub: HubState<'_>) -> CmdResult<Vec<ServerOver
 #[tauri::command]
 pub async fn get_app_info(hub: HubState<'_>) -> CmdResult<AppInfo> {
     Ok(hub.app_info())
+}
+
+/// 2.13.0, app-wide (§3.6): the Java major a Minecraft version needs.
+#[tauri::command]
+pub async fn required_java_major(hub: HubState<'_>, mc_version: String) -> CmdResult<Option<u32>> {
+    Ok(hub.required_java_major(&mc_version).await)
 }
 
 #[tauri::command]

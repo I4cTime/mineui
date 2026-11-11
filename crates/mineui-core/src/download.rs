@@ -28,6 +28,15 @@ pub struct DownloadRequest {
     pub max_bytes: Option<u64>,
     /// Expected SHA-1 (lowercase hex); mismatch → CHECKSUM_MISMATCH.
     pub expected_sha1: Option<String>,
+    /// Expected SHA-256 (hex); mismatch → CHECKSUM_MISMATCH (Java runtime
+    /// archives, §6.3a).
+    pub expected_sha256: Option<String>,
+    /// Expected SHA-512 (hex); mismatch → CHECKSUM_MISMATCH (Modrinth files,
+    /// §6.3b).
+    pub expected_sha512: Option<String>,
+    /// A client with its own redirect policy (the host-allowlisted Java
+    /// client, §6.3a). Takes precedence over `allow_private_hosts`.
+    pub client: Option<reqwest::Client>,
     /// When false (§6.3 rule 5) the download uses `core.http_public`, whose
     /// redirect policy re-validates every hop against private/loopback
     /// ranges. True only when the user enabled
@@ -116,7 +125,9 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
         .map_err(|e| Error::Io(format!("failed to create temp dir: {e}")))?;
     let temp_path = tmp_dir.join(format!("download-{}", req.download_id));
 
-    let client = if req.allow_private_hosts {
+    let client = if let Some(client) = &req.client {
+        client
+    } else if req.allow_private_hosts {
         &core.http
     } else {
         &core.http_public
@@ -145,6 +156,8 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
         .await
         .map_err(|e| Error::Io(format!("failed to create temp file: {e}")))?;
     let mut hasher = Sha1::new();
+    let mut hasher256 = req.expected_sha256.as_ref().map(|_| sha2::Sha256::new());
+    let mut hasher512 = req.expected_sha512.as_ref().map(|_| sha2::Sha512::new());
     let mut received: u64 = 0;
     let mut last_emit = Instant::now() - PROGRESS_THROTTLE;
 
@@ -161,6 +174,12 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
                     }
                 }
                 hasher.update(&chunk);
+                if let Some(h) = hasher256.as_mut() {
+                    h.update(&chunk);
+                }
+                if let Some(h) = hasher512.as_mut() {
+                    h.update(&chunk);
+                }
                 if let Err(e) = file.write_all(&chunk).await {
                     break Err(Error::Io(format!("failed writing download: {e}")));
                 }
@@ -193,6 +212,26 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(Error::ChecksumMismatch(format!(
                 "sha1 mismatch: expected {expected}, got {sha1_hex}"
+            )));
+        }
+    }
+    if let (Some(expected), Some(h)) = (&req.expected_sha256, hasher256) {
+        let got = hex::encode(h.finalize());
+        if !expected.eq_ignore_ascii_case(&got) {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(Error::ChecksumMismatch(format!(
+                "the download does not match its published sha256 checksum \
+                 (expected {expected}, got {got})"
+            )));
+        }
+    }
+    if let (Some(expected), Some(h)) = (&req.expected_sha512, hasher512) {
+        let got = hex::encode(h.finalize());
+        if !expected.eq_ignore_ascii_case(&got) {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(Error::ChecksumMismatch(format!(
+                "{} does not match its published sha512 checksum",
+                req.filename
             )));
         }
     }

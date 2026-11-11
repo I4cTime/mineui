@@ -19,14 +19,17 @@ pub mod hub;
 pub mod identity;
 pub mod instance;
 pub mod java;
+pub mod javainstall;
 pub mod joininfo;
 pub mod lifecycle;
+pub mod loader_versions;
 pub mod logs;
 pub mod machine;
 pub mod metrics;
 pub mod mod_archive;
 pub mod model;
 pub mod modpacks;
+pub mod modrinth;
 pub mod mods;
 pub mod mojang;
 pub mod notes;
@@ -62,6 +65,11 @@ pub struct Paths {
 /// Shared application core. One instance per app, wrapped in `Arc`.
 pub struct Core {
     pub paths: Paths,
+    /// The app-level data root the shell injected (`app_data_dir`): equal to
+    /// `paths.data_dir` for the `default` profile, the parent of
+    /// `servers/<id>/` for the others. App-wide state lives here, e.g.
+    /// MineUI-managed Java (§3.1, 2.13.0).
+    app_data_dir: PathBuf,
     pub http: reqwest::Client,
     /// Strict variant of `http` for user-supplied download URLs: its
     /// redirect policy blocks hops onto private/loopback hosts (§6.3).
@@ -70,10 +78,17 @@ pub struct Core {
     pub logs: logs::Manager,
     pub(crate) events: tokio::sync::broadcast::Sender<CoreEvent>,
     pub(crate) mojang_cache: tokio::sync::Mutex<Option<mojang::ManifestCache>>,
+    /// Each server type's Minecraft versions, cached 15 min (§3.6, 2.13.0).
+    pub(crate) loader_versions_cache: tokio::sync::Mutex<
+        std::collections::HashMap<model::ContainerLoader, loader_versions::TypeCache>,
+    >,
     pub(crate) last_advanced_phase: std::sync::Mutex<Option<model::ServerPhase>>,
     /// Loader/version of the attached container, cached per container id
     /// (§3.12 overview identity).
     pub(crate) container_kind: std::sync::Mutex<Option<identity::ContainerKind>>,
+    /// Modrinth's answer for the sha1s of the files in the mods/plugins
+    /// folder (§3.5a installed projects), cached for the same set of hashes.
+    pub(crate) modrinth_hashes: std::sync::Mutex<Option<modrinth::HashCache>>,
     /// Podman machine facts, cached 60 s (§3.2 `machine::facts`).
     pub(crate) machine_facts:
         tokio::sync::Mutex<Option<(std::time::Instant, machine::MachineFacts)>>,
@@ -91,7 +106,19 @@ impl Core {
     /// `<config_dir>/settings.json`. Must be called on a Tokio runtime.
     pub async fn init(config_dir: PathBuf, data_dir: PathBuf) -> Result<Arc<Core>> {
         let loaded = settings::load(&config_dir, &data_dir).await?;
-        Ok(Self::build(config_dir, data_dir, loaded))
+        let app_data_dir = data_dir.clone();
+        Ok(Self::build(config_dir, data_dir, app_data_dir, loaded))
+    }
+
+    /// `init` for a server profile whose dirs sit under the app roots
+    /// (§2.5): `app_data_dir` is the shell-injected data root.
+    pub async fn init_in_app(
+        config_dir: PathBuf,
+        data_dir: PathBuf,
+        app_data_dir: PathBuf,
+    ) -> Result<Arc<Core>> {
+        let loaded = settings::load(&config_dir, &data_dir).await?;
+        Ok(Self::build(config_dir, data_dir, app_data_dir, loaded))
     }
 
     /// Test/embedding constructor: skips disk I/O for settings.
@@ -100,10 +127,16 @@ impl Core {
         data_dir: PathBuf,
         settings: Settings,
     ) -> Arc<Core> {
-        Self::build(config_dir, data_dir, settings)
+        let app_data_dir = data_dir.clone();
+        Self::build(config_dir, data_dir, app_data_dir, settings)
     }
 
-    fn build(config_dir: PathBuf, data_dir: PathBuf, loaded: Settings) -> Arc<Core> {
+    fn build(
+        config_dir: PathBuf,
+        data_dir: PathBuf,
+        app_data_dir: PathBuf,
+        loaded: Settings,
+    ) -> Arc<Core> {
         let (events, _keepalive) = tokio::sync::broadcast::channel::<CoreEvent>(512);
         let logs = logs::Manager::new(events.clone());
         let supervisor = supervisor::Supervisor::new(events.clone(), logs.sink());
@@ -112,20 +145,28 @@ impl Core {
                 config_dir,
                 data_dir,
             },
+            app_data_dir,
             http: download::build_client(),
             http_public: download::build_public_client(),
             supervisor,
             logs,
             events,
             mojang_cache: tokio::sync::Mutex::new(None),
+            loader_versions_cache: tokio::sync::Mutex::new(std::collections::HashMap::new()),
             last_advanced_phase: std::sync::Mutex::new(None),
             container_kind: std::sync::Mutex::new(None),
+            modrinth_hashes: std::sync::Mutex::new(None),
             machine_facts: tokio::sync::Mutex::new(None),
             audit_lock: tokio::sync::Mutex::new(()),
             notes_lock: tokio::sync::Mutex::new(()),
             scheduler: scheduler::Engine::new(),
             settings: tokio::sync::RwLock::new(loaded),
         })
+    }
+
+    /// The app-level data root (see the field).
+    pub fn app_data_dir(&self) -> &std::path::Path {
+        &self.app_data_dir
     }
 
     /// Snapshot of the current settings.

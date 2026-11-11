@@ -156,3 +156,49 @@ html {
     transition-duration: var(--motion-slow);
   }
 }
+
+/* Status ring (app/components/StatusPulse.tsx): a soft ring breathes out
+   from the state dot. Running is calm, starting/stopping is quicker. Phosphor
+   never scales (theme contract), so there it only fades. Reduce-motion: no
+   ring at all, the plain dot stays. */
+@keyframes status-ring-grow {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+@keyframes status-ring-fade {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.status-ring {
+  position: absolute;
+  inset: 0;
+  animation: status-ring-grow 2.4s ease-out infinite;
+}
+
+.status-ring[data-rhythm="busy"] {
+  animation-duration: 1s;
+}
+
+[data-theme="phosphor"] .status-ring {
+  animation-name: status-ring-fade;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-ring {
+    display: none;
+    animation: none;
+  }
+}

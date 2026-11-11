@@ -247,23 +247,6 @@ pub fn image_tag_for_java(major: Option<u32>) -> &'static str {
     }
 }
 
-/// Java major the version needs, per Mojang's version detail; `None` when
-/// it cannot be resolved (offline, or a version Mojang does not list).
-async fn required_java_major(core: &crate::Core, version: &str) -> Option<u32> {
-    let id = if version == LATEST {
-        crate::mojang::list_versions(core, false)
-            .await
-            .ok()?
-            .into_iter()
-            .find(|v| v.latest)?
-            .id
-    } else {
-        version.to_string()
-    };
-    let detail = crate::mojang::version_detail(core, &id).await.ok()?;
-    detail.java_version.map(|j| j.major_version)
-}
-
 /// The env file body (§3.13 step 7). Every value is either a constant or
 /// validated to a charset without newlines.
 pub fn env_file_body(plan: &Plan, memory_mb: u32, rcon_password: &str) -> String {
@@ -400,7 +383,7 @@ async fn create_inner(core: &crate::Core, args: &CreateContainerArgs) -> Result<
     ensure_port_free(game_bind, args.game_port)?;
     ensure_port_free(Ipv4Addr::LOCALHOST, args.rcon_port)?;
 
-    let java_major = required_java_major(core, &plan.version).await;
+    let java_major = crate::mojang::required_java_major(core, &plan.version).await;
     if zip.is_some() && matches!(java_major, Some(0..=8)) {
         // The java8 image carries no CurseForge API key (image docs), and
         // MineUI does not take one.

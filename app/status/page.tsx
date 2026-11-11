@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import Rolling from "@/app/components/Rolling";
+import Term from "@/app/components/Term";
+
+import AdvancedOnly from "@/app/components/AdvancedOnly";
+
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import {
   Activity,
@@ -86,12 +91,15 @@ const speedTone = (tps: number | null): RingTone =>
 function MetricRing({
   value,
   label,
+  display,
   title,
   tone,
   trend,
 }: {
   value: number;
   label: string;
+  /** What to draw in the middle instead of the plain label (rolling digits). */
+  display?: ReactNode;
   /** Full caption under the ring. */
   title: string;
   tone: RingTone;
@@ -108,7 +116,7 @@ function MetricRing({
           </ProgressCircle.Track>
         </ProgressCircle>
         <div className="absolute flex flex-col items-center justify-center text-center">
-          <span className={`font-pixel-num text-lg ${TONE_TEXT[tone]}`}>{label}</span>
+          <span className={`font-pixel-num text-lg ${TONE_TEXT[tone]}`}>{display ?? label}</span>
         </div>
       </div>
       <span className="text-xs text-muted">{title}</span>
@@ -173,7 +181,7 @@ const AUDIT_PHRASES: Record<string, string> = {
 
 const auditPhrase = (action: string) => AUDIT_PHRASES[action] ?? action;
 
-export default function StatusPage() {
+function StatusPageInner() {
   const { containerMotion, cardMotion } = usePageMotion();
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -263,7 +271,13 @@ export default function StatusPage() {
   const tpsDisplay = useMemo(() => {
     if (!metrics?.tps) return metrics && serverState?.phase === "running" ? NOT_REPORTED : "-";
     if (!Number.isFinite(metrics.tps.one)) return metrics.tps.raw;
-    return `${metrics.tps.one.toFixed(1)} / ${metrics.tps.five.toFixed(1)} / ${metrics.tps.fifteen.toFixed(1)}`;
+    return (
+      <>
+        <Rolling value={metrics.tps.one} decimals={1} /> /{" "}
+        <Rolling value={metrics.tps.five} decimals={1} /> /{" "}
+        <Rolling value={metrics.tps.fifteen} decimals={1} />
+      </>
+    );
   }, [metrics, serverState]);
 
   const dimensionsDisplay = useMemo(() => {
@@ -374,6 +388,11 @@ export default function StatusPage() {
               <MetricRing
                 value={Math.min((metrics?.tps?.one ?? 0) * 5, 100)}
                 label={metrics?.tps?.one != null ? metrics.tps.one.toFixed(1) : "-"}
+                display={
+                  metrics?.tps?.one != null && Number.isFinite(metrics.tps.one) ? (
+                    <Rolling value={metrics.tps.one} decimals={1} />
+                  ) : undefined
+                }
                 title="Game speed (TPS)"
                 tone={ringsTone.tps}
                 trend={{ data: seriesOf(history, "tps"), domain: [0, 20] }}
@@ -412,12 +431,14 @@ export default function StatusPage() {
                 <div className="flex justify-between">
                   <span>Players:</span>
                   <span className="font-pixel-num">
-                    {status?.players.online ?? 0}/{status?.players.max ?? "?"}
+                    <Rolling value={status?.players.online ?? 0} />/{status?.players.max ?? "?"}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Ping:</span>
-                  <span className="font-pixel-num">{status?.pingMs != null ? `${status.pingMs}ms` : "-"}</span>
+                  <span className="font-pixel-num">
+                    {status?.pingMs != null ? <Rolling value={status.pingMs} suffix="ms" /> : "-"}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>MOTD:</span>
@@ -446,7 +467,9 @@ export default function StatusPage() {
                 </div>
                 <div className="grid gap-0.5">
                   <div className="flex justify-between gap-3">
-                    <span>Game speed (TPS):</span>
+                    <span>
+                      Game speed (<Term term="TPS">TPS</Term>):
+                    </span>
                     <span className={metrics?.tps ? "font-pixel-num text-xs" : "text-xs"}>
                       {tpsDisplay}
                     </span>
@@ -458,7 +481,9 @@ export default function StatusPage() {
                 </div>
                 <div className="grid gap-0.5">
                   <div className="flex justify-between gap-3">
-                    <span>Time per tick (MSPT):</span>
+                    <span>
+                      Time per tick (<Term term="MSPT">MSPT</Term>):
+                    </span>
                     <span className="text-xs">
                       {metrics?.mspt
                         ? `${formatMspt(metrics.mspt.one)} / ${formatMspt(metrics.mspt.five)} / ${formatMspt(metrics.mspt.fifteen)}`
@@ -553,7 +578,7 @@ export default function StatusPage() {
                 ) : (
                   <span className="text-xs">
                     {isSimple
-                      ? "Container network stats are available in Advanced mode."
+                      ? "Network stats are only shown for servers In a container."
                       : "-"}
                   </span>
                 )}
@@ -583,7 +608,7 @@ export default function StatusPage() {
                 ) : (
                   <span className="text-xs">
                     {isSimple
-                      ? "Container block-IO stats are available in Advanced mode."
+                      ? "Disk stats are only shown for servers In a container."
                       : "-"}
                   </span>
                 )}
@@ -659,8 +684,9 @@ export default function StatusPage() {
                       items={audit}
                       renderEmptyState={() => (
                         <div className="p-6 text-center text-sm text-muted">
-                          Nothing recorded yet. Server control, player actions,
-                          RCON commands, backups and config edits show up here.
+                          Nothing recorded yet. Server control, player actions,{" "}
+                          <Term term="RCON">RCON</Term> commands, backups and config edits
+                          show up here.
                         </div>
                       )}
                     >
@@ -694,5 +720,16 @@ export default function StatusPage() {
         </motion.section>
       </motion.main>
     </div>
+  );
+}
+
+export default function StatusPage() {
+  return (
+    <AdvancedOnly
+      name="Status"
+      what="Status shows how well the server is running: speed, memory and what happened lately."
+    >
+      <StatusPageInner />
+    </AdvancedOnly>
   );
 }

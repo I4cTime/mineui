@@ -36,22 +36,24 @@ import { applyTheme, useTheme } from "@/app/hooks/useTheme";
 import { applyColorMode, useColorMode } from "@/app/hooks/useColorMode";
 import { leaveOr } from "@/app/lib/leaveGuard";
 import { useMediaQuery } from "@/app/hooks/useMediaQuery";
+import ViewLevelSwitch from "./ViewLevelSwitch";
+import { useViewLevel } from "./ViewLevelProvider";
 
 // Priority order is load-bearing (docs/theme-contract.md §9.2): the first
 // four are the T3 standalone set and the T3 "More" overflow always holds
 // exactly items[4:]. Do not re-rank.
 // `description` is the tooltip body at icon-only tiers (§9.6): what the page
 // is for, not a repeat of the label.
-const navItems = [
-  { href: "/", label: "Dashboard", icon: Server, description: "Start, stop and watch the live log" },
-  { href: "/status", label: "Status", icon: Gauge, description: "TPS, resources and the activity log" },
-  { href: "/mods", label: "Mods", icon: Boxes, description: "Installed mods and plugins" },
-  { href: "/players", label: "Players", icon: Users, description: "Who's on, history and notes" },
-  { href: "/rcon", label: "Console", icon: Shield, description: "Send commands to the running server" },
-  { href: "/config", label: "Config", icon: ScrollText, description: "Edit server.properties and configs" },
-  { href: "/backups", label: "Backups", icon: Archive, description: "World backups and restore" },
-  { href: "/settings", label: "Settings", icon: Settings, description: "This server: name, schedule, backups, advanced" },
-];
+const allNavItems = [
+  { href: "/", label: "Dashboard", icon: Server, description: "Start, stop and see who is online" },
+  { href: "/status", label: "Status", icon: Gauge, description: "How well the server runs, and what happened", advancedOnly: true },
+  { href: "/mods", label: "Mods", icon: Boxes, description: "Add and remove mods and plugins" },
+  { href: "/players", label: "Players", icon: Users, description: "Who is on, who has played and notes" },
+  { href: "/rcon", label: "Console", icon: Shield, description: "Send commands to the running server", advancedOnly: true },
+  { href: "/config", label: "Config", icon: ScrollText, description: "Edit the server's settings files", advancedOnly: true },
+  { href: "/backups", label: "Backups", icon: Archive, description: "Save copies of your world and go back to them" },
+  { href: "/settings", label: "Settings", icon: Settings, description: "This server: name, backups and more" },
+] as { href: string; label: string; icon: typeof Server; description: string; advancedOnly?: boolean }[];
 
 /** Tooltip body for a nav item: label + what the page is for. */
 function NavTooltip({ label, description }: { label: string; description: string }) {
@@ -199,6 +201,11 @@ export default function Navbar() {
     return pathname.startsWith(href);
   };
 
+  // Simple view leaves out the expert pages (Status, Console, Config).
+  const { level } = useViewLevel();
+  const navItems = allNavItems.filter(
+    (item) => level === "advanced" || !item.advancedOnly,
+  );
   const priorityItems = navItems.slice(0, PRIORITY_COUNT);
   const overflowItems = navItems.slice(PRIORITY_COUNT);
   // T4 (640-699px) folds ALL eight items into "More"; T3 (700-899px) folds
@@ -396,7 +403,7 @@ export default function Navbar() {
               </Dropdown.Popover>
               </Dropdown>
               <Tooltip.Content placement="bottom">
-                <NavTooltip label="More" description="RCON, Config, Backups, Settings" />
+                <NavTooltip label="More" description="Backups, Settings and more" />
               </Tooltip.Content>
             </Tooltip>
             {moreHasActive && (
@@ -414,9 +421,13 @@ export default function Navbar() {
 
         {/* Controls zone - fixed, shrink-0 (§9.1). */}
         <div className="flex shrink-0 items-center gap-1">
-          {/* This server: which one the pages show (§9.1). How it is run
-              (Simple / Advanced) is changed in Server Settings only - a
-              one-click header toggle made a server look deleted. */}
+          {/* View level: how much MineUI shows. A view setting only - it
+              never touches a server (the 2.9.0 header toggle did, and made
+              a server look deleted). How a server is run is changed in
+              Server Settings only. */}
+          <ViewLevelSwitch withTooltip />
+
+          {/* This server: which one the pages show (§9.1). */}
           <ServerSwitcher />
 
           {/* The app: sound, app-wide settings, Ko-fi. */}

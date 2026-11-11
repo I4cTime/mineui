@@ -61,12 +61,12 @@ type ErrorCode =
   | "EULA_NOT_ACCEPTED"        // simple-mode start/create without EULA acceptance
   | "INSTANCE_NOT_FOUND"       // simple-mode instance dir missing/uninitialized
   | "INSTANCE_EXISTS"          // create_instance over an existing instance
-  | "DOWNLOAD_FAILED"          // network failure fetching manifest/jar/mod
-  | "CHECKSUM_MISMATCH"        // downloaded jar failed sha1 verification
+  | "DOWNLOAD_FAILED"          // network failure fetching manifest/jar/mod/Java; unsafe Java archive (§6.3a); Modrinth unreachable or a file off its hosts (§6.3b)
+  | "CHECKSUM_MISMATCH"        // downloaded jar failed sha1 verification, Java archive sha256, Modrinth file sha512 (2.13.0)
   | "SERVER_UTILS_UNAVAILABLE" // serverUtilsUrl set but unreachable/non-OK
   | "PATH_NOT_ALLOWED"         // config-editor path rejected by validation (§6)
-  | "FILE_TOO_LARGE"           // config write > 1.5 MB, upload > 256 MB
-  | "WRONG_MODE"               // command not available in active mode (§5)
+  | "FILE_TOO_LARGE"           // config write > 1.5 MB, upload > 256 MB, Java archive > 300 MB
+  | "WRONG_MODE"               // command not available in active mode (§5); Find mods on a server that cannot load mods or plugins (§3.5a)
   | "INVALID_INPUT"            // failed argument validation
   | "SETTINGS_INVALID"         // set_settings payload failed validation
   | "SERVER_NOT_FOUND"         // serverId names no server profile (§2.5, §3.0)
@@ -393,6 +393,7 @@ the current target, §7); the null fallback exists for robustness, not for use.
 | `set_settings` | `{ settings: Settings }` | `Settings` (normalized) | both | `settings::save` | POST /api/settings |
 | `detect_runtimes` | - | `RuntimeProbe` | both | `runtime::detect` | - (new) |
 | `java_check` | - | `JavaCheck` | both | `java::check` | - (new) |
+| `install_java` (2.13.0) | `{ major: number }` | `JavaCheck` | both (only servers on this computer use it) | `javainstall::install` | - (new) |
 
 Notes:
 
@@ -432,10 +433,38 @@ Notes:
   Windows/macOS, "start the Docker service" on Linux; Podman → "run
   `podman machine start`" on Windows/macOS, "check the Podman service/socket" on
   Linux (no machine there).
-- `java_check` resolves `simple.javaPath` override → `JAVA_HOME/bin/java` → `java` on
-  PATH; parses `java -version` stderr. `requiredMajor` comes from the current instance
-  metadata (`mineui-instance.json`, §3.6) when present, else `null` and
-  `compatible: null`.
+- `java_check` resolves, in order (2.13.0): the `simple.javaPath` override (used as
+  is, never substituted); then **MineUI-managed Java** (below) of a compatible
+  major - the exact `requiredMajor` first, else the smallest managed major above it
+  (with `requiredMajor` unknown, the highest managed major); then `JAVA_HOME/bin/java`,
+  every `java` on PATH and the well-known install roots (`/usr/lib/jvm`, sdkman,
+  `/Library/Java/JavaVirtualMachines`, `Program Files\Eclipse Adoptium`, ...), the
+  best of those winning (a compatible one, else the highest major). It parses
+  `java -version` stderr. `requiredMajor` comes from the current instance metadata
+  (`mineui-instance.json`, §3.6) when present, else `null` and `compatible: null`.
+  Simple-mode start, `create_instance` and `change_instance_version` use the same
+  resolution, so a Java MineUI installed is the one they run. `managed` is true when
+  the Java found lies inside the managed Java folder.
+- **MineUI-managed Java (2.13.0)** lives at `<appDataDir>/java/temurin-<major>-jre/`,
+  where `<appDataDir>` is the data root the shell injects (`app_data_dir`, the
+  `default` profile's data dir) - never a `servers/<id>/` folder: one download serves
+  every server profile. Inside it is the archive's tree as extracted (e.g.
+  `jdk-21.0.13+9-jre/bin/java`); the binary is located, not assumed (§6.3a rule 7).
+- `install_java` (2.13.0) downloads the Eclipse Temurin JRE of `major` from Adoptium
+  into the managed folder (§6.3a), then returns this server's `java_check` result.
+  When the server has no instance yet, that check runs with `requiredMajor = major`
+  so `compatible` says whether the install fixed it. If a working managed Java of
+  `major` is already there nothing is downloaded. It is a host-side install for
+  servers that run on this computer (Simple mode); it works the same whatever the
+  targeted profile's mode, but a container server never uses it (its image brings
+  its own Java). Progress: `mineui://download-progress` with `kind: "java"`, carrying
+  the requesting server's id (§4.3). One install per major at a time, app-wide: a
+  second request for the same major (from any server) waits for the first and then
+  reuses what it installed, or tries again if it failed. `major` outside `8..=30` →
+  `INVALID_INPUT`; no Temurin JRE for this OS/architecture, a network failure, an
+  unsafe archive or a binary that does not report `major` → `DOWNLOAD_FAILED`; a
+  sha256 mismatch → `CHECKSUM_MISMATCH`; an archive over 300 MB → `FILE_TOO_LARGE`.
+  Every message is plain enough to show as is. Audited as `java.install` (§3.11).
 
 ```ts
 type RuntimeProbe = {
@@ -453,6 +482,8 @@ type JavaCheck = {
   majorVersion: number | null;  // e.g. 21
   requiredMajor: number | null; // from instance metadata, if an instance exists
   compatible: boolean | null;   // null when requiredMajor unknown
+  /** 2.13.0 - the Java found is one MineUI downloaded (install_java). */
+  managed: boolean;
 };
 ```
 
@@ -671,6 +702,10 @@ Semantics:
 | `download_mod` | `{ url: string; filename?: string; target: ModTarget }` | `{ filename: string; downloadId: string }` | both | `mods::download` | POST /api/mods/download |
 | `delete_mod` | `{ filename: string; target: ModTarget }` | `void` | both | `mods::delete` | POST /api/mods/delete |
 | `unpack_mod_archive` | `{ sourcePath?: string; url?: string; filename?: string; target: ModTarget }` | `UnpackedMods` | both | `mod_archive::unpack` | - (new, 2.7.0) |
+| `set_mod_enabled` (2.13.0) | `{ filename: string; target: ModTarget; enabled: boolean }` | `{ filename: string }` | both | `mods::set_enabled` | - (new) |
+| `get_mod_support` (2.13.0) | - | `ModSupport` | both | `modrinth::support` | - (new, §3.5a) |
+| `search_mods` (2.13.0) | `{ query: string; offset?: number; limit?: number }` | `ModSearchPage` | both (a server that can load mods or plugins, §3.5a) | `modrinth::search` | - (new, §3.5a) |
+| `install_mod` (2.13.0) | `{ projectId: string }` | `ModInstall` | both (a server that can load mods or plugins, §3.5a) | `modrinth::install` | - (new, §3.5a) |
 
 ```ts
 type ModTarget = "mods" | "plugins";
@@ -734,6 +769,8 @@ Semantics:
   256 MB (`FILE_TOO_LARGE`).
 - `delete_mod`: filename per §6.2; advanced →
   `runtime exec <name> rm -f -- <root>/<filename>`; simple → `std::fs::remove_file`.
+  A disabled mod (`<name>.jar.disabled`, as `list_mods` reports it and
+  `set_mod_enabled` makes it) can be deleted as it is (2.13.0, §6.2 rule 3a).
 - `unpack_mod_archive` (2.7.0): installs the `.jar` files **inside** a `.zip` - a
   folder of mods zipped up, or a "server pack". `upload_mod`/`download_mod` place a
   `.zip` as one file, which is right for a mod shipped as a zip and useless for a
@@ -750,16 +787,217 @@ Semantics:
   those list mods to download instead of containing them, and belong in §3.13.
   Config files and anything else in the archive are not installed. Audited as
   `mod.unpack` (target = archive name, detail = `<target>: N installed, M skipped`).
+- `set_mod_enabled` (2.13.0): turns a mod or plugin off and on by renaming it, the
+  convention every loader follows (a file ending `.disabled` is not loaded).
+  `enabled: false` renames `<name>.jar` to `<name>.jar.disabled`; `enabled: true`
+  renames `<name>.jar.disabled` back to `<name>.jar`. `filename` is the name
+  `list_mods` reported (which lists disabled files under their full name, so
+  `ModEntry.filename` ends `.jar.disabled` for a disabled mod). Validation
+  (`INVALID_INPUT`): bare filename as `delete_mod` (§6.2 rules 1, 3 and 4 applied to
+  `<name>.jar`); with `enabled: false` it must end `.jar`, with `enabled: true`
+  `.jar.disabled` (case-insensitive; `.zip` mods cannot be switched). A missing
+  source file → `INVALID_INPUT` (`<filename> does not exist`); an existing file (or
+  link, or folder) at the new name → `INVALID_INPUT`, nothing is overwritten.
+  Advanced → one constant script through `run_in_container` (exec when running,
+  the stopped-container helper otherwise), the two paths passed as positional
+  arguments, never written into the script:
+  `sh -c '[ -f "$1" ] || exit 3; if [ -e "$2" ] || [ -L "$2" ]; then exit 4; fi; mv -- "$1" "$2"' sh <root>/<from> <root>/<to>`
+  (exit 3 → does not exist, 4 → already exists, any other failure → `IO`); simple →
+  the same checks then `std::fs::rename`. Returns the new filename. Works whatever
+  the server type (it is not gated on §3.5a). Audited as `mod.disable` /
+  `mod.enable` (target = the filename before, detail = `<target> → <new filename>`).
+
+### 3.5a Find mods on Modrinth (2.13.0)
+
+Search Modrinth for mods or plugins this server can load, and install one with its
+required dependencies. Every request goes to fixed Modrinth hosts and every file is
+checked against the sha512 Modrinth publishes (§6.3b). Scope is deliberately small:
+no update checks, no datapacks, no CurseForge / Hangar / Spiget, no `.mrpack` files.
+
+```ts
+type ModSupport = {
+  /** False when this server cannot load mods or plugins (see `reason`). */
+  supported: boolean;
+  /** Where installs go: "mods" (Fabric, Quilt, Forge, NeoForge) or
+   *  "plugins" (Paper, Purpur); null when not supported. */
+  target: ModTarget | null;
+  /** The server type MineUI read, lowercase ("fabric", "paper", "vanilla",
+   *  "modrinth", ...); null when it could not tell. */
+  serverType: string | null;
+  /** The Minecraft version results must have a build for; null when unknown. */
+  mcVersion: string | null;
+  /** Modrinth loader tags a version must carry, preferred first; empty when
+   *  not supported. */
+  loaders: string[];
+  /** Why not, in a plain sentence; null when supported. */
+  reason: string | null;
+};
+
+/** Whether a mod's players need it too, as Modrinth reports it. */
+type ModClientSide = "required" | "optional" | "unsupported" | "unknown";
+
+type ModSearchHit = {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** "required": every player must install the mod too. */
+  clientSide: ModClientSide;
+  /** Already in this server's folder and switched on (a `.jar.disabled`
+   *  copy does not count). */
+  installed: boolean;
+};
+
+type ModSearchPage = {
+  hits: ModSearchHit[];
+  /** Echo of the request after clamping; the next page starts at
+   *  offset + limit. */
+  offset: number;
+  limit: number;
+  /** Modrinth's count of matches (client-only projects it still reports are
+   *  dropped from `hits`, so a page can be shorter than `limit`). */
+  totalHits: number;
+};
+
+type InstalledModFile = {
+  filename: string;
+  projectId: string;
+  slug: string;
+  title: string;
+  versionId: string;
+  versionNumber: string;
+  /** True when installed because another file needs it. */
+  dependency: boolean;
+  /** The id its download-progress events carried. */
+  downloadId: string;
+};
+
+type ModInstall = {
+  target: ModTarget;
+  /** The project asked for first, then its dependencies. */
+  installed: InstalledModFile[];
+  /** Titles of required dependencies that were already installed. */
+  alreadyInstalled: string[];
+};
+```
+
+**What the server can load.** Read from the server's own state, never from the
+caller: a server on this computer (simple) runs the vanilla jar; a container's type
+and version are its `TYPE` and `VERSION` env (the itzg convention, the same read as
+the §3.12 overview identity; `VERSION` empty or `LATEST` = unknown).
+
+| `TYPE` | `target` | `loaders` (preferred first) |
+| --- | --- | --- |
+| `FABRIC` | `mods` | `fabric` |
+| `QUILT` | `mods` | `quilt`, `fabric` |
+| `FORGE` | `mods` | `forge` |
+| `NEOFORGE` | `mods` | `neoforge` |
+| `PAPER` | `plugins` | `paper`, `spigot`, `bukkit` |
+| `PURPUR` | `plugins` | `purpur`, `paper`, `spigot`, `bukkit` |
+
+Anything else is not supported, with a `reason`: a simple server (vanilla on this
+computer), `VANILLA`, a modpack container (`MODRINTH`, `AUTO_CURSEFORGE`: the pack
+decides its mods and MineUI cannot tell its loader), any other or missing `TYPE`, or
+a supported type whose Minecraft version is unknown.
+
+- `get_mod_support`: the table above for the targeted server, no network. Not
+  supported is a result, not an error. Rejects only when the server's state cannot
+  be read: `RUNTIME_NOT_FOUND`, `RUNTIME_UNAVAILABLE`, `CONTAINER_NOT_FOUND` (the
+  configured container does not exist).
+- `search_mods`: one GET of `https://api.modrinth.com/v2/search` with
+  `query` (trimmed, ≤ 100 chars, else `INVALID_INPUT`), `offset` (default 0, clamped to
+  0-10 000), `limit` (default 20, clamped to 1-50), `index` = `downloads` for an empty
+  query else `relevance`, and facets
+  `[["project_type:mod"|"project_type:plugin"], [<"categories:<loader>" for each loader>], ["versions:<mcVersion>"], ["server_side:required","server_side:optional"]]`
+  (`project_type:mod` for target `mods`, `project_type:plugin` for `plugins`; inner
+  arrays are OR, outer AND). Modrinth's `server_side` facet still lets through a few
+  projects whose summary `server_side` is `unsupported`; those hits are dropped. `installed`
+  is true when the hit's project id is among the projects of the files already in the
+  target folder (below); when that lookup fails, every `installed` is false and the
+  search still answers. Not supported → `WRONG_MODE` (message = `reason`); network,
+  non-2xx or an unreadable answer → `DOWNLOAD_FAILED`. Read-only, not audited.
+- **Installed projects** (used by `search_mods` and `install_mod`): the sha1 of
+  every file in the target folder (advanced: the constant script
+  `for f in <root>/*; do [ -f "$f" ] || continue; sha1sum "$f"; done` through
+  `run_in_container`; simple: hashed host-side), sent in one
+  `POST https://api.modrinth.com/v2/version_files` `{ "hashes": [...], "algorithm": "sha1" }`;
+  (at most 1000 hashes; files past that are only matched by name), and
+  the answer maps each known hash to its version and so its `project_id`. A file
+  Modrinth does not know (an upload, a jar from elsewhere) is simply not a project.
+  A switched-off file (name ending `.jar.disabled`, any case, §3.5 `set_mod_enabled`)
+  is not loaded by the server, so it does not count: it is not looked up, and its
+  project is not installed for `installed`, step 3 or step 4. Its name still counts
+  for the name checks, but no planned file (always a `.jar`) can equal it, so a fresh
+  `x.jar` is placed beside an existing `x.jar.disabled` and never replaces it.
+  The answer is cached on the server's core for the same set of hashes.
+- `install_mod`: `projectId` is a Modrinth project id or slug,
+  `^[A-Za-z0-9_-]{1,64}$` (`INVALID_INPUT`). Steps:
+  1. Not supported → `WRONG_MODE`.
+  2. Version choice for a project: `GET /v2/project/<id>/version` with
+     `loaders=<JSON array of loaders>`, `game_versions=["<mcVersion>"]`,
+     `include_changelog=false`. Of the versions whose `status` is `listed` (or
+     absent), whose `game_versions` contain `mcVersion`, whose `loaders` share a tag
+     with `loaders` and whose primary file (the `primary: true` one, else the first)
+     is a `.jar`: the best by version type (`release` over `beta` over `alpha`),
+     then by loader (earlier in `loaders` first), then the newest `date_published`.
+     None → `INVALID_INPUT` naming the project, the Minecraft version and the
+     server type. A project Modrinth does not know (404) → `INVALID_INPUT`.
+  3. Dependencies, breadth first from the chosen version: only
+     `dependency_type: "required"` (`optional`, `embedded`, `incompatible` are not
+     followed). A dependency naming a `version_id` uses exactly that version
+     (`GET /v2/version/<id>`); it must share a loader tag with `loaders` (its game
+     versions are the author's call and are not checked). Otherwise its
+     `project_id` goes through step 2. A dependency with neither (only a
+     `file_name`) cannot be resolved. A project already planned is not visited
+     again (cycles end there); a dependency whose project is already installed
+     (switched on; a `.jar.disabled` copy does not count), or whose chosen file name
+     is already in the folder, is skipped and reported in `alreadyInstalled`. A required dependency that cannot be resolved fails the
+     whole install with `INVALID_INPUT` naming it and the mod that needs it. More
+     than 50 files in total → `INVALID_INPUT`.
+  4. The project asked for is refused when it is already installed (a switched-on
+     file of that project is in the folder) or its file name is already taken
+     (`INVALID_INPUT`): MineUI never overwrites a file here.
+  5. Each planned file is downloaded host-side under §6.3b (progress events with
+     `kind: "mod"`, one `downloadId` per file), all of them before any is placed.
+  6. Then all are placed like `unpack_mod_archive` (advanced: one
+     `runtime cp <staging>/. <name>:<root>`; simple: file copies). If placing fails,
+     the files this install placed are removed again (advanced: `rm -f -- <paths>`
+     through `run_in_container`); nothing that was in the folder before is touched.
+  Any failure leaves nothing of this install behind (temp files, staging folder,
+  placed files) and its message names the mod it concerns. Errors: `WRONG_MODE`,
+  `INVALID_INPUT`, `DOWNLOAD_FAILED` (network, non-2xx, unreadable answer, a file
+  link or redirect off the Modrinth hosts, a file without a sha512),
+  `CHECKSUM_MISMATCH`, `FILE_TOO_LARGE` (over 256 MB), `IO` and the runtime errors
+  of `list_mods` while placing. The mod only loads after a restart; the server is
+  not restarted. Audited as `mod.install`, one entry per placed file (target = the
+  filename, detail = `<target>: <slug> <versionNumber>`, plus
+  `, needed by <slug>` for a dependency), or one failed entry (target = `projectId`)
+  when the install fails.
 
 ### 3.6 Simple-mode instance management (`WRONG_MODE` outside simple, except `list_mc_versions`)
 
 | Command | Args | Returns | Mode | Core fn | v1 route |
 | --- | --- | --- | --- | --- | --- |
-| `list_mc_versions` | `{ includeSnapshots?: boolean }` | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `mojang::list_versions` | - (new) |
+| `list_mc_versions` | `{ includeSnapshots?: boolean; serverType?: ContainerLoader }` (`serverType` 2.13.0) | `McVersion[]` | both (2.6.0: container creation, §3.13, picks from it too) | `loader_versions::list_versions` → `mojang::list_versions` | - (new) |
 | `create_instance` | `CreateInstanceArgs` | `InstanceStatus` | simple | `instance::create` | - (new) |
 | `delete_instance` | `{ confirm: true }` | `void` | simple | `instance::delete` | - (new) |
 | `instance_status` | - | `InstanceStatus` | simple | `instance::status` | - (new) |
 | `change_instance_version` | `{ mcVersion: string; allowDowngrade?: boolean }` | `ChangedInstanceVersion` (2.10.0) | simple | `instance::change_version` | - (new) |
+| `required_java_major` (2.13.0) | `{ mcVersion: string }` | `number \| null` | both, app-wide (no `serverId`) | `Hub::required_java_major` → `mojang::required_java_major` | - (new) |
+
+`required_java_major` (2.13.0) is app-wide: like §3.12 and §3.15 it takes **no**
+`serverId` (an exception to §3.0) and uses the active profile's Mojang manifest cache.
+It answers which Java major a Minecraft version needs before anything is created, so
+the UI can offer `install_java` (§3.1) up front. `mcVersion` is a Mojang version id,
+or `"LATEST"` (any case, or empty), which resolves to the manifest's latest release
+first. The answer is `javaVersion.majorVersion` from that version's detail JSON
+(`mojang::version_detail`, same cache and client as `create_instance`). It never
+rejects: offline with no cached manifest, an unknown version, or a detail without
+`javaVersion` (very old versions) all resolve to `null`. Not audited.
+`create_container` (§3.13) picks its image tag with the same function.
 
 ```ts
 type McVersion = {
@@ -809,6 +1047,44 @@ Semantics:
   `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`; filter to
   `release` unless `includeSnapshots`; cache in memory for 15 minutes; network failure
   with warm cache → serve cache, otherwise `DOWNLOAD_FAILED`.
+- `list_mc_versions` with `serverType` (2.13.0): the versions a server of that type
+  can really be created with (§3.13), so the UI never offers one the itzg image
+  cannot install. `serverType` is a `ContainerLoader` wire name (§3.13); any other
+  string → `INVALID_INPUT`. Absent or `"vanilla"`: the plain list above, unchanged.
+  Otherwise the result is that same list (same `McVersion` shape, same order, newest
+  first, same `includeSnapshots` meaning, `latest` still marking Mojang's latest
+  release / snapshot) restricted to the ids the type publishes builds for. The type's
+  own list comes from one GET of a fixed URL (§6.3c):
+
+  | `serverType` | URL | Minecraft versions it has builds for |
+  | --- | --- | --- |
+  | `paper` | `https://fill.papermc.io/v3/projects/paper` | every string in the arrays of the `versions` object (family → versions) |
+  | `purpur` | `https://api.purpurmc.org/v2/purpur` | the `versions` array |
+  | `fabric` | `https://meta.fabricmc.net/v2/versions/game` | `version` of every entry |
+  | `quilt` | `https://meta.quiltmc.org/v3/versions/game` | `version` of every entry |
+  | `forge` | `https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json` | the keys of `promos` without their `-latest` / `-recommended` suffix |
+  | `neoforge` | `https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge` | derived from each entry of `versions` (below), plus `1.20.1` |
+
+  NeoForge versions name their Minecraft version (NeoForge's versioning docs, and the
+  same rule as the image's `mc-image-helper install-neoforge`): three numbers
+  `A.B.n` (before 26) → `1.A.B`, or `1.A` when `B` is `0` (`21.1.209` → `1.21.1`,
+  `21.0.167` → `1.21`); four numbers `Y.A.B.n` (26 and later) → `Y.A.B`, or `Y.A`
+  when `B` is `0` (`26.1.2.5` → `26.1.2`, `26.3.0.102` → `26.3`). Only entries with
+  no suffix count: the image installs the newest such build by default
+  (`NEOFORGE_VERSION=latest`), and it skips `-beta` and `-alpha…` builds, so a line
+  with only betas (today `26.1` and `26.1.1`) cannot be created. Entries of any
+  other shape are skipped. `1.20.1` is added because the image installs NeoForge
+  for 1.20.1 from NeoForge's older `net.neoforged:forge` artifact, which this list
+  does not include.
+
+  Each type's list is cached in memory for 15 minutes, per profile like the
+  manifest; when a refresh fails, a cached list of any age is used. The filter must
+  never make creation impossible: when the type's list cannot be fetched or read
+  (network, non-2xx, a body over the size cap, an unreadable or empty answer) and
+  nothing is cached, or when the filter would leave nothing, the call returns the
+  unfiltered list and logs one line (`mineui: … versions …`) to stderr. Only the
+  Mojang manifest's own failure is an error (`DOWNLOAD_FAILED`, as above). Not
+  audited.
 - `create_instance` sequence (each failure uses the listed code, partial dirs cleaned up
   best-effort):
   1. `acceptEula !== true` → `EULA_NOT_ACCEPTED`.
@@ -1107,13 +1383,19 @@ type AuditEntry = {
   token, detail = full command), `player.<verb>` for `kick`/`ban`/`pardon`/`op`/
   `deop`/`whitelist` issued through `run_rcon_command` (target = username),
   `backup.create`, `backup.restore`, `backup.delete`, `backup.prune`, `backup.copy`,
-  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `mod.unpack`, `settings.update`,
+  `config.write`, `mod.upload`, `mod.download`, `mod.delete`, `mod.unpack`,
+  `mod.install` (§3.5a, 2.13.0: one entry per placed file, target = filename, detail
+  `<target>: <slug> <versionNumber>[, needed by <slug>]`; on failure one entry with
+  target = the `projectId` asked for), `mod.enable` / `mod.disable` (§3.5, 2.13.0:
+  target = the filename before, detail = `<target> → <new filename>`), `settings.update`,
   `instance.create`, `instance.delete`, `instance.change-version` (2.10.0, §3.6),
   `note.set`, `note.clear`,
   `scheduler.restart`, `scheduler.backup`, `scheduler.broadcast`,
   `server.add`, `server.rename`, `server.remove` (§3.12), `container.create`,
   `container.delete`, `container.ports` (§3.13), `container.update` (§3.2 start
-  fallback, 2.11.1).
+  fallback, 2.11.1), `java.install` (§3.1, 2.13.0: target `temurin-<major>-jre`,
+  detail e.g. `Temurin JRE 21.0.13+9`; written when a download was attempted, not
+  when an existing install was reused).
 
 ### 3.12 Server profiles (2.6.0)
 
@@ -1253,6 +1535,18 @@ type ModpackRef = {
   project: string;
 };
 ```
+
+Picking `mcVersion` (2.13.0): for a server type the UI offers only the versions
+`list_mc_versions` returns with `serverType` set to the chosen `loader` (§3.6), and
+sends a concrete version id from that list. "Latest release" is offered only when the
+list contains Mojang's latest release, and is a label: at create time the UI resolves
+it to that release's id. With nothing picked (Start here) the UI takes the type's
+newest version the same way (Mojang's latest release when the list has it, else the
+newest version in the list). The UI sends `LATEST` only when that list cannot be
+loaded. So a server made by the UI keeps the version it was made with on every
+restart, and Find mods (§3.5a) can tell its version. Core still accepts `LATEST`
+(step 3) and does not repeat the check here (the image stays the authority on what it
+can install). Modpacks keep their own versions.
 
 Sequence (first failure wins; nothing is created before step 7):
 
@@ -1749,12 +2043,14 @@ full detail. Frontend pattern: fetch state on mount, subscribe for invalidation.
 
 ### 4.3 `mineui://download-progress`
 
-Emitted for server-jar downloads (`create_instance`) and mod downloads
-(`download_mod`). Throttled to ≥ 150 ms between progress events per download; the
+Emitted for server-jar downloads (`create_instance`), mod downloads
+(`download_mod`, `unpack_mod_archive` from a URL, and each file of `install_mod`,
+2.13.0) and the Java runtime download (`install_java`, 2.13.0 - carrying
+the requesting server's id although the install is app-wide). Throttled to ≥ 150 ms between progress events per download; the
 terminal event (`done` or `error`) is always emitted.
 
 ```ts
-type DownloadKind = "server-jar" | "mod";
+type DownloadKind = "server-jar" | "mod" | "java"; // "java": 2.13.0
 
 type DownloadProgressEvent = {
   downloadId: string;          // uuid, unique per download
@@ -1771,7 +2067,13 @@ type DownloadProgressEvent = {
 
 `download_mod` returns its `downloadId`; `create_instance` does not (its jar download
 is identified by `kind: "server-jar"` - only one can run at a time, enforced by
-`INSTANCE_EXISTS`).
+`INSTANCE_EXISTS`). `install_java` does not either: its download is identified by
+`kind: "java"`, `filename` being the Adoptium archive name (e.g.
+`OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz`); a request that waits for
+another server's install of the same major sees no events.
+`install_mod` (2.13.0) returns each file's `downloadId` in `ModInstall` once it is
+done; while it runs, its files are the `kind: "mod"` events whose `filename` is a
+Modrinth file name, one download after the other.
 
 Subscription lifecycle (all events): `listen()` returns an unlisten fn; every page/hook
 that subscribes MUST unlisten on unmount. Events carry no secrets.
@@ -1791,6 +2093,7 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | RCON (players, history, commands) | full - auto-configured at create/start | full - user-supplied credentials |
 | Player history log source | `<instanceDir>/logs/latest.log` | exec `tail` in container |
 | Mods/plugins management | file ops work; **vanilla jar loads none** (UI note) | full |
+| Find mods (§3.5a, 2.13.0) | `get_mod_support` says not supported (vanilla); `search_mods` / `install_mod` → `WRONG_MODE` | by the container's `TYPE`: Fabric, Quilt, Forge, NeoForge (mods), Paper, Purpur (plugins); other types as simple |
 | Config editor | host fs under `instanceDir` | exec/cp in container |
 | Backups create/list/restore/delete | host-side tar | argv-exec tar in container |
 | Metrics base | process CPU/RSS via sysinfo | container stats via runtime |
@@ -1799,6 +2102,8 @@ that subscribes MUST unlisten on unmount. Events carry no secrets.
 | Instance commands (§3.6) | full | `WRONG_MODE` |
 | `open_app_dir` `"server"` (§3.15, 2.10.0) | opens `instanceDir` | `WRONG_MODE` (no host folder) |
 | `detect_runtimes`, `java_check` | available (java relevant) | available (runtime relevant) |
+| `required_java_major` (§3.6, 2.13.0) | app-wide: the Java major a version needs, before `install_java` | app-wide: the same answer picks the image's Java tag (§3.13) |
+| `install_java` (§3.1, 2.13.0) | downloads Temurin JRE into the app-wide managed folder; start/create/change version then use it | available but unused (the container image brings its own Java) |
 | Container create/pull | - | `create_container` makes an itzg/minecraft-server container (§3.13); attaching to an existing one still works; `delete_container` removes one, and its data volume only when asked, on explicit confirmation |
 | Ports and joining (§3.16, 2.11.0) | `get_join_info`: `serverPort`, reach from `server-ip`, nothing to publish | `get_join_info` from the container's bindings; `update_container_ports` rebuilds a stopped MineUI container with other ports, on explicit confirmation |
 
@@ -1836,6 +2141,11 @@ Applied to the basename in `upload_mod`, `download_mod`, `delete_mod`:
    with `_` (v1 rule, kept).
 3. Post-sanitization: non-empty, ≤ 255 bytes, does not start with `.` or `-`, not
    `..`, ends with `.jar` or `.zip` (case-insensitive).
+   3a. `delete_mod` only (2.13.0): a name ending `.jar.disabled` (case-insensitive)
+   is also accepted. The whole name must pass rule 1, the charset of rule 2
+   unchanged and the 255-byte limit, and the name without its final `.disabled`
+   must pass rule 3 and end in `.jar` (`x.disabled`, `x.jar.disabled.disabled`,
+   `x.zip.disabled` and `x.txt.disabled` are refused).
 4. `target` must be exactly `"mods"` or `"plugins"`.
 
 ### 6.2a Mod archives (`unpack_mod_archive`, 2.7.0)
@@ -1882,6 +2192,95 @@ jar, ≤ 2 GiB in total. Encrypted or unreadable archives → `INVALID_INPUT`.
    (`download::build_public_client`). Unresolvable host → `DOWNLOAD_FAILED`. Mojang
    server-jar downloads always use the strict client (their URLs come from the
    HTTPS manifest and content is SHA-1 pinned).
+
+### 6.3a Java downloads (`install_java`, 2.13.0)
+
+Fixed hosts, no user-supplied URL. Error codes as listed in §3.1.
+
+1. `major` is an integer in `8..=30` (`INVALID_INPUT`).
+2. OS and architecture come from the build (`cfg!`): `linux` / `mac` / `windows`;
+   `x86_64` → `x64`, `aarch64` → `aarch64`. Any other target → `DOWNLOAD_FAILED`
+   ("no Temurin build for this computer").
+3. One GET of `https://api.adoptium.net/v3/assets/latest/<major>/hotspot?architecture=<arch>&image_type=jre&os=<os>&vendor=eclipse`.
+   The first asset whose `binary.image_type` is `jre`, `binary.os`/`architecture`
+   match and `version.major` is `major` is used; none → `DOWNLOAD_FAILED`
+   ("Adoptium has no Java <major> runtime for this computer"). From it:
+   `binary.package.link` (the archive), `binary.package.checksum` (sha256, 64 hex
+   chars), `binary.package.size`, `binary.package.name` (ends `.tar.gz` or `.zip`,
+   else `DOWNLOAD_FAILED`) and `version.openjdk_version` (for the audit detail).
+4. https only. The API URL and the archive link must be on the host allowlist, and
+   every redirect hop is re-checked against it (≤ 5 hops, https, allowlisted host):
+   `api.adoptium.net`, `github.com`, `release-assets.githubusercontent.com`. Observed
+   chain on 2026-11-09: the API answers 200 itself; the archive link is
+   `https://github.com/adoptium/temurin<major>-binaries/releases/download/...`, which
+   302-redirects once to `release-assets.githubusercontent.com` (200). A hop anywhere
+   else fails the download (`DOWNLOAD_FAILED`).
+5. Size cap 300 MB: an announced `size` or `Content-Length` over it is refused before
+   streaming, and the stream is cut at the cap (`FILE_TOO_LARGE`). The streamed
+   bytes' sha256 must equal `checksum` (`CHECKSUM_MISMATCH`). 60 s idle timeout as §6.3.
+6. Extraction (off the async runtime) into `<appDataDir>/java/.tmp-temurin-<major>-jre-<uuid>/`,
+   beside the target: `.tar.gz` (Linux, macOS) with `tar` + `flate2`, `.zip`
+   (Windows) with `zip`. The whole install is refused (`DOWNLOAD_FAILED`) when any
+   entry path is absolute, has a drive/root prefix or a `..` component (zip: no
+   `enclosed_name`); when a symlink target is absolute or resolves outside the
+   extraction dir; when a hard link names a path outside it. Other entry types
+   (devices, fifos) are skipped. At most 20 000 entries and 1 GiB written. File modes
+   are kept (`bin/java` stays executable).
+7. The binary is located, not assumed: `bin/java` (`bin/java.exe` on Windows) or
+   `Contents/Home/bin/java` (macOS bundle) at most three folders below the
+   extraction dir (Temurin's top folder is `jdk-<version>-jre`). `java -version` run
+   on it must report `major` (`DOWNLOAD_FAILED` otherwise).
+8. Then the temp dir is renamed to `<appDataDir>/java/temurin-<major>-jre/`. A
+   previous folder there (one that failed the reuse check) is renamed aside first
+   and removed after. On every failure the archive and the temp dir are removed.
+
+### 6.3b Modrinth requests and files (`search_mods`, `install_mod`, 2.13.0)
+
+Fixed hosts, no user-supplied URL. Error codes as listed in §3.5a.
+
+1. The caller supplies only search text, two numbers and a project id or slug. The
+   text and numbers travel as URL-encoded query parameters; the id or slug must match
+   `^[A-Za-z0-9_-]{1,64}$` (`INVALID_INPUT`) before it becomes a path segment. Version
+   and project ids taken from Modrinth's own answers are held to the same pattern
+   before they become path segments (`DOWNLOAD_FAILED` otherwise).
+2. Every request and every file goes through one client whose hosts are
+   `api.modrinth.com` (search, project versions, a version, `version_files`, the
+   projects batch) and `cdn.modrinth.com` (files): https only, no credentials, the
+   default port. Every redirect hop is re-checked against the same rule (≤ 5 hops);
+   a hop anywhere else fails the request (`DOWNLOAD_FAILED`). A version file whose
+   `url` is not on `cdn.modrinth.com` is refused before any request
+   (`DOWNLOAD_FAILED`). Observed on 2026-11-10: files are served 200 by
+   `cdn.modrinth.com` directly.
+3. API calls: 10 s timeout, the `User-Agent` `I4cTime/mineui/<version>
+   (mineui.i4c.studio)` that Modrinth's rules ask for (300 requests per minute per
+   IP; an install makes 2 + one per resolved project, at most about 55).
+4. A file is used only with a 128-hex-digit `hashes.sha512` (`DOWNLOAD_FAILED`
+   otherwise). The streamed bytes' sha512 must equal it, and the sha1 too when
+   Modrinth gives one (`CHECKSUM_MISMATCH`, message naming the mod). Size cap 256 MB:
+   an announced `size` or `Content-Length` over it is refused before streaming and
+   the stream is cut at the cap (`FILE_TOO_LARGE`). 60 s idle timeout as §6.3.
+5. The file name is Modrinth's `filename` after §6.2 sanitization; it must end
+   `.jar` (a version whose primary file is not a `.jar` is not a candidate, §3.5a).
+6. Downloads land in `<dataDir>/tmp/` and are moved into a staging folder
+   `<dataDir>/tmp/modrinth-<uuid>/` under their final names; the staging folder and
+   every temp file are removed whether the install succeeds or fails.
+
+### 6.3c Server-type version lists (`list_mc_versions` with `serverType`, 2.13.0)
+
+Fixed URLs (the table in §3.6), no caller input in any URL. Never an error of its own:
+every failure below makes `list_mc_versions` fall back to the unfiltered list (§3.6).
+
+1. One client for all six: https only, no credentials, the default port, and the hosts
+   `fill.papermc.io`, `api.purpurmc.org`, `meta.fabricmc.net`, `meta.quiltmc.org`,
+   `files.minecraftforge.net`, `maven.neoforged.net`. Every redirect hop is re-checked
+   against the same rule (≤ 5 hops). Observed on 2026-11-10: all six answer 200
+   directly, no redirect.
+2. 10 s timeout per request; the `User-Agent` `I4cTime/mineui/<version>
+   (mineui.i4c.studio)` of §6.3b (Fill refuses generic ones).
+3. The body is read up to 4 MiB and refused beyond it (the largest today, NeoForge's,
+   is about 26 KB). The parsed list must hold at least one id; ids are kept only when
+   they are 1-64 characters of `[0-9A-Za-z._+-]`, and only ids that also appear in the
+   Mojang manifest ever reach the UI.
 
 ### 6.4 RCON commands
 
@@ -2071,6 +2470,8 @@ export type JavaCheck = {
   majorVersion: number | null;
   requiredMajor: number | null;
   compatible: boolean | null;
+  /** 2.13.0 - the Java found is one MineUI downloaded (installJava). */
+  managed: boolean;
 };
 
 export const getSettings = () => scoped<Settings>("get_settings");
@@ -2078,6 +2479,9 @@ export const setSettings = (settings: Settings) =>
   scoped<Settings>("set_settings", { settings });
 export const detectRuntimes = () => scoped<RuntimeProbe>("detect_runtimes");
 export const javaCheck = () => scoped<JavaCheck>("java_check");
+/** 2.13.0 - download Temurin JRE `major` into MineUI's own folder (app-wide);
+ *  resolves with this server's Java check after the install. */
+export const installJava = (major: number) => scoped<JavaCheck>("install_java", { major });
 
 /* ---------- server state / lifecycle / status ---------- */
 
@@ -2375,6 +2779,94 @@ export type ModArchiveSource =
 export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
   scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
 
+/** Renames name.jar to name.jar.disabled (enabled false) or back
+ *  (enabled true); returns the new filename (§3.5, 2.13.0). */
+export const setModEnabled = (filename: string, target: ModTarget, enabled: boolean) =>
+  scoped<{ filename: string }>("set_mod_enabled", { filename, target, enabled });
+
+/* ---------- find mods on Modrinth (§3.5a, 2.13.0) ---------- */
+
+/** What Find mods can do for this server. */
+export type ModSupport = {
+  /** False when this server cannot load mods or plugins (see `reason`). */
+  supported: boolean;
+  /** Where installs go: "mods" (Fabric, Quilt, Forge, NeoForge) or
+   *  "plugins" (Paper, Purpur); null when not supported. */
+  target: ModTarget | null;
+  /** The server type MineUI read, lowercase ("fabric", "paper", "vanilla",
+   *  "modrinth", ...); null when it could not tell. */
+  serverType: string | null;
+  /** The Minecraft version results must have a build for; null when unknown. */
+  mcVersion: string | null;
+  /** Modrinth loader tags a version must carry, preferred first; empty when
+   *  not supported. */
+  loaders: string[];
+  /** Why not, in a plain sentence; null when supported. */
+  reason: string | null;
+};
+
+/** Whether a mod's players need it too, as Modrinth reports it. */
+export type ModClientSide = "required" | "optional" | "unsupported" | "unknown";
+
+export type ModSearchHit = {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** "required": every player must install the mod too. */
+  clientSide: ModClientSide;
+  /** Already in this server's folder and switched on (a `.jar.disabled`
+   *  copy does not count). */
+  installed: boolean;
+};
+
+export type ModSearchPage = {
+  hits: ModSearchHit[];
+  /** Echo of the request after clamping; the next page starts at
+   *  offset + limit. */
+  offset: number;
+  limit: number;
+  /** Modrinth's count of matches (client-only projects it still reports are
+   *  dropped from `hits`, so a page can be shorter than `limit`). */
+  totalHits: number;
+};
+
+export type InstalledModFile = {
+  filename: string;
+  projectId: string;
+  slug: string;
+  title: string;
+  versionId: string;
+  versionNumber: string;
+  /** True when installed because another file needs it. */
+  dependency: boolean;
+  /** The id its download-progress events carried. */
+  downloadId: string;
+};
+
+export type ModInstall = {
+  target: ModTarget;
+  /** The project asked for first, then its dependencies. */
+  installed: InstalledModFile[];
+  /** Titles of required dependencies that were already installed. */
+  alreadyInstalled: string[];
+};
+
+/** No network; "not supported" is a result with a reason, not an error. */
+export const getModSupport = () => scoped<ModSupport>("get_mod_support");
+/** Modrinth mods or plugins this server can load. Empty query = most
+ *  downloaded. Rejects WRONG_MODE when the server cannot load any. */
+export const searchMods = (query: string, offset?: number, limit?: number) =>
+  scoped<ModSearchPage>("search_mods", { query, offset, limit });
+/** Installs the newest compatible version of a Modrinth project (id or
+ *  slug) with its required dependencies, each checked against Modrinth's
+ *  sha512. Takes effect after a restart. */
+export const installMod = (projectId: string) =>
+  scoped<ModInstall>("install_mod", { projectId });
+
 /* ---------- instance (simple mode) ---------- */
 
 export type McVersion = {
@@ -2402,8 +2894,15 @@ export type InstanceStatus = {
   createdAt: string | null;
 };
 
-export const listMcVersions = (includeSnapshots?: boolean) =>
-  scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
+/** 2.13.0 serverType: only the versions that server type has builds for;
+ *  absent or "vanilla" = every Mojang version (the list falls back to that
+ *  when the type's own list cannot be had). */
+export const listMcVersions = (includeSnapshots?: boolean, serverType?: ContainerLoader) =>
+  scoped<McVersion[]>("list_mc_versions", { includeSnapshots, serverType });
+/** 2.13.0, app-wide - the Java major a version ("LATEST" allowed) needs;
+ *  null when it cannot be resolved (offline, unknown version). */
+export const requiredJavaMajor = (mcVersion: string) =>
+  call<number | null>("required_java_major", { mcVersion });
 export const createInstance = (args: CreateInstanceArgs) =>
   scoped<InstanceStatus>("create_instance", { args });
 export const deleteInstance = () =>
@@ -2561,7 +3060,7 @@ export type ServerStateEvent = {
   exitCode: number | null;
 };
 
-export type DownloadKind = "server-jar" | "mod";
+export type DownloadKind = "server-jar" | "mod" | "java";
 export type DownloadProgressEvent = {
   serverId: string;
   downloadId: string;
@@ -2642,10 +3141,13 @@ Frontend rules:
 | `machine` | Podman machine facts (provider, rootful, WSL address), cached 60 s; the rootful-WSL note (§3.2); the Windows build, once per process (§3.16, 2.11.1) |
 | `rcon` | RCON client (connect/auth/send/close) + allowlist enforcement |
 | `query` | Minecraft server-list-ping client (handshake + status packet, 3 s timeout) |
-| `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback |
-| `java` | java discovery + `-version` parsing |
+| `mojang` | version manifest fetch/cache, per-version json, jar download + sha1 verify, progress callback; `required_java_major` (§3.6, 2.13.0, shared with `provision`) |
+| `loader_versions` | `list_mc_versions` with `serverType` (§3.6, §6.3c, 2.13.0): the six fixed version-list URLs and their host-allowlisted client, one parser per type, the NeoForge → Minecraft version rule, the per-type 15-minute cache, the intersection with the Mojang list in Mojang order, and the fall-back to the unfiltered list |
+| `java` | java discovery + `-version` parsing; the managed-Java lookup and resolution order (§3.1, 2.13.0) |
+| `javainstall` | `install_java` (§3.1, §6.3a, 2.13.0): Adoptium API query, the host-allowlisted client, sha256-verified download, safe tar.gz/zip extraction, locate + probe, rename into place, per-major install lock, `java.install` audit |
 | `instance` | create/delete/status, change version in place (2.10.0), `mineui-instance.json`, eula.txt, server.properties RCON assertion (preserving user keys) |
-| `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3) |
+| `mods` | list/upload/download/delete over `Runtime` or host fs (§3.5, §6.2–6.3); `set_mod_enabled` renames (2.13.0) |
+| `modrinth` | Find mods (§3.5a, §6.3b, 2.13.0): server type → target and loader tags, the Modrinth host-allowlisted client, search facets, installed projects from `version_files`, version choice, dependency resolution, sha512-checked downloads, staged placement with rollback, `mod.install` audit |
 | `mod_archive` | `unpack_mod_archive`: entry selection, bounded host-side extraction, placement (§3.5, §6.2a) |
 | `config_files` | list/read/write over `Runtime` or host fs (§3.7, §6.1) |
 | `backups` | create/list/restore/delete (§3.8) |

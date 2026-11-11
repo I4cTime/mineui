@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { RadioButtonGroup } from "@heroui-pro/react";
+import PressRipple from "@/app/components/PressRipple";
 import { useUISound } from "@/app/hooks/useUISound";
 
 export type ChoiceCardOption<T extends string> = {
@@ -23,6 +24,8 @@ type ChoiceCardsProps<T extends string> = {
   isDisabled?: boolean;
   /** Play the toggle sound on change. Off when onChange plays its own. */
   sound?: boolean;
+  /** Ripple on press (the main choices of a flow). */
+  ripple?: boolean;
   /** Grid classes for the cards, e.g. "sm:grid-cols-2". */
   className?: string;
   "aria-label"?: string;
@@ -35,6 +38,7 @@ export default function ChoiceCards<T extends string>({
   onChange,
   isDisabled,
   sound = true,
+  ripple = false,
   className,
   ...aria
 }: ChoiceCardsProps<T>) {
@@ -61,6 +65,7 @@ export default function ChoiceCards<T extends string>({
             isDisabled={option.isDisabled}
             onMouseEnter={() => play("hover")}
           >
+            {ripple && <PressRipple />}
             {Icon && (
               <RadioButtonGroup.ItemIcon>
                 <Icon size={16} />

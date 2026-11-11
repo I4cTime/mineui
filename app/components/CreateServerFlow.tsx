@@ -1,5 +1,8 @@
 "use client";
 
+import { announceServerMade } from "@/app/lib/milestones";
+import { TextShimmer } from "@heroui-pro/react";
+import PressRipple from "@/app/components/PressRipple";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -7,6 +10,7 @@ import {
   Button,
   Card,
   Chip,
+  Disclosure,
   Label,
   ListBox,
   ProgressBar,
@@ -18,6 +22,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   Coffee,
   Download,
   HardDrive,
@@ -32,13 +37,16 @@ import {
   javaCheck,
   listMcVersions,
   onDownloadProgress,
+  requiredJavaMajor,
   IpcError,
   type DownloadProgressEvent,
   type JavaCheck,
   type McVersion,
 } from "@/app/lib/ipc";
 import DiscardServerButton from "@/app/components/DiscardServerButton";
+import GetJavaForMe from "@/app/components/GetJavaForMe";
 import OutLink from "@/app/components/OutLink";
+import Term from "@/app/components/Term";
 import { useUISound } from "@/app/hooks/useUISound";
 
 const MEMORY_MIN = 512;
@@ -50,7 +58,7 @@ type CreateServerFlowProps = {
   onCreated: () => void;
 };
 
-const STEPS = ["Version", "Memory", "Requirements", "Create"] as const;
+const STEPS = ["Version", "Requirements", "Create"] as const;
 
 export default function CreateServerFlow({
   defaultMemoryMb,
@@ -68,6 +76,10 @@ export default function CreateServerFlow({
   const [java, setJava] = useState<JavaCheck | null>(null);
   const [javaChecking, setJavaChecking] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  // The Java major the chosen version needs; null = not known (offline).
+  const [javaMajor, setJavaMajor] = useState<number | null>(null);
+  const [majorChecked, setMajorChecked] = useState(false);
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
   const [created, setCreated] = useState(false);
   const { play } = useUISound();
@@ -106,6 +118,26 @@ export default function CreateServerFlow({
     recheckJava();
   }, [loadVersions, recheckJava]);
 
+  useEffect(() => {
+    if (!selectedVersion) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset while the new answer loads
+    setMajorChecked(false);
+    requiredJavaMajor(selectedVersion)
+      .then((major) => {
+        if (!cancelled) setJavaMajor(major);
+      })
+      .catch(() => {
+        if (!cancelled) setJavaMajor(null);
+      })
+      .finally(() => {
+        if (!cancelled) setMajorChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVersion]);
+
   const handleCreate = async () => {
     if (!selectedVersion || !eulaAccepted || creating) return;
     play("click_confirm");
@@ -121,7 +153,7 @@ export default function CreateServerFlow({
         memoryMb,
       });
       play("success");
-      toast.success(`Server ${selectedVersion} created`);
+      announceServerMade(`Server ${selectedVersion} is ready. Press Start when you are.`);
       setCreated(true);
       onCreated();
     } catch (error) {
@@ -141,14 +173,18 @@ export default function CreateServerFlow({
       : null;
 
   const javaMissing = java !== null && !java.found;
-  const javaIncompatible = java?.compatible === false;
+  const javaTooOld =
+    java?.found === true &&
+    javaMajor !== null &&
+    java.majorVersion !== null &&
+    java.majorVersion < javaMajor;
+  const javaIncompatible = java?.compatible === false || javaTooOld;
+  const needsJava = javaMissing || javaIncompatible;
 
   const canLeaveVersion = Boolean(selectedVersion);
   const canLeaveRequirements = eulaAccepted && !javaMissing;
   const canGoNext =
-    (step === 0 && canLeaveVersion) ||
-    step === 1 ||
-    (step === 2 && canLeaveRequirements);
+    (step === 0 && canLeaveVersion) || (step === 1 && canLeaveRequirements);
 
   const goNext = () => {
     if (!canGoNext || step >= STEPS.length - 1) return;
@@ -178,10 +214,12 @@ export default function CreateServerFlow({
             <DiscardServerButton isDisabled={creating} />
           </div>
           <Card.Description>
-            MineUI downloads the official (plain, &ldquo;vanilla&rdquo;) server for the version
-            you pick and runs it on this computer. Nothing else to install. Want
-            mods, plugins or a modpack instead? Add a <em>Modded or modpack
-            server</em> in App Settings → Servers.
+            MineUI downloads the official (plain,{" "}
+            <Term term="Vanilla">vanilla</Term>) server for the version you pick
+            and runs it on this computer. If your computer has no{" "}
+            <Term term="Java">Java</Term>, MineUI can get it for you. Want mods,
+            plugins or a <Term term="modpack">modpack</Term> instead? Add a{" "}
+            <em>Modded or modpack server</em> in App Settings → Servers.
           </Card.Description>
         </Card.Header>
 
@@ -201,95 +239,117 @@ export default function CreateServerFlow({
 
         <Card.Content className="mt-6 grid min-h-55 gap-6 text-sm">
           {step === 0 && (
-            <div className="grid gap-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs uppercase tracking-[0.2em] text-muted">
-                  Minecraft version
-                </span>
-                <label className="flex items-center gap-2 text-xs text-muted">
-                  <input
-                    type="checkbox"
-                    checked={includeSnapshots}
-                    onChange={(event) => {
-                      setIncludeSnapshots(event.target.checked);
-                      loadVersions(event.target.checked);
-                    }}
-                  />
-                  Include snapshots
-                </label>
+            <div className="grid gap-6">
+              <div className="grid gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted">
+                    Minecraft version
+                  </span>
+                  <label className="flex items-center gap-2 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      checked={includeSnapshots}
+                      onChange={(event) => {
+                        setIncludeSnapshots(event.target.checked);
+                        loadVersions(event.target.checked);
+                      }}
+                    />
+                    Include snapshots
+                  </label>
+                </div>
+                <Select
+                  className="w-full text-sm"
+                  placeholder={versionsLoading ? "Loading versions..." : "Pick a version"}
+                  value={selectedVersion}
+                  onChange={(value) => {
+                    if (value === null) return;
+                    play("click_confirm");
+                    setSelectedVersion(String(value));
+                  }}
+                  isDisabled={versionsLoading || creating}
+                >
+                  <Label className="sr-only">Minecraft version</Label>
+                  <Select.Trigger onMouseEnter={() => play("hover")}>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox className="max-h-72 overflow-auto">
+                      {versions.map((version) => (
+                        <ListBox.Item
+                          key={version.id}
+                          id={version.id}
+                          textValue={version.id}
+                        >
+                          {version.id}
+                          {version.latest ? " (latest)" : ""}
+                          {version.type !== "release" ? ` - ${version.type}` : ""}
+                          <ListBox.ItemIndicator />
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
               </div>
-              <Select
-                className="w-full text-sm"
-                placeholder={versionsLoading ? "Loading versions..." : "Pick a version"}
-                value={selectedVersion}
-                onChange={(value) => {
-                  if (value === null) return;
-                  play("click_confirm");
-                  setSelectedVersion(String(value));
+              <Disclosure
+                isExpanded={moreOpen}
+                onExpandedChange={(open) => {
+                  play(open ? "toggle_on" : "toggle_off");
+                  setMoreOpen(open);
                 }}
-                isDisabled={versionsLoading || creating}
               >
-                <Label className="sr-only">Minecraft version</Label>
-                <Select.Trigger onMouseEnter={() => play("hover")}>
-                  <Select.Value />
-                  <Select.Indicator />
-                </Select.Trigger>
-                <Select.Popover>
-                  <ListBox className="max-h-72 overflow-auto">
-                    {versions.map((version) => (
-                      <ListBox.Item
-                        key={version.id}
-                        id={version.id}
-                        textValue={version.id}
+                <Disclosure.Heading>
+                  <Disclosure.Trigger
+                    className="flex w-fit items-center gap-1.5 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{ outlineColor: "var(--focus)" }}
+                  >
+                    More options
+                    <Disclosure.Indicator className="ms-0 size-auto">
+                      <ChevronDown size={14} />
+                    </Disclosure.Indicator>
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                <Disclosure.Content>
+                  <Disclosure.Body style={{ padding: "0.75rem 0 0" }}>
+                    <div className="grid gap-3">
+                      <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
+                        <HardDrive size={14} />
+                        Memory
+                      </span>
+                      <Slider
+                        className="w-full"
+                        value={memoryMb}
+                        minValue={MEMORY_MIN}
+                        maxValue={MEMORY_MAX}
+                        step={MEMORY_STEP}
+                        isDisabled={creating}
+                        formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
+                        onChange={(value) => setMemoryMb(value as number)}
                       >
-                        {version.id}
-                        {version.latest ? " (latest)" : ""}
-                        {version.type !== "release" ? ` - ${version.type}` : ""}
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
-                    ))}
-                  </ListBox>
-                </Select.Popover>
-              </Select>
+                        <Label className="sr-only">Server memory in megabytes</Label>
+                        <Slider.Output />
+                        <Slider.Track>
+                          <Slider.Fill />
+                          <Slider.Thumb />
+                        </Slider.Track>
+                      </Slider>
+                      <span className="text-xs text-muted">
+                        How much of this computer&apos;s RAM the server may use. 2048 MB is a
+                        good default for a small server.
+                      </span>
+                    </div>
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
             </div>
           )}
 
           {step === 1 && (
-            <div className="grid gap-3">
-              <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
-                <HardDrive size={14} />
-                Memory
-              </span>
-              <Slider
-                className="w-full"
-                value={memoryMb}
-                minValue={MEMORY_MIN}
-                maxValue={MEMORY_MAX}
-                step={MEMORY_STEP}
-                isDisabled={creating}
-                formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
-                onChange={(value) => setMemoryMb(value as number)}
-              >
-                <Label className="sr-only">Server memory in megabytes</Label>
-                <Slider.Output />
-                <Slider.Track>
-                  <Slider.Fill />
-                  <Slider.Thumb />
-                </Slider.Track>
-              </Slider>
-              <span className="text-xs text-muted">
-                How much of this computer&apos;s RAM the server may use. 2048 MB is a
-                good default for a small server.
-              </span>
-            </div>
-          )}
-
-          {step === 2 && (
             <div className="grid gap-6">
               <div className="grid gap-2">
                 <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
                   <Coffee size={14} />
-                  Java
+                  <Term term="Java">Java</Term>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -308,35 +368,74 @@ export default function CreateServerFlow({
                 </span>
                 {java === null ? (
                   <span className="text-xs text-muted">Checking Java...</span>
-                ) : java.found ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Chip
-                      variant="soft"
-                      color={javaIncompatible ? "warning" : "success"}
-                    >
-                      Java {java.version ?? "?"} found
-                    </Chip>
-                    {java.path && (
-                      <span className="truncate text-xs text-muted">
-                        {java.path}
-                      </span>
-                    )}
-                  </div>
                 ) : (
-                  <div className="grid gap-1">
-                    <Chip variant="soft" color="warning">
-                      No Java found
-                    </Chip>
-                    <span className="text-xs text-muted">
-                      Recent Minecraft servers need Java 21 or newer. On Windows and
-                      macOS install it from adoptium.net; on Linux use your package
-                      manager (e.g.{" "}
-                      <code className="font-mono">
-                        sudo apt install openjdk-21-jre-headless
-                      </code>
-                      ). Then hit Re-check. If Java is installed but not found, set
-                      its location in this server&apos;s Settings → Advanced.
-                    </span>
+                  <div className="grid gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {java.found ? (
+                        <>
+                          <Chip
+                            variant="soft"
+                            color={javaIncompatible ? "warning" : "success"}
+                          >
+                            {java.managed
+                              ? `Using Java MineUI downloaded (${java.majorVersion ?? java.version ?? "?"})`
+                              : `Java ${java.version ?? "?"} found`}
+                          </Chip>
+                          {java.path && (
+                            <span className="truncate text-xs text-muted">
+                              {java.path}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <Chip variant="soft" color="warning">
+                          No Java found
+                        </Chip>
+                      )}
+                    </div>
+                    {needsJava && (
+                      <div className="grid gap-3 rounded-lg border border-border p-4">
+                        <p className="text-xs text-muted">
+                          {javaMissing
+                            ? "This computer has no Java, and the server needs it to run."
+                            : `This Java is too old. Minecraft ${selectedVersion ?? ""} needs Java ${javaMajor ?? "a newer version"}.`}
+                        </p>
+                        {javaMajor !== null ? (
+                          <GetJavaForMe
+                            major={javaMajor}
+                            isDisabled={creating}
+                            onInstalled={(check) => setJava(check)}
+                          />
+                        ) : majorChecked ? (
+                          <p className="text-xs text-muted">
+                            MineUI cannot check which Java this version needs
+                            right now. Check your internet and press Re-check.
+                          </p>
+                        ) : (
+                          <span className="text-xs text-muted">Looking up which Java to get...</span>
+                        )}
+                        <details className="text-xs text-muted">
+                          <summary className="w-fit cursor-pointer text-accent">
+                            Or install it yourself
+                          </summary>
+                          <p className="mt-2">
+                            On Windows and macOS, download it from{" "}
+                            <OutLink
+                              href="https://adoptium.net/temurin/releases/"
+                              className="text-accent underline"
+                            >
+                              adoptium.net
+                            </OutLink>
+                            ; on Linux use your package manager (for example{" "}
+                            <code className="font-mono">
+                              sudo apt install openjdk-21-jre-headless
+                            </code>
+                            ). Then press Re-check. If Java is installed but not found,
+                            set its location in this server&apos;s Settings → Advanced.
+                          </p>
+                        </details>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -359,15 +458,16 @@ export default function CreateServerFlow({
                   </OutLink>
                   .{" "}
                   <span className="text-muted">
-                    Mojang&apos;s rules for running a server - every Minecraft server has to
-                    agree to them.
+                    Mojang&apos;s rules for running a server (
+                    <Term term="EULA">what&apos;s the EULA?</Term>). Every Minecraft
+                    server has to agree to them.
                   </span>
                 </span>
               </label>
             </div>
           )}
 
-          {step === 3 && (
+          {step === 2 && (
             <div className="grid gap-4">
               <div className="grid gap-2 rounded-lg border border-border p-4 text-xs text-muted">
                 <div className="flex justify-between">
@@ -381,7 +481,11 @@ export default function CreateServerFlow({
                 <div className="flex justify-between">
                   <span>Java</span>
                   <span className="text-foreground">
-                    {java?.found ? `${java.version ?? "?"} found` : "not found"}
+                    {java?.found
+                      ? java.managed
+                        ? `MineUI's own Java ${java.majorVersion ?? java.version ?? "?"}`
+                        : `${java.version ?? "?"} found`
+                      : "not found"}
                   </span>
                 </div>
               </div>
@@ -391,9 +495,11 @@ export default function CreateServerFlow({
                   <div className="flex items-center justify-between text-xs text-muted">
                     <span className="flex items-center gap-2">
                       <Download size={14} />
-                      {progress
-                        ? `Downloading ${progress.filename}`
-                        : "Preparing download..."}
+                      <TextShimmer>
+                        {progress
+                          ? `Downloading ${progress.filename}`
+                          : "Preparing download..."}
+                      </TextShimmer>
                       {/* Completion tick - HeroUI's own CSS already animates
                           the fill's width (progress-bar.css), so this is a
                           separate element rather than layering a second
@@ -470,10 +576,11 @@ export default function CreateServerFlow({
               isPending={creating}
               onMouseEnter={() => play("hover")}
             >
+              <PressRipple />
               {creating ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  Creating...
+                  <TextShimmer>Creating...</TextShimmer>
                 </>
               ) : (
                 <>

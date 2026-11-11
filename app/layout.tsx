@@ -22,6 +22,7 @@ import "./globals.css";
 import Navbar from "@/app/components/Navbar";
 import ModeProvider, { PageBoundary } from "@/app/components/ModeProvider";
 import ServerProvider from "@/app/components/ServerProvider";
+import ViewLevelProvider from "@/app/components/ViewLevelProvider";
 import PidsControllerHelp from "@/app/components/PidsControllerHelp";
 
 export const metadata: Metadata = {
@@ -50,16 +51,18 @@ export default function RootLayout({
             every component needing its own useReducedMotion() branch. */}
         <MotionConfig reducedMotion="user">
           {/* Server profile (which server is open) wraps mode (that
-              server's Simple/Advanced). The header stays mounted across a
+              server's run kind). The header stays mounted across a
               server switch; only the page is remounted (PageBoundary). */}
-          <ServerProvider>
-            <ModeProvider>
-              <Navbar />
-              <PageBoundary>{children}</PageBoundary>
-              <Toast.Provider placement="bottom end" />
-              <PidsControllerHelp />
-            </ModeProvider>
-          </ServerProvider>
+          <ViewLevelProvider>
+            <ServerProvider>
+              <ModeProvider>
+                <Navbar />
+                <PageBoundary>{children}</PageBoundary>
+                <Toast.Provider placement="bottom end" />
+                <PidsControllerHelp />
+              </ModeProvider>
+            </ServerProvider>
+          </ViewLevelProvider>
         </MotionConfig>
       </body>
     </html>

@@ -331,6 +331,6 @@ export function overviewSummary(entry: ServerOverview | undefined): string {
   if (entry.status.online) {
     parts.push(`${entry.status.players.online}/${entry.status.players.max} players`);
   }
-  parts.push(entry.mode === "simple" ? "Simple" : "Advanced");
+  parts.push(entry.mode === "simple" ? "On this computer" : "In a container");
   return parts.join(" · ");
 }

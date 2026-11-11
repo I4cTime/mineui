@@ -51,6 +51,8 @@ import { identityLine, phaseText, useServers } from "@/app/components/ServerProv
 import { setLeaveGuard } from "@/app/lib/leaveGuard";
 import { pickFile, pickFolder } from "@/app/lib/dialog";
 import { usePageMotion } from "@/app/lib/motion";
+import Term from "@/app/components/Term";
+import { useViewLevel } from "@/app/components/ViewLevelProvider";
 import {
   deleteInstance,
   detectRuntimes,
@@ -173,14 +175,14 @@ const describeSchedule = (schedule: Schedule): string => {
 const MODE_OPTIONS = [
   {
     id: "simple",
-    title: "Simple",
+    title: "On this computer",
     description:
-      "MineUI downloads and runs a plain (vanilla) Minecraft server on this computer. Nothing else to install.",
+      "MineUI downloads and runs a plain (vanilla) Minecraft server on this computer. If this computer has no Java, MineUI can get it for you.",
     icon: Sparkles,
   },
   {
     id: "advanced",
-    title: "Advanced",
+    title: "In a container",
     description:
       "Runs in a container (Podman or Docker). MineUI can create it for you - with Fabric, Forge, Paper or a modpack - or use one you already have.",
     icon: Container,
@@ -223,8 +225,8 @@ export default function SettingsPage() {
   const serverBusy = phase === "running" || phase === "starting" || phase === "stopping";
   const { play } = useUISound();
   // Shared app-wide mode (app/components/ModeProvider.tsx). Mode switching
-  // lives here now, not in the draft/Save flow below - clicking Simple/
-  // Advanced persists instantly through the same path the navbar toggle
+  // lives here now, not in the draft/Save flow below - clicking On this
+  // computer / In a container persists instantly through the same path the navbar toggle
   // uses, so this section and the navbar always agree.
   const {
     mode,
@@ -359,6 +361,9 @@ export default function SettingsPage() {
   };
 
   const isSimpleNow = mode === "simple";
+  // View level (not the server kind): Simple view leaves out the expert cards.
+  const { level, setLevel } = useViewLevel();
+  const expertView = level === "advanced";
   const dirty =
     draft !== null && baseline !== null && snapshotOf(draft, allowlistText) !== baseline;
   const problems = useMemo(
@@ -572,9 +577,18 @@ export default function SettingsPage() {
                 <Card.Title>This server</Card.Title>
               </div>
               <Card.Description>
-                {isSimple
-                  ? "A plain Minecraft server that MineUI runs on this computer."
-                  : "A server in a container (Podman or Docker) that MineUI controls."}
+                {isSimple ? (
+                  <>
+                    A plain Minecraft <Term term="server">server</Term> that MineUI runs on
+                    this computer.
+                  </>
+                ) : (
+                  <>
+                    A server in a <Term term="container">container</Term> (
+                    <Term term="Podman">Podman</Term> or <Term term="Docker">Docker</Term>)
+                    that MineUI controls.
+                  </>
+                )}
               </Card.Description>
             </Card.Header>
             <Card.Content className="mt-4 grid gap-4 md:grid-cols-2">
@@ -658,7 +672,11 @@ export default function SettingsPage() {
                         className="w-fit"
                       >
                         {java.found
-                          ? `Java ${java.version ?? "?"}${
+                          ? `${
+                              java.managed
+                                ? `Using Java MineUI downloaded (${java.majorVersion ?? java.version ?? "?"})`
+                                : `Java ${java.version ?? "?"}`
+                            }${
                               java.requiredMajor !== null
                                 ? ` (needs ${java.requiredMajor}+)`
                                 : ""
@@ -705,9 +723,10 @@ export default function SettingsPage() {
           </Card>
         </motion.section>
 
-        {/* 1b. Network and ports - Advanced only; has its own Apply because
-            changing ports rebuilds the container (not part of the draft). */}
-        {!isSimple && (
+        {/* 1b. Network and ports - containers only, Advanced view only; has
+            its own Apply because changing ports rebuilds the container (not
+            part of the draft). */}
+        {!isSimple && expertView && (
           <motion.section variants={cardMotion}>
             <NetworkPortsCard rconPort={draft.advanced.rconPort} />
           </motion.section>
@@ -783,8 +802,9 @@ export default function SettingsPage() {
                     onFocus={() => play("hover")}
                   />
                   <span className="text-xs text-muted">
-                    The port players connect to (Minecraft&apos;s default is 25565). If you
-                    forward a port on your router, keep the two the same.
+                    The <Term term="port">port</Term> players connect to (Minecraft&apos;s
+                    default is 25565). If you forward a port on your router, keep the two the
+                    same.
                   </span>
                 </TextField>
               </Card.Content>
@@ -792,7 +812,8 @@ export default function SettingsPage() {
           </motion.section>
         )}
 
-        {/* 3. Scheduled tasks (contract §3.10) */}
+        {/* 3. Scheduled tasks (contract §3.10) - Advanced view only. */}
+        {expertView && (
         <motion.section variants={cardMotion}>
           <Card className="p-6">
             <Card.Header className="flex-col items-start gap-1">
@@ -1094,6 +1115,7 @@ export default function SettingsPage() {
             </Card.Footer>
           </Card>
         </motion.section>
+        )}
 
         {/* 4. Backups (contract §3.8) */}
         <motion.section variants={cardMotion}>
@@ -1154,14 +1176,16 @@ export default function SettingsPage() {
                   A full folder path on this computer - another disk, a USB drive or a
                   network share is the point: backups otherwise live with the server
                   itself. The folder is created if missing; a failed copy is recorded in
-                  the activity log on the Status page.
+                  the activity log (Status page, Advanced view).
                 </span>
               </TextField>
             </Card.Content>
           </Card>
         </motion.section>
 
-        {/* 5. Advanced - everything a working server never needs touched. */}
+        {/* 5. Advanced - everything a working server never needs touched.
+            Advanced view only. */}
+        {expertView && (
         <motion.section variants={cardMotion}>
           <Card className="p-6">
             <button
@@ -1183,8 +1207,8 @@ export default function SettingsPage() {
                 </span>
                 <span className="text-sm text-muted">
                   {isSimple
-                    ? "Java location, the internal RCON port, console command rules, and how this server is run. A working server never needs these changed."
-                    : "How MineUI reaches the container, console command rules, and how this server is run. MineUI filled these in when it created the container - change them only if you changed the container yourself."}
+                    ? "Java location, the internal RCON port, console command rules, and how this server is run (on this computer or in a container). A working server never needs these changed."
+                    : "How MineUI reaches the container, console command rules, and how this server is run (on this computer or in a container). MineUI filled these in when it created the container - change them only if you changed the container yourself."}
                 </span>
               </span>
               <ChevronDown
@@ -1222,8 +1246,8 @@ export default function SettingsPage() {
                         </Button>
                       </div>
                       <span className="text-xs text-muted">
-                        The full path to a <code className="font-mono">java</code> program, if
-                        MineUI finds the wrong one or none.
+                        The full path to a <Term term="Java"><code className="font-mono">java</code></Term>{" "}
+                        program, if MineUI finds the wrong one or none.
                       </span>
                     </TextField>
                     <TextField className="flex flex-col gap-2" type="number">
@@ -1238,8 +1262,9 @@ export default function SettingsPage() {
                         onFocus={() => play("hover")}
                       />
                       <span className="text-xs text-muted">
-                        The local channel MineUI uses to send commands to the server. Change
-                        it only if another program already uses this port.
+                        The local channel (<Term term="RCON">RCON</Term>) MineUI uses to send
+                        commands to the server. Change it only if another program already
+                        uses this <Term term="port">port</Term>.
                       </span>
                     </TextField>
                   </div>
@@ -1570,6 +1595,7 @@ export default function SettingsPage() {
             )}
           </Card>
         </motion.section>
+        )}
 
         {/* 6. Danger zone */}
         <motion.section variants={cardMotion}>
@@ -1619,6 +1645,26 @@ export default function SettingsPage() {
             )}
           </Card>
         </motion.section>
+
+        {!expertView && (
+          <motion.section
+            variants={cardMotion}
+            className="flex flex-wrap items-center gap-3 text-sm text-muted"
+          >
+            <span>More settings are in Advanced view</span>
+            <Button
+              variant="tertiary"
+              size="sm"
+              onPress={() => {
+                play("toggle_on");
+                setLevel("advanced");
+              }}
+              onMouseEnter={() => play("hover")}
+            >
+              Show Advanced
+            </Button>
+          </motion.section>
+        )}
 
         {/* One Save for the whole page, visible exactly when there is
             something to save. */}

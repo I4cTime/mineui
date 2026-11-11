@@ -42,13 +42,13 @@ it) just to manage the one you actually care about.
 MineUI is a native desktop app, not a web panel: **Tauri v2** (Rust backend)
 driving a **Next.js** static-export frontend over Tauri IPC - no Electron, no
 bundled Chromium, no local HTTP server to expose or secure. It manages any
-number of servers at once, and each one runs in one of two modes:
+number of servers at once, and each one runs in one of two ways:
 
-- **Simple mode (default)** - MineUI creates and runs a vanilla server for
+- **On this computer** - MineUI creates and runs a vanilla server for
   you: pick a Minecraft version, set memory, accept the EULA, and MineUI
   downloads the official server jar (SHA-1 verified), configures RCON, and
   supervises the Java process. No containers required.
-- **Advanced mode** - a Minecraft server container managed by **Docker or
+- **In a container** - a Minecraft server container managed by **Docker or
   Podman** (auto-detected, Podman preferred): control, logs, players, RCON,
   mods/plugins, config editing, backups, and container metrics. MineUI can
   **create** the container for you from the `itzg/minecraft-server` image -
@@ -63,14 +63,16 @@ Grab the build for your platform from the
 
 | Platform | Package |
 | --- | --- |
-| Linux x86_64 | `MineUI_2.12.1_amd64.AppImage` - `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.12.1_amd64.deb` - `sudo apt install ./MineUI_2.12.1_amd64.deb` |
-| Windows x64 | `MineUI_2.12.1_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.12.1_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.12.1_x64.dmg` |
+| Linux x86_64 | `MineUI_2.13.0_amd64.AppImage` - `chmod +x` and run |
+| Debian/Ubuntu | `MineUI_2.13.0_amd64.deb` - `sudo apt install ./MineUI_2.13.0_amd64.deb` |
+| Windows x64 | `MineUI_2.13.0_x64-setup.exe` |
+| macOS (Apple Silicon) | `MineUI_2.13.0_aarch64.dmg` |
+| macOS (Intel) | `MineUI_2.13.0_x64.dmg` |
 
-Simple mode needs Java installed (MineUI version-checks it against the
-Minecraft release you pick). Advanced mode needs Docker or Podman.
+A server On this computer needs Java. If the computer has none that fits
+the Minecraft version you pick, MineUI offers *Get Java for me* and downloads
+it (see [MineUI gets Java](#mineui-gets-java)); Java already installed is
+used as before. A server In a container needs Docker or Podman.
 
 ### Installing a container runtime
 
@@ -98,6 +100,51 @@ Website & docs: [mineui.i4c.studio](https://mineui.i4c.studio)
 
 ## Features
 
+### Start here, for a first server
+
+With no server set up, the Dashboard asks two questions - *What do you want
+to play?* (Normal Minecraft or Minecraft with mods) and *Who will play?*
+(Just me, People at home, Friends in other places too) - says what it will
+set up, then creates and starts the server and ends on how players join.
+*I know what I want* opens the full create forms instead. It shows only when
+the one server you have is not set up yet. For a server On this computer,
+*Just me* only changes the wording; container servers are limited to this
+computer. The create forms keep server type, version, pack and the Mojang
+agreement up front and put the rest under *More options*, with the same
+defaults. 26 terms (RCON, port, whitelist, op, EULA, container, Java,
+the mod loaders, TPS, MSPT and more) have a *What's this?* explanation.
+
+### Simple and Advanced view
+
+A switch in the header, Simple by default and remembered. Simple hides the
+Status, Console and Config pages; Scheduled tasks, Network and ports and the
+Advanced section in Server Settings; and the Dashboard's MOTD, ping, trend
+chip and sparklines. The server log sits behind *Show the server log*. A
+hidden page opened directly shows a notice with a *Show Advanced* button.
+It is a view setting only and never changes a server.
+
+### MineUI gets Java
+
+A server On this computer with no suitable Java offers *Get Java for me*.
+MineUI downloads the Eclipse Temurin JRE of the major the Minecraft version
+needs from Adoptium (`api.adoptium.net` and GitHub release assets, https
+only), verifies its sha256, caps the download at 300 MB, and keeps it in
+MineUI's own data folder, shared by all servers. Tested for real on Linux;
+the Windows and macOS archive layouts are covered by tests on synthetic
+archives only.
+
+### Getting started and a few signs of life
+
+Each server's Dashboard shows a checklist: server made, started, you
+joined, a friend joined, first backup. Steps tick from real data, each open
+one has a *Show me* link, the card can be hidden, and it ends with an *All
+done!* moment at 5 of 5. Player count, ping and TPS digits roll when they
+change, a ring breathes around the status dot while the server runs, Start,
+Stop, Restart and the create buttons ripple on press, and the join address
+is a tilting "server pass" card with *Copy*. All of it stops under the
+system's reduce-motion setting, and sounds follow the sound setting in App
+Settings.
+
 ### Several servers at once
 
 Add as many servers as you run - a Forge pack, a Fabric pack, a managed
@@ -115,13 +162,13 @@ MineUI forget it: its container, world and backups are never touched.
 ### Create a modded server without touching the command line
 
 Adding a server offers three routes: a **Modded or modpack server** (a new
-container), a **Plain Minecraft server** (vanilla, run on this computer, no
+container), a **Normal Minecraft, on this computer** server (vanilla, no
 containers), or **A container I already run**. For a new container MineUI
 creates an [`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)
 container for you - pick Vanilla, Paper, Purpur, Fabric, Quilt, Forge or
-NeoForge, the Minecraft version, memory and ports - picks the image with the
-right Java for that version, generates the RCON password, and connects itself
-to the result. The world lives in a named volume.
+NeoForge, the Minecraft version (only the ones that type has a build for),
+memory and ports - picks the image with the right Java for that version,
+generates the RCON password, and connects itself to the result. The world lives in a named volume.
 
 **Deleting is always your call.** MineUI removes a container only when you
 ask it to - *Delete container* in Server Settings, or the tick box when you
@@ -151,9 +198,10 @@ appearance (dark / light mode, style, accent), sounds (volume and four sound
 sets) and an About card (version, where files live, a manual update check),
 which apply to MineUI as a whole. **Settings** in the navigation is always the open server's own: its
 name, performance, scheduled tasks, backups, and - under *Advanced* -
-connection details, console command rules and how the server is run (Simple
-or Advanced; there is no header toggle for that any more, it is changed there,
-never while the server runs, and asks first).
+connection details, console command rules and how the server is run (On this
+computer or In a container; it is changed there, never while the server runs,
+and asks first). The header's Simple / Advanced switch is separate: it only
+hides or shows parts of the app.
 
 ### Ports and how players join
 
@@ -184,9 +232,20 @@ confirmation before `stop`.
 
 ### Mods & plugins
 
-Browse what's installed, upload a jar from disk, or download one from a URL.
-The add dialog preselects mod or plugin from what the server runs and warns
-when the choice cannot load there. Have a whole set of mods as a `.zip` - a
+**Find mods.** For a server In a container that runs Fabric, Quilt, Forge,
+NeoForge, Paper or Purpur, the add dialog searches
+[Modrinth](https://modrinth.com) and lists only what works with that server's
+type and Minecraft version. *Install* also adds the other mods it needs,
+checks every file against the sha512 Modrinth published before keeping it,
+and says when every player has to install the mod too. Servers On this
+computer, Vanilla servers and modpack servers get a plain explanation instead
+of a search.
+
+Browse what's installed, switch a mod off and on again without deleting it
+(it applies after a restart), or upload a jar from disk. Downloading from a
+link is still there in the Advanced view, with a warning that MineUI cannot
+check such a file. The add dialog preselects mod or plugin from what the
+server runs and warns when the choice cannot load there. Have a whole set of mods as a `.zip` - a
 zipped folder, or a server pack? MineUI unpacks the jars inside and installs
 them together, which is the way to put a pack's mods onto a server that
 already exists.
@@ -226,7 +285,7 @@ system** and a style in App Settings → Appearance, and optionally override
 the accent color. The token system behind them is in
 [`docs/theme-contract.md`](docs/theme-contract.md).
 
-### Enriched metrics via a companion mod (Advanced mode, optional)
+### Enriched metrics via a companion mod (servers In a container, optional)
 
 Point a server's Settings → **Server utils URL** at an instance of
 [mineui_server_utils](https://github.com/I4cTime/mineui_server_utils) - a
@@ -237,8 +296,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 254 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (55 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 328 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (61 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) - binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -266,7 +325,7 @@ Other commands:
 - `pnpm build` - static export to `out/` (what Tauri bundles)
 - `pnpm lint` - ESLint
 - `pnpm tauri build` - production desktop bundle
-- `cargo test -p mineui-core` - Rust unit tests (254 tests; must stay green)
+- `cargo test -p mineui-core` - Rust unit tests (328 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

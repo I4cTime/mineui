@@ -1,5 +1,9 @@
 "use client";
 
+import Term from "@/app/components/Term";
+
+import AdvancedOnly from "@/app/components/AdvancedOnly";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { FileCode2 } from "lucide-react";
@@ -25,7 +29,7 @@ import {
 // Contract §3.7: config paths are now relative, forward-slash
 // ("server.properties", "config/foo.toml") - display them as-is.
 
-export default function ConfigPage() {
+function ConfigPageInner() {
   const { containerMotion, cardMotion } = usePageMotion();
   const [files, setFiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +171,11 @@ export default function ConfigPage() {
         variants={containerMotion}
       >
         <PageHeader title="Server Config Editor" icon={FileCode2} />
+        <p className="-mt-3 text-xs text-muted">
+          Edit the server&apos;s settings files. Start with{" "}
+          <Term term="server.properties">server.properties</Term>: game mode,
+          difficulty and how many players fit.
+        </p>
 
         <motion.section
           className="grid min-h-0 gap-6 lg:h-[calc(100dvh-var(--navbar-height)-8.5rem)] lg:min-h-[420px] lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]"
@@ -258,5 +267,16 @@ export default function ConfigPage() {
         />
       </motion.main>
     </div>
+  );
+}
+
+export default function ConfigPage() {
+  return (
+    <AdvancedOnly
+      name="Config"
+      what="Config lets you edit the server's settings files, like server.properties."
+    >
+      <ConfigPageInner />
+    </AdvancedOnly>
   );
 }

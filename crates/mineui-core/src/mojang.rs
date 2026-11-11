@@ -174,6 +174,27 @@ pub async fn version_detail(core: &crate::Core, version_id: &str) -> Result<Vers
         .map_err(|e| Error::DownloadFailed(format!("invalid version detail JSON: {e}")))
 }
 
+/// `required_java_major` (§3.6, 2.13.0; also `create_container`'s image
+/// tag, §3.13): the Java major the version needs, per Mojang's version
+/// detail. `"LATEST"` (any case) or empty resolves to the latest release
+/// first. `None` when it cannot be resolved (offline with no cache, a
+/// version Mojang does not list, a detail without `javaVersion`).
+pub async fn required_java_major(core: &crate::Core, version: &str) -> Option<u32> {
+    let version = version.trim();
+    let id = if version.is_empty() || version.eq_ignore_ascii_case("LATEST") {
+        list_versions(core, false)
+            .await
+            .ok()?
+            .into_iter()
+            .find(|v| v.latest)?
+            .id
+    } else {
+        version.to_string()
+    };
+    let detail = version_detail(core, &id).await.ok()?;
+    detail.java_version.map(|j| j.major_version)
+}
+
 /// `releaseTime` of one version from the cached manifest (§3.6
 /// `change_instance_version` step 3). `None` when no manifest is cached or
 /// the version is not listed. Call after `version_detail`, which warms it.
@@ -203,6 +224,9 @@ pub async fn download_server_jar(
         download_id: uuid::Uuid::new_v4().to_string(),
         max_bytes: None,
         expected_sha1: Some(download.sha1.clone()),
+        expected_sha256: None,
+        expected_sha512: None,
+        client: None,
         // Server-jar URLs come from Mojang's HTTPS manifest and the content
         // is SHA-1 pinned; still use the strict client - piston-data has no
         // business redirecting to private hosts.
@@ -278,6 +302,77 @@ mod tests {
         assert_eq!(server.size, 51830140);
         assert_eq!(server.sha1, "8c757bb9b6fbd8b19bb1f6dfd2be1cf0e9c69777");
         assert_eq!(detail.java_version.unwrap().major_version, 21);
+    }
+
+    /// Serves version detail JSON per path from a local socket.
+    async fn detail_server() -> std::net::SocketAddr {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut buf = vec![0u8; 2048];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let body = if req.starts_with("GET /new ") {
+                    DETAIL_FIXTURE.to_string()
+                } else if req.starts_with("GET /old ") {
+                    r#"{"id":"1.16.5","javaVersion":{"component":"jre-legacy","majorVersion":8}}"#
+                        .to_string()
+                } else {
+                    r#"{"id":"a1.0.4"}"#.to_string()
+                };
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = sock.write_all(head.as_bytes()).await;
+                let _ = sock.write_all(body.as_bytes()).await;
+                let _ = sock.flush().await;
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn required_java_major_from_detail() {
+        let addr = detail_server().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let core = crate::Core::init(tmp.path().join("config"), tmp.path().join("data"))
+            .await
+            .unwrap();
+        let v = |id: &str, path: &str| ManifestVersion {
+            id: id.into(),
+            version_type: "release".into(),
+            url: format!("http://{addr}/{path}"),
+            release_time: "2026-01-01T00:00:00+00:00".into(),
+        };
+        // A warm cache: no request ever reaches Mojang.
+        *core.mojang_cache.lock().await = Some(ManifestCache {
+            fetched_at: Instant::now(),
+            manifest: VersionManifest {
+                latest: ManifestLatest {
+                    release: "1.21.6".into(),
+                    snapshot: "1.21.6".into(),
+                },
+                versions: vec![
+                    v("1.21.6", "new"),
+                    v("1.16.5", "old"),
+                    v("a1.0.4", "ancient"),
+                ],
+            },
+        });
+        assert_eq!(required_java_major(&core, "1.21.6").await, Some(21));
+        assert_eq!(required_java_major(&core, "1.16.5").await, Some(8));
+        assert_eq!(required_java_major(&core, "LATEST").await, Some(21));
+        assert_eq!(required_java_major(&core, "latest").await, Some(21));
+        assert_eq!(required_java_major(&core, "").await, Some(21));
+        // No javaVersion in the detail, or not in the manifest: null.
+        assert_eq!(required_java_major(&core, "a1.0.4").await, None);
+        assert_eq!(required_java_major(&core, "9.9.9").await, None);
     }
 
     #[test]

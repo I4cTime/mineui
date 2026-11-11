@@ -171,6 +171,8 @@ export type JavaCheck = {
   majorVersion: number | null;
   requiredMajor: number | null;
   compatible: boolean | null;
+  /** 2.13.0 - the Java found is one MineUI downloaded (installJava). */
+  managed: boolean;
 };
 
 export const getSettings = () => scoped<Settings>("get_settings");
@@ -178,6 +180,9 @@ export const setSettings = (settings: Settings) =>
   scoped<Settings>("set_settings", { settings });
 export const detectRuntimes = () => scoped<RuntimeProbe>("detect_runtimes");
 export const javaCheck = () => scoped<JavaCheck>("java_check");
+/** 2.13.0 - download Temurin JRE `major` into MineUI's own folder (app-wide);
+ *  resolves with this server's Java check after the install. */
+export const installJava = (major: number) => scoped<JavaCheck>("install_java", { major });
 
 /* ---------- server state / lifecycle / status ---------- */
 
@@ -475,6 +480,94 @@ export type ModArchiveSource =
 export const unpackModArchive = (source: ModArchiveSource, target: ModTarget) =>
   scoped<UnpackedMods>("unpack_mod_archive", { ...source, target });
 
+/** Renames name.jar to name.jar.disabled (enabled false) or back
+ *  (enabled true); returns the new filename (§3.5, 2.13.0). */
+export const setModEnabled = (filename: string, target: ModTarget, enabled: boolean) =>
+  scoped<{ filename: string }>("set_mod_enabled", { filename, target, enabled });
+
+/* ---------- find mods on Modrinth (§3.5a, 2.13.0) ---------- */
+
+/** What Find mods can do for this server. */
+export type ModSupport = {
+  /** False when this server cannot load mods or plugins (see `reason`). */
+  supported: boolean;
+  /** Where installs go: "mods" (Fabric, Quilt, Forge, NeoForge) or
+   *  "plugins" (Paper, Purpur); null when not supported. */
+  target: ModTarget | null;
+  /** The server type MineUI read, lowercase ("fabric", "paper", "vanilla",
+   *  "modrinth", ...); null when it could not tell. */
+  serverType: string | null;
+  /** The Minecraft version results must have a build for; null when unknown. */
+  mcVersion: string | null;
+  /** Modrinth loader tags a version must carry, preferred first; empty when
+   *  not supported. */
+  loaders: string[];
+  /** Why not, in a plain sentence; null when supported. */
+  reason: string | null;
+};
+
+/** Whether a mod's players need it too, as Modrinth reports it. */
+export type ModClientSide = "required" | "optional" | "unsupported" | "unknown";
+
+export type ModSearchHit = {
+  projectId: string;
+  slug: string;
+  title: string;
+  description: string;
+  author: string;
+  iconUrl: string | null;
+  downloads: number;
+  /** "required": every player must install the mod too. */
+  clientSide: ModClientSide;
+  /** Already in this server's folder and switched on (a `.jar.disabled`
+   *  copy does not count). */
+  installed: boolean;
+};
+
+export type ModSearchPage = {
+  hits: ModSearchHit[];
+  /** Echo of the request after clamping; the next page starts at
+   *  offset + limit. */
+  offset: number;
+  limit: number;
+  /** Modrinth's count of matches (client-only projects it still reports are
+   *  dropped from `hits`, so a page can be shorter than `limit`). */
+  totalHits: number;
+};
+
+export type InstalledModFile = {
+  filename: string;
+  projectId: string;
+  slug: string;
+  title: string;
+  versionId: string;
+  versionNumber: string;
+  /** True when installed because another file needs it. */
+  dependency: boolean;
+  /** The id its download-progress events carried. */
+  downloadId: string;
+};
+
+export type ModInstall = {
+  target: ModTarget;
+  /** The project asked for first, then its dependencies. */
+  installed: InstalledModFile[];
+  /** Titles of required dependencies that were already installed. */
+  alreadyInstalled: string[];
+};
+
+/** No network; "not supported" is a result with a reason, not an error. */
+export const getModSupport = () => scoped<ModSupport>("get_mod_support");
+/** Modrinth mods or plugins this server can load. Empty query = most
+ *  downloaded. Rejects WRONG_MODE when the server cannot load any. */
+export const searchMods = (query: string, offset?: number, limit?: number) =>
+  scoped<ModSearchPage>("search_mods", { query, offset, limit });
+/** Installs the newest compatible version of a Modrinth project (id or
+ *  slug) with its required dependencies, each checked against Modrinth's
+ *  sha512. Takes effect after a restart. */
+export const installMod = (projectId: string) =>
+  scoped<ModInstall>("install_mod", { projectId });
+
 /* ---------- instance (simple mode) ---------- */
 
 export type McVersion = {
@@ -502,8 +595,15 @@ export type InstanceStatus = {
   createdAt: string | null;
 };
 
-export const listMcVersions = (includeSnapshots?: boolean) =>
-  scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
+/** 2.13.0 serverType: only the versions that server type has builds for;
+ *  absent or "vanilla" = every Mojang version (the list falls back to that
+ *  when the type's own list cannot be had). */
+export const listMcVersions = (includeSnapshots?: boolean, serverType?: ContainerLoader) =>
+  scoped<McVersion[]>("list_mc_versions", { includeSnapshots, serverType });
+/** 2.13.0, app-wide - the Java major a version ("LATEST" allowed) needs;
+ *  null when it cannot be resolved (offline, unknown version). */
+export const requiredJavaMajor = (mcVersion: string) =>
+  call<number | null>("required_java_major", { mcVersion });
 export const createInstance = (args: CreateInstanceArgs) =>
   scoped<InstanceStatus>("create_instance", { args });
 export const deleteInstance = () =>
@@ -661,7 +761,7 @@ export type ServerStateEvent = {
   exitCode: number | null;
 };
 
-export type DownloadKind = "server-jar" | "mod";
+export type DownloadKind = "server-jar" | "mod" | "java";
 export type DownloadProgressEvent = {
   serverId: string;
   downloadId: string;

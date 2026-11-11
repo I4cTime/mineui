@@ -5,6 +5,9 @@
 // pick a server type or a modpack, MineUI does the `run` and wires the
 // server up. Without Podman or Docker it explains how to get one instead.
 // The simple-mode counterpart is CreateServerFlow.
+import { announceServerMade } from "@/app/lib/milestones";
+import { TextShimmer } from "@heroui-pro/react";
+import PressRipple from "@/app/components/PressRipple";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
@@ -38,7 +41,9 @@ import PortsEditor, { portsProblems } from "@/app/components/PortsEditor";
 import { exposeConsequence } from "@/app/components/NetworkPortsCard";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import OutLink from "@/app/components/OutLink";
+import Term from "@/app/components/Term";
 import { useUISound } from "@/app/hooks/useUISound";
+import type { GlossaryTerm } from "@/app/lib/glossary";
 import ChoiceCards from "@/app/components/ChoiceCards";
 import { fadeUp } from "@/app/lib/motion";
 import {
@@ -53,14 +58,14 @@ import {
   type Settings,
 } from "@/app/lib/ipc";
 
-const LATEST = "LATEST";
-const DEFAULT_CONTAINER_NAME = "minecraft-server";
+export const LATEST = "LATEST";
+export const DEFAULT_CONTAINER_NAME = "minecraft-server";
 const MEMORY_MIN = 1024;
 const MEMORY_MAX = 16384;
 const MEMORY_STEP = 512;
-const MEMORY_DEFAULT = 4096;
+export const MEMORY_DEFAULT = 4096;
 /** Modpacks are heavier than a bare loader. */
-const MEMORY_DEFAULT_MODPACK = 6144;
+export const MEMORY_DEFAULT_MODPACK = 6144;
 
 /** What the new container runs. */
 type Kind = "type" | "modpack";
@@ -80,18 +85,40 @@ const KINDS: { id: Kind; title: string; description: string; icon: LucideIcon }[
   },
 ];
 
-const LOADERS: { id: ContainerLoader; label: string; hint: string }[] = [
-  { id: "vanilla", label: "Vanilla", hint: "Mojang's own server. No mods or plugins." },
-  { id: "paper", label: "Paper", hint: "Plugins (Bukkit/Spigot), tuned for performance." },
-  { id: "purpur", label: "Purpur", hint: "Paper with extra gameplay switches." },
-  { id: "fabric", label: "Fabric", hint: "Lightweight mod loader for Fabric mods." },
-  { id: "quilt", label: "Quilt", hint: "Fabric-compatible mod loader." },
-  { id: "forge", label: "Forge", hint: "The classic mod loader; most large modpacks." },
-  { id: "neoforge", label: "NeoForge", hint: "Forge's successor, for 1.20.2 and newer." },
+const LOADERS: { id: ContainerLoader; label: string; term: GlossaryTerm; hint: string }[] = [
+  { id: "vanilla", label: "Vanilla", term: "Vanilla", hint: "Mojang's own server. No mods or plugins." },
+  { id: "paper", label: "Paper", term: "Paper", hint: "Plugins (Bukkit/Spigot), tuned for performance." },
+  { id: "purpur", label: "Purpur", term: "Purpur", hint: "Paper with extra gameplay switches." },
+  { id: "fabric", label: "Fabric", term: "Fabric", hint: "Lightweight mod loader for Fabric mods." },
+  { id: "quilt", label: "Quilt", term: "Quilt", hint: "Fabric-compatible mod loader." },
+  { id: "forge", label: "Forge", term: "Forge", hint: "The classic mod loader; most large modpacks." },
+  { id: "neoforge", label: "NeoForge", term: "NeoForge", hint: "Forge's successor, for 1.20.2 and newer." },
 ];
 
+/** Whether a server type's version list has Mojang's newest release in it.
+ *  An empty list means "not known", which keeps "Latest release". */
+const hasNewestRelease = (list: McVersion[]) =>
+  list.length === 0 || list.some((item) => item.latest && item.type === "release");
+
+/** The newest concrete version in a server type's list: Mojang's newest
+ *  release when the type has a build for it, else the newest it has; null
+ *  for an empty list. */
+const newestIn = (list: McVersion[]): string | null =>
+  list.find((item) => item.latest && item.type === "release")?.id ?? list[0]?.id ?? null;
+
+/** What to create a server type with when nobody picks: the newest concrete
+ *  version the type can run (contract 3.13), so the server keeps it on every
+ *  restart and Find mods can tell it. LATEST only when the list cannot be had. */
+export const newestVersionFor = async (loader: ContainerLoader): Promise<string> => {
+  try {
+    return newestIn(await listMcVersions(undefined, loader)) ?? LATEST;
+  } catch {
+    return LATEST;
+  }
+};
+
 /** "Fabric survival" → "mc-fabric-survival" (container-name grammar). */
-const containerNameFor = (serverName: string) => {
+export const containerNameFor = (serverName: string) => {
   const slug = serverName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -123,6 +150,12 @@ export default function CreateContainerFlow({
   const [runtimeChecking, setRuntimeChecking] = useState(false);
   const [loader, setLoader] = useState<ContainerLoader>("vanilla");
   const [versions, setVersions] = useState<McVersion[]>([]);
+  // The versions the chosen server type has builds for, tagged with that type
+  // so a list that arrives late for another type is never used.
+  const [typeVersions, setTypeVersions] = useState<{
+    loader: ContainerLoader;
+    list: McVersion[];
+  } | null>(null);
   const [version, setVersion] = useState(LATEST);
   const [containerName, setContainerName] = useState(
     settings.advanced.containerName !== DEFAULT_CONTAINER_NAME
@@ -137,6 +170,7 @@ export default function CreateContainerFlow({
   const [exposeToNetwork, setExposeToNetwork] = useState(true);
   const [extraPorts, setExtraPorts] = useState<ExtraPort[]>([]);
   const [portsOpen, setPortsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [eulaAccepted, setEulaAccepted] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -146,6 +180,31 @@ export default function CreateContainerFlow({
       .then(setVersions)
       .catch(() => setVersions([]));
   }, []);
+
+  useEffect(() => {
+    if (kind !== "type") return;
+    let current = true;
+    listMcVersions(undefined, loader)
+      .then((list) => {
+        if (!current) return;
+        setTypeVersions({ loader, list });
+        // Keep the pick to a version this type can run.
+        const latestOk = hasNewestRelease(list);
+        setVersion((picked) => {
+          if (list.length === 0) return picked;
+          if (picked === LATEST) return latestOk ? LATEST : list[0].id;
+          if (list.some((item) => item.id === picked)) return picked;
+          return latestOk ? LATEST : list[0].id;
+        });
+      })
+      .catch(() => {
+        // Not known: the full list and "Latest release", as before.
+        if (current) setTypeVersions(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [kind, loader]);
 
   const checkRuntime = useCallback(() => {
     setRuntimeChecking(true);
@@ -192,10 +251,24 @@ export default function CreateContainerFlow({
     modpack?.source === "modrinth" || modpack?.source === "curseforge-zip"
       ? modpack.gameVersions
       : null;
-  const versionIds = packVersions ?? versions.map((item) => item.id);
+  const typeList =
+    kind === "type" && typeVersions?.loader === loader && typeVersions.list.length > 0
+      ? typeVersions.list
+      : null;
+  const latestOffered = typeList === null || hasNewestRelease(typeList);
+  const versionIds = packVersions ?? (typeList ?? versions).map((item) => item.id);
+  const loaderMeta = LOADERS.find((item) => item.id === loader);
+  const newestRelease = versions.find((item) => item.latest && item.type === "release")?.id;
+  // What "Latest release" stands for with this type's list (null: not known).
+  const latestId = typeList ? newestIn(typeList) : null;
+  const latestLabel = latestId ? `Latest release (${latestId})` : "Latest release";
   const versionHint =
     kind === "type"
-      ? "Mod loaders can trail the newest release - for a modded server, pick the version your mods are built for."
+      ? !latestOffered && loaderMeta
+        ? `${loaderMeta.label} has no build for ${
+            newestRelease ? `Minecraft ${newestRelease}` : "the newest Minecraft release"
+          } yet, so the newest it can run is picked.`
+        : "Mod loaders can trail the newest release - for a modded server, pick the version your mods are built for."
       : modpack === null
         ? "Choose the modpack first."
         : modpack.source === "modrinth"
@@ -204,10 +277,19 @@ export default function CreateContainerFlow({
             ? "From the pack's manifest."
             : "The Minecraft version the pack is made for - it decides which Java the server gets, and a pack on the wrong Java does not start.";
 
-  const loaderMeta = LOADERS.find((item) => item.id === loader);
   const workloadReady =
     kind === "type" || (modpack !== null && version !== "" && version !== LATEST);
   const portProblems = portsProblems(extraPorts, gamePort, rconPort);
+  // Problems with fields that live under "More options": named next to the
+  // Create button too, so a collapsed section never hides why it is disabled.
+  const moreProblem: string | null =
+    containerName.trim() === ""
+      ? "Give the container a name."
+      : gamePort <= 0 || rconPort <= 0
+        ? "Check the ports."
+        : portProblems.length > 0
+          ? `Extra ports: ${portProblems[0]}`
+          : null;
   const canCreate =
     eulaAccepted &&
     portProblems.length === 0 &&
@@ -223,9 +305,15 @@ export default function CreateContainerFlow({
     play("click_confirm");
     setCreating(true);
     try {
+      // "Latest release" is a label: send the concrete version it stands for
+      // (contract 3.13), LATEST only when the type's list cannot be had.
+      const mcVersion =
+        kind === "type" && version === LATEST
+          ? (latestId ?? (await newestVersionFor(loader)))
+          : version;
       await createContainer({
         loader,
-        mcVersion: version,
+        mcVersion,
         containerName: containerName.trim(),
         memoryMb,
         gamePort,
@@ -239,7 +327,7 @@ export default function CreateContainerFlow({
             : null,
       });
       play("success");
-      toast.success(`${containerName.trim()} created - the server is installing`);
+      announceServerMade(`${containerName.trim()} is installing. This can take a few minutes.`);
       onCreated();
     } catch (error) {
       play("error");
@@ -266,10 +354,10 @@ export default function CreateContainerFlow({
           </div>
           <Card.Description>
             {serverName} is not set up yet. Pick what it should run and MineUI
-            creates the server in a container (the widely used{" "}
-            <code className="font-mono">itzg/minecraft-server</code> image) and
-            connects to it. Only want plain Minecraft with nothing to install? Add
-            a <em>Plain Minecraft server</em> in App Settings → Servers instead.
+            creates the server in a <Term term="container">container</Term> (the
+            widely used <code className="font-mono">itzg/minecraft-server</code>{" "}
+            image) and connects to it. Only want normal Minecraft with no mods? Add a
+            server <em>On this computer</em> in App Settings → Servers instead.
           </Card.Description>
         </Card.Header>
 
@@ -324,7 +412,14 @@ export default function CreateContainerFlow({
                 </ListBox>
               </Select.Popover>
             </Select>
-            <span className="text-xs text-muted">{loaderMeta?.hint}</span>
+            <span className="text-xs text-muted">
+              {loaderMeta && (
+                <>
+                  <Term term={loaderMeta.term}>{loaderMeta.label}</Term>:{" "}
+                  {loaderMeta.hint}
+                </>
+              )}
+            </span>
           </div>
           )}
 
@@ -350,9 +445,9 @@ export default function CreateContainerFlow({
               </Select.Trigger>
               <Select.Popover>
                 <ListBox className="max-h-72 overflow-auto">
-                  {kind === "type" && (
-                    <ListBox.Item id={LATEST} textValue="Latest release">
-                      Latest release
+                  {kind === "type" && latestOffered && (
+                    <ListBox.Item id={LATEST} textValue={latestLabel}>
+                      {latestLabel}
                       <ListBox.ItemIndicator />
                     </ListBox.Item>
                   )}
@@ -368,124 +463,7 @@ export default function CreateContainerFlow({
             <span className="text-xs text-muted">{versionHint}</span>
           </div>
 
-          <TextField
-            className="flex flex-col gap-2"
-            value={containerName}
-            onChange={setContainerName}
-            isDisabled={creating}
-          >
-            <Label>Container name</Label>
-            <Input className="font-mono" />
-          </TextField>
-
-          <div className="grid grid-cols-2 gap-3">
-            <TextField className="flex flex-col gap-2" isDisabled={creating}>
-              <Label>Game port</Label>
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={gamePort}
-                onChange={(event) => setGamePort(numberFrom(event))}
-              />
-            </TextField>
-            <TextField className="flex flex-col gap-2" isDisabled={creating}>
-              <Label>RCON port</Label>
-              <Input
-                type="number"
-                min={1}
-                max={65535}
-                value={rconPort}
-                onChange={(event) => setRconPort(numberFrom(event))}
-              />
-            </TextField>
-          </div>
-
-          <div className="grid gap-2 md:col-span-2">
-            <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
-              <HardDrive size={14} />
-              Memory
-            </span>
-            <Slider
-              className="w-full"
-              value={memoryMb}
-              minValue={MEMORY_MIN}
-              maxValue={MEMORY_MAX}
-              step={MEMORY_STEP}
-              isDisabled={creating}
-              formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
-              onChange={(value) => {
-                setMemoryTouched(true);
-                setMemoryMb(value as number);
-              }}
-            >
-              <Label className="sr-only">Server memory in megabytes</Label>
-              <Slider.Output />
-              <Slider.Track>
-                <Slider.Fill />
-                <Slider.Thumb />
-              </Slider.Track>
-            </Slider>
-            <span className="text-xs text-muted">
-              JVM heap. 2048 MB suits a small vanilla server; modded servers
-              usually want 4096 MB or more, large modpacks 6144–8192 MB.
-            </span>
-          </div>
-
-          <div className="grid gap-3 md:col-span-2">
-            <Switch
-              isSelected={exposeToNetwork}
-              isDisabled={creating}
-              onChange={(selected: boolean) => {
-                play(selected ? "toggle_on" : "toggle_off");
-                setExposeToNetwork(selected);
-              }}
-            >
-              <Switch.Content>
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-                <Label>Let other devices join</Label>
-              </Switch.Content>
-            </Switch>
-            <span className="text-xs text-muted">
-              {exposeConsequence(exposeToNetwork, gamePort)}{" "}
-              RCON - the channel MineUI itself uses to send commands - always stays
-              on this computer, with a password MineUI generates.
-            </span>
-
-            <Disclosure
-              isExpanded={portsOpen}
-              onExpandedChange={(open) => {
-                play(open ? "toggle_on" : "toggle_off");
-                setPortsOpen(open);
-              }}
-            >
-              <Disclosure.Heading>
-                <Disclosure.Trigger
-                  className="flex w-fit items-center gap-1.5 text-xs text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{ outlineColor: "var(--focus)" }}
-                >
-                  Extra ports for mods
-                  {extraPorts.length > 0 && ` (${extraPorts.length})`}
-                  <Disclosure.Indicator className="ms-0 size-auto">
-                    <ChevronDown size={13} />
-                  </Disclosure.Indicator>
-                </Disclosure.Trigger>
-              </Disclosure.Heading>
-              <Disclosure.Content>
-                <Disclosure.Body style={{ padding: "0.5rem 0 0" }}>
-                  <PortsEditor
-                    value={extraPorts}
-                    onChange={setExtraPorts}
-                    gamePort={gamePort}
-                    rconPort={rconPort}
-                    isDisabled={creating}
-                  />
-                </Disclosure.Body>
-              </Disclosure.Content>
-            </Disclosure>
-
+          <div className="md:col-span-2">
             <label className="flex items-start gap-3 text-sm">
               <input
                 type="checkbox"
@@ -504,18 +482,171 @@ export default function CreateContainerFlow({
                 </OutLink>
                 .{" "}
                 <span className="text-muted">
-                  Mojang&apos;s rules for running a server - every Minecraft server has to
-                  agree to them.
+                  Mojang&apos;s rules for running a server (<Term term="EULA">what&apos;s the EULA?</Term>).
+                  Every Minecraft server has to agree to them.
                 </span>
               </span>
             </label>
           </div>
 
+          <div className="md:col-span-2">
+            <Disclosure
+              isExpanded={moreOpen}
+              onExpandedChange={(open) => {
+                play(open ? "toggle_on" : "toggle_off");
+                setMoreOpen(open);
+              }}
+            >
+              <Disclosure.Heading>
+                <Disclosure.Trigger
+                  className="flex w-fit items-center gap-1.5 text-sm font-medium text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ outlineColor: "var(--focus)" }}
+                >
+                  More options
+                  {moreProblem !== null && (
+                    <span className="text-xs font-normal text-danger">(needs a look)</span>
+                  )}
+                  <Disclosure.Indicator className="ms-0 size-auto">
+                    <ChevronDown size={14} />
+                  </Disclosure.Indicator>
+                </Disclosure.Trigger>
+              </Disclosure.Heading>
+              <Disclosure.Content>
+                <Disclosure.Body style={{ padding: "0.75rem 0 0" }}>
+                  <div className="grid gap-5 md:grid-cols-2">
+                  <TextField
+                    className="flex flex-col gap-2"
+                    value={containerName}
+                    onChange={setContainerName}
+                    isDisabled={creating}
+                  >
+                    <Label>Container name</Label>
+                    <Input className="font-mono" />
+                  </TextField>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <TextField className="flex flex-col gap-2" isDisabled={creating}>
+                      <Label>Game port</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={gamePort}
+                        onChange={(event) => setGamePort(numberFrom(event))}
+                      />
+                    </TextField>
+                    <TextField className="flex flex-col gap-2" isDisabled={creating}>
+                      <Label>RCON port</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={rconPort}
+                        onChange={(event) => setRconPort(numberFrom(event))}
+                      />
+                    </TextField>
+                  </div>
+                  <p className="text-xs text-muted md:col-span-2">
+                    The game <Term term="port">port</Term> is the one players connect to.
+                    The <Term term="RCON">RCON</Term> port is only for MineUI.
+                  </p>
+                  <div className="grid gap-2 md:col-span-2">
+                    <span className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
+                      <HardDrive size={14} />
+                      Memory
+                    </span>
+                    <Slider
+                      className="w-full"
+                      value={memoryMb}
+                      minValue={MEMORY_MIN}
+                      maxValue={MEMORY_MAX}
+                      step={MEMORY_STEP}
+                      isDisabled={creating}
+                      formatOptions={{ style: "unit", unit: "megabyte", unitDisplay: "short" }}
+                      onChange={(value) => {
+                        setMemoryTouched(true);
+                        setMemoryMb(value as number);
+                      }}
+                    >
+                      <Label className="sr-only">Server memory in megabytes</Label>
+                      <Slider.Output />
+                      <Slider.Track>
+                        <Slider.Fill />
+                        <Slider.Thumb />
+                      </Slider.Track>
+                    </Slider>
+                    <span className="text-xs text-muted">
+                      JVM heap. 2048 MB suits a small vanilla server; modded servers
+                      usually want 4096 MB or more, large modpacks 6144–8192 MB.
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 md:col-span-2">
+                    <Switch
+                      isSelected={exposeToNetwork}
+                      isDisabled={creating}
+                      onChange={(selected: boolean) => {
+                        play(selected ? "toggle_on" : "toggle_off");
+                        setExposeToNetwork(selected);
+                      }}
+                    >
+                      <Switch.Content>
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                        <Label>Let other devices join</Label>
+                      </Switch.Content>
+                    </Switch>
+                    <span className="text-xs text-muted">
+                      {exposeConsequence(exposeToNetwork, gamePort)}{" "}
+                      <Term term="RCON">RCON</Term> (the channel MineUI itself uses to send
+                      commands) always stays on this computer, with a password MineUI
+                      generates.
+                    </span>
+
+                    <Disclosure
+                      isExpanded={portsOpen}
+                      onExpandedChange={(open) => {
+                        play(open ? "toggle_on" : "toggle_off");
+                        setPortsOpen(open);
+                      }}
+                    >
+                      <Disclosure.Heading>
+                        <Disclosure.Trigger
+                          className="flex w-fit items-center gap-1.5 text-xs text-accent focus-visible:outline-2 focus-visible:outline-offset-2"
+                          style={{ outlineColor: "var(--focus)" }}
+                        >
+                          Extra ports for mods
+                          {extraPorts.length > 0 && ` (${extraPorts.length})`}
+                          <Disclosure.Indicator className="ms-0 size-auto">
+                            <ChevronDown size={13} />
+                          </Disclosure.Indicator>
+                        </Disclosure.Trigger>
+                      </Disclosure.Heading>
+                      <Disclosure.Content>
+                        <Disclosure.Body style={{ padding: "0.5rem 0 0" }}>
+                          <PortsEditor
+                            value={extraPorts}
+                            onChange={setExtraPorts}
+                            gamePort={gamePort}
+                            rconPort={rconPort}
+                            isDisabled={creating}
+                          />
+                        </Disclosure.Body>
+                      </Disclosure.Content>
+                    </Disclosure>
+                  </div>
+                  </div>
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
+          </div>
+
           {creating && (
             <div className="grid gap-2 md:col-span-2">
               <span className="text-xs text-muted">
-                Creating the container… The first time, the server image
-                (about 1 GB) is downloaded, which can take a few minutes.
+                <TextShimmer>Creating the container…</TextShimmer> The first time, the
+                server image (about 1 GB) is downloaded, which can take a few minutes.
               </span>
               <ProgressBar
                 className="progress-bar-steps"
@@ -551,13 +682,11 @@ export default function CreateContainerFlow({
                     ? kind === "modpack" && modpack === null
                       ? "Pick a modpack."
                       : "Pick the Minecraft version."
-                    : containerName.trim() === ""
-                      ? "Give the container a name."
+                    : moreProblem !== null
+                      ? `${moreProblem} (in More options)`
                       : !eulaAccepted
                         ? "Accept the EULA to continue."
-                        : portProblems.length > 0
-                          ? `Extra ports: ${portProblems[0]}`
-                          : "Check the ports."}
+                        : "Check the options."}
               </span>
             )}
           <Button
@@ -566,10 +695,11 @@ export default function CreateContainerFlow({
             isPending={creating}
             onMouseEnter={() => play("hover")}
           >
+            <PressRipple />
             {creating ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Creating...
+                <TextShimmer>Creating...</TextShimmer>
               </>
             ) : (
               <>

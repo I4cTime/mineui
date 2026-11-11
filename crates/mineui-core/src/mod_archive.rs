@@ -217,7 +217,7 @@ fn extract_with_limits(
 }
 
 /// Place every file of `dir` into the target root.
-async fn place_dir(
+pub(crate) async fn place_dir(
     core: &crate::Core,
     dir: &Path,
     target: ModTarget,
@@ -304,6 +304,9 @@ async fn acquire(
                 download_id: download_id.clone(),
                 max_bytes: Some(ARCHIVE_MAX_BYTES),
                 expected_sha1: None,
+                expected_sha256: None,
+                expected_sha512: None,
+                client: None,
                 allow_private_hosts: allow_private,
             };
             let result = crate::download::to_temp_file(core, &request).await?;

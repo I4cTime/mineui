@@ -14,11 +14,11 @@ import {
   Separator,
   Tooltip,
 } from "@heroui/react";
+import StatusPulse from "@/app/components/StatusPulse";
 import { useUISound } from "@/app/hooks/useUISound";
 import {
   identityLine,
   overviewSummary,
-  phaseDotClass,
   phaseText,
   useServers,
 } from "@/app/components/ServerProvider";
@@ -56,10 +56,7 @@ export default function ServerSwitcher() {
           aria-label={`Server: ${active.name} (${phaseText(activeState?.phase)}). Switch server`}
           onMouseEnter={() => play("hover")}
         >
-          <span
-            aria-hidden
-            className={`size-2 shrink-0 rounded-full ${phaseDotClass(activeState?.phase)}`}
-          />
+          <StatusPulse phase={activeState?.phase} />
           <span className="hidden max-w-28 truncate header-mid:inline">
             {active.name}
           </span>
@@ -79,10 +76,7 @@ export default function ServerSwitcher() {
                 const state = stateOf(server.id);
                 return (
                   <Dropdown.Item key={server.id} id={server.id} textValue={server.name}>
-                    <span
-                      aria-hidden
-                      className={`size-2 shrink-0 rounded-full ${phaseDotClass(state?.phase)}`}
-                    />
+                    <StatusPulse phase={state?.phase} />
                     <div className="flex min-w-0 flex-col">
                       <Label className="truncate">{server.name}</Label>
                       <Description>{overviewSummary(state)}</Description>

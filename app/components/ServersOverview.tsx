@@ -9,12 +9,14 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Layers, Play, Square } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, toast } from "@heroui/react";
+import StatusPulse from "@/app/components/StatusPulse";
+import Rolling from "@/app/components/Rolling";
+import PressRipple from "@/app/components/PressRipple";
 import { useUISound } from "@/app/hooks/useUISound";
 import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import { usePageMotion } from "@/app/lib/motion";
 import {
   identityLine,
-  phaseDotClass,
   phaseText,
   useServers,
 } from "@/app/components/ServerProvider";
@@ -115,14 +117,11 @@ export default function ServersOverview() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span
-                          aria-hidden
-                          className={`size-2 shrink-0 rounded-full ${phaseDotClass(entry?.phase)}`}
-                        />
+                        <StatusPulse phase={entry?.phase} />
                         <span className="truncate text-sm font-semibold">{server.name}</span>
                       </div>
                       <Chip size="sm" variant="soft" color={isOpen ? "accent" : "default"}>
-                        {isOpen ? "Open" : entry?.mode === "simple" ? "Simple" : "Advanced"}
+                        {isOpen ? "Open" : entry?.mode === "simple" ? "On this computer" : "In a container"}
                       </Chip>
                     </div>
 
@@ -134,9 +133,14 @@ export default function ServersOverview() {
                       <span>
                         Players:{" "}
                         <span className="font-pixel-num text-foreground">
-                          {entry?.status.online
-                            ? `${entry.status.players.online}/${entry.status.players.max}`
-                            : "-"}
+                          {entry?.status.online ? (
+                            <Rolling
+                              value={entry.status.players.online}
+                              suffix={`/${entry.status.players.max}`}
+                            />
+                          ) : (
+                            "-"
+                          )}
                         </span>
                       </span>
                     </div>
@@ -151,6 +155,7 @@ export default function ServersOverview() {
                           onPress={() => runLifecycle(server.id, server.name, stopServerById, "stopped")}
                           onMouseEnter={() => play("hover")}
                         >
+                          <PressRipple />
                           <Square size={14} />
                           Stop
                         </Button>
@@ -162,6 +167,7 @@ export default function ServersOverview() {
                           onPress={() => runLifecycle(server.id, server.name, startServerById, "started")}
                           onMouseEnter={() => play("hover")}
                         >
+                          <PressRipple />
                           <Play size={14} />
                           Start
                         </Button>

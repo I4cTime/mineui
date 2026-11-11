@@ -5,6 +5,98 @@ All notable changes to MineUI are documented here. Format follows
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-11-10
+
+### Added
+
+- **Simple and Advanced view.** A switch in the header, Simple by default,
+  remembered between runs. Simple hides the Status, Console and Config
+  pages; Scheduled tasks, Network and ports and the Advanced section in
+  Server Settings; and the Dashboard's MOTD, ping, trend chip and
+  sparklines. The server log sits behind "Show the server log". Opening a
+  hidden page shows a notice with a "Show Advanced" button. It is a view
+  setting only and never changes a server.
+- **Start here.** With no server set up, the Dashboard asks "What do you
+  want to play?" (Normal Minecraft or Minecraft with mods) and "Who will
+  play?" (Just me, People at home, Friends in other places too), says what
+  it will set up, then creates and starts the server and shows How players
+  join. "I know what I want" opens the full create forms. It appears only
+  when the one server you have is not set up yet. "Just me" on a server On
+  this computer only changes the wording; container servers are limited to
+  this computer.
+- **MineUI gets Java.** A server On this computer with no suitable Java
+  offers "Get Java for me". MineUI downloads the Eclipse Temurin JRE of the
+  major the Minecraft version needs from Adoptium (api.adoptium.net and
+  GitHub release assets, https only), checks its sha256, refuses more than
+  300 MB, and keeps it in MineUI's own data folder, shared by all servers.
+  Java already on the computer is still used when present. Tested on a real
+  download on Linux; the Windows and macOS archive layouts are covered by
+  tests on synthetic archives only.
+- **What's this?** Short explanations for 26 terms, among them RCON, port,
+  whitelist, op, EULA, container, Java, the mod loaders, TPS and MSPT.
+- **Getting started checklist** on the Dashboard, per server: server made,
+  started, you joined, a friend joined, first backup. Steps tick from real
+  data, each open step has a Show me link, the card can be hidden, shows a
+  progress ring, and ends with an "All done!" moment at 5 of 5.
+- **Alive touches.** Player count, ping and TPS digits roll when they
+  change. A ring breathes around the status dot while the server runs (and
+  faster while it starts or stops). In-progress labels shimmer. Start, Stop,
+  Restart and the create buttons ripple when pressed. Toasts mark the first
+  server made and the first friend joining. The join address is shown as a
+  tilting "server pass" card with Copy. All of it stops under the system's
+  reduce-motion setting, and sounds follow the existing sound setting.
+- **Find mods.** The add dialog on Mods & plugins searches Modrinth for a
+  server In a container that runs Fabric, Quilt, Forge, NeoForge, Paper or
+  Purpur, and lists only what works with its type and Minecraft version,
+  the most downloaded first. Install also adds the other mods it needs,
+  checks every file against the sha512 Modrinth published before keeping
+  it, and says when every player has to install the mod too. Servers On
+  this computer, Vanilla servers and modpack servers get an explanation
+  instead of a search. Tried on a real Fabric server under rootless Podman;
+  the other server types are covered by tests only.
+- **Switch a mod off and on.** Each mod and plugin jar has a switch. Off
+  renames the file to `.jar.disabled` so the server skips it; it applies
+  after a restart. A switched-off mod can be deleted as it is.
+- IPC: `install_java` and `required_java_major`, `JavaCheck.managed`, and
+  `DownloadKind` gains `"java"`; `get_mod_support`, `search_mods`,
+  `install_mod` and `set_mod_enabled`, and `delete_mod` accepts a
+  `.jar.disabled` name (see `docs/v2-contract.md`).
+
+### Changed
+
+- **The two server kinds are called On this computer and In a container**
+  on screen (they were called Simple and Advanced, which now names the view
+  above).
+- **The create forms show less up front.** Server type, version, pack and
+  the Mojang agreement come first; the rest is under More options, with the
+  same defaults as before.
+- **"Latest release" in the container create form is the newest release at
+  the time you create the server.** The picker shows which version that is
+  next to "Latest release", and the container is created with that version,
+  so it stays on it instead of moving to each new Minecraft release on a
+  restart. Only when the server type's version list cannot be fetched does
+  the server follow the latest release, as before.
+- **Adding a mod from a link is in the Advanced view only**, with a warning
+  that MineUI cannot check a file from a link the way it checks files from
+  Find.
+- **macOS builds are signed with a Developer ID and notarized** by the
+  release workflow from this release on. Windows builds are still unsigned.
+- @heroui-pro/react 1.0.0-beta.11. The Java installer reads archive names
+  the way zip 9 returns them.
+
+### Fixed
+
+- **Creating a server in a container only offers Minecraft versions the
+  server type can run.** Picking Purpur with Minecraft 26.1.1 failed inside
+  the container with "Version 26.1.1 does not exist", because the version
+  list showed every Minecraft release whatever the type. Now the list
+  follows the server type you choose (from Paper, Purpur, Fabric, Quilt,
+  Forge and NeoForge's own version lists), "Latest release" appears only
+  when the type has a build for it, and otherwise the newest version the
+  type supports is picked, with a line under the picker saying why. Start
+  here's "Minecraft with mods" does the same for Fabric. When a type's list
+  cannot be fetched, the full list is shown as before.
+
 ## [2.12.1] - 2026-11-10
 
 ### Security

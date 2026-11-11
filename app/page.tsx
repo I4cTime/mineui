@@ -17,17 +17,28 @@ import {
   Users,
 } from "lucide-react";
 import { Button, Card, Chip, ScrollShadow, Separator, toast } from "@heroui/react";
-import { EmptyState, NumberValue, TrendChip } from "@heroui-pro/react";
+import { EmptyState, NumberValue, TextShimmer, TrendChip } from "@heroui-pro/react";
+import NumberFlow from "@number-flow/react";
+import Rolling from "@/app/components/Rolling";
+import PressRipple from "@/app/components/PressRipple";
+import StatusPulse from "@/app/components/StatusPulse";
 import Sparkline from "@/app/components/Sparkline";
 import { recordSample, seriesOf, useMetricHistory } from "@/app/lib/metricHistory";
 import { KPI } from "@heroui-pro/react/kpi";
 import { useUISound } from "@/app/hooks/useUISound";
 import { reportLifecycleError } from "@/app/components/PidsControllerHelp";
 import { useMode } from "@/app/components/ModeProvider";
+import { useViewLevel } from "@/app/components/ViewLevelProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
+import GetJavaForMe, { javaUsable } from "@/app/components/GetJavaForMe";
+import GettingStartedCard, {
+  TARGET_BACKUP,
+  TARGET_START,
+} from "@/app/components/GettingStartedCard";
 import JoinInfoCard from "@/app/components/JoinInfoCard";
+import StartHere from "@/app/components/StartHere";
 import RuntimeInstallHelp from "@/app/components/RuntimeInstallHelp";
 import ServerIdentity from "@/app/components/ServerIdentity";
 import ServersOverview from "@/app/components/ServersOverview";
@@ -43,6 +54,7 @@ import {
   listMods,
   onLogs,
   onServerState,
+  requiredJavaMajor,
   restartServer,
   startLogStream,
   startServer,
@@ -59,6 +71,15 @@ import {
 } from "@/app/lib/ipc";
 
 const MAX_LOG_LINES = 1000;
+
+/** A Start that failed because the Java is missing or too old. */
+type JavaProblem = {
+  message: string;
+  /** The Java major to download; null = could not be looked up (offline). */
+  major: number | null;
+  /** Java was downloaded: the next step is Start again. */
+  fixed: boolean;
+};
 
 // One statement of how the server is doing, from the two facts the backend
 // gives: the process/container phase and whether the game answers a ping.
@@ -84,6 +105,10 @@ const conditionOf = (phase: ServerPhase | undefined, online: boolean): Condition
       return "unknown";
   }
 };
+
+/** Something is in progress: the label shimmers and the dot beats faster. */
+const isBusyCondition = (condition: Condition) =>
+  condition === "warming" || condition === "starting" || condition === "stopping";
 
 const CONDITION_LABEL: Record<Condition, string> = {
   online: "Online",
@@ -139,7 +164,21 @@ export default function Home() {
   // for fields useMode() doesn't carry (e.g. simple.memoryMb for
   // CreateServerFlow's default).
   const { mode, loading: modeLoading } = useMode();
-  const { active: activeServer, activeId } = useServers();
+  const { active: activeServer, activeId, servers } = useServers();
+  // Start here (first server, nothing set up): "I know what I want" skips it,
+  // and once it begins it stays on screen while the server's kind changes.
+  const [skipStartHere, setSkipStartHere] = useState(false);
+  const [startHereActive, setStartHereActive] = useState(false);
+  // After Start here: open the internet steps in How players join.
+  const [joinInternet, setJoinInternet] = useState(false);
+  const [landed, setLanded] = useState(false);
+  const [javaProblem, setJavaProblem] = useState<JavaProblem | null>(null);
+  // View level: Simple leaves out the numbers, the trend line and the live
+  // log (kept one click away). Display only - nothing here changes a server.
+  const { level } = useViewLevel();
+  const expertView = level === "advanced";
+  const [logOpen, setLogOpen] = useState(false);
+  const logVisible = expertView || logOpen;
 
   const serverOnline = status?.online ?? false;
   const playerCount = status?.players.online ?? 0;
@@ -158,7 +197,9 @@ export default function Home() {
   const needsContainer =
     !isSimple && settings !== null && serverState?.phase === "not-created";
   const needsOnboarding = needsInstance || needsContainer;
-  const showDashboard = !loading && backendError === null && !needsOnboarding;
+  const showStartHere =
+    !skipStartHere && servers.length === 1 && (needsOnboarding || startHereActive);
+  const showDashboard = !loading && backendError === null && !needsOnboarding && !showStartHere;
 
   // Depends on `mode`/`modeLoading` so a live mode toggle (no remount) also
   // refetches the mode-dependent data below (instanceStatus is simple-mode
@@ -195,6 +236,18 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- IPC fetch-on-mount: the loader flips its loading flag synchronously by design
     bootstrap();
   }, [bootstrap]);
+
+  // Just made by Start here: bring How players join into view.
+  useEffect(() => {
+    if (!landed || !showDashboard) return;
+    const timer = setTimeout(() => {
+      document
+        .getElementById("join-info")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setLanded(false);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [landed, showDashboard]);
 
   // Pull data (status ping + mods list) - no events for these, poll lightly.
   const refreshPolled = useCallback(async () => {
@@ -278,7 +331,7 @@ export default function Home() {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight;
     }
-  }, [logLines]);
+  }, [logLines, logVisible]);
 
   // What each action says when the *request* went through - which for Start
   // and Restart is not yet "the server is up".
@@ -310,7 +363,17 @@ export default function Home() {
     } catch (error) {
       play("error");
       const fallback = { start: "Could not start", stop: "Could not stop", restart: "Could not restart", backup: "Backup failed" }[kind];
-      if (kind === "start" || kind === "restart") {
+      if (
+        (kind === "start" || kind === "restart") &&
+        isSimple &&
+        error instanceof IpcError &&
+        (error.code === "JAVA_NOT_FOUND" || error.code === "JAVA_INCOMPATIBLE")
+      ) {
+        // Not a toast: the dashboard offers to get the Java it needs.
+        const version = instance?.mcVersion ?? "LATEST";
+        const major = await requiredJavaMajor(version).catch(() => null);
+        setJavaProblem({ message: error.message, major, fixed: false });
+      } else if (kind === "start" || kind === "restart") {
         reportLifecycleError(error, fallback, name);
       } else {
         toast.danger(error instanceof IpcError ? error.message : fallback);
@@ -377,7 +440,7 @@ export default function Home() {
                 Podman nor Docker on this computer. Your other servers are
                 unaffected. If you would rather not install anything, a plain
                 Minecraft server needs no containers: switch how this server
-                is run under <em>Advanced</em> in its settings.
+                is run in its settings (in Advanced view).
               </Card.Description>
             </Card.Header>
             <Card.Content className="mt-4 grid gap-4">
@@ -490,10 +553,12 @@ export default function Home() {
               <ServerIdentity className="relative mt-2" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Chip variant="soft" color="accent">
-                {isSimple ? "Simple mode" : "Advanced mode"}
-              </Chip>
-              {!needsOnboarding && (
+              {!showStartHere && (
+                <Chip variant="soft" color="accent">
+                  {isSimple ? "On this computer" : "In a container"}
+                </Chip>
+              )}
+              {!needsOnboarding && !showStartHere && (
                 <>
                   {/* One chip says how the server is doing. Signature moment:
                       a brief scale/glow whenever the condition changes,
@@ -509,11 +574,16 @@ export default function Home() {
                     <Chip variant="soft" color={conditionChipColor(condition)}>
                       {condition === "online" ? (
                         <span className="flex items-center gap-1.5">
-                          {/* The one sanctioned ambient loop on this screen
-                              (docs/theme-contract.md §6); reduced-motion
-                              guard in globals.css. */}
-                          <span className="inline-block h-2 w-2 rounded-full animate-pulse bg-accent" />
+                          {/* Breathing ring (StatusPulse): the one ambient
+                              loop on this screen, switched off for
+                              reduce-motion in globals.css. */}
+                          <StatusPulse phase="running" />
                           Online
+                        </span>
+                      ) : isBusyCondition(condition) ? (
+                        <span className="flex items-center gap-1.5">
+                          <StatusPulse phase="starting" />
+                          <TextShimmer>{CONDITION_LABEL[condition]}</TextShimmer>
                         </span>
                       ) : (
                         CONDITION_LABEL[condition]
@@ -529,6 +599,7 @@ export default function Home() {
                     <span className="hidden sm:inline">Refresh</span>
                   </Button>
                   <Button
+                    id={TARGET_BACKUP}
                     variant="tertiary"
                     onPress={() => runAction("backup")}
                     isDisabled={busy}
@@ -550,7 +621,22 @@ export default function Home() {
         {/* Every server at once (renders nothing with a single server). */}
         <ServersOverview />
 
-        {needsContainer && settings ? (
+        {showStartHere ? (
+          <StartHere
+            onActive={() => setStartHereActive(true)}
+            onSkip={() => {
+              setSkipStartHere(true);
+              setStartHereActive(false);
+            }}
+            onDone={({ friends }) => {
+              setStartHereActive(false);
+              setJoinInternet(friends);
+              setLanded(true);
+              setLoading(true);
+              bootstrap();
+            }}
+          />
+        ) : needsContainer && settings ? (
           <CreateContainerFlow
             serverName={activeServer.name}
             settings={settings}
@@ -575,12 +661,78 @@ export default function Home() {
                 only ever mounted at first paint or after a full-page
                 setLoading(true) remount) - must drive its own enter
                 animation per the same fix as commit 1090c51. */}
+            {javaProblem !== null && (
+              <motion.section variants={cardMotion} initial="hidden" animate="show">
+                <Card className="border border-warning p-5" data-testid="java-problem">
+                  <Card.Header className="flex-col items-start gap-1">
+                    <Card.Title>
+                      {javaProblem.fixed ? "Java is ready" : "The server needs Java"}
+                    </Card.Title>
+                    <Card.Description>
+                      {javaProblem.fixed
+                        ? "MineUI downloaded it. Press Start again."
+                        : javaProblem.message}
+                    </Card.Description>
+                  </Card.Header>
+                  <Card.Content className="mt-3 grid gap-3">
+                    {javaProblem.fixed ? (
+                      <div>
+                        <Button
+                          onPress={() => {
+                            setJavaProblem(null);
+                            void runAction("start");
+                          }}
+                        >
+                          <Play size={16} />
+                          Start again
+                        </Button>
+                      </div>
+                    ) : javaProblem.major !== null ? (
+                      <GetJavaForMe
+                        major={javaProblem.major}
+                        onInstalled={(check) => {
+                          // Not usable (a Java location set in Server
+                          // Settings wins): GetJavaForMe says so in place.
+                          if (javaUsable(check, javaProblem.major ?? 0)) {
+                            setJavaProblem((p) => (p ? { ...p, fixed: true } : p));
+                          }
+                        }}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted">
+                        MineUI cannot check which Java this server needs right now. Check
+                        your internet connection, then press Start again.
+                      </p>
+                    )}
+                  </Card.Content>
+                </Card>
+              </motion.section>
+            )}
+            {!expertView && (
+              <motion.section variants={cardMotion} initial="hidden" animate="show">
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  aria-expanded={logOpen}
+                  aria-controls="server-log"
+                  onPress={() => {
+                    play(logOpen ? "toggle_off" : "toggle_on");
+                    setLogOpen((open) => !open);
+                  }}
+                  onMouseEnter={() => play("hover")}
+                >
+                  <ScrollText size={14} />
+                  {logOpen ? "Hide the server log" : "Show the server log"}
+                </Button>
+              </motion.section>
+            )}
+            {logVisible && (
             <motion.section
               variants={cardMotion}
               initial="hidden"
               animate="show"
             >
-              <Card className="p-5">
+              <Card id="server-log" className="p-5">
                 <Card.Header className="flex flex-row items-center justify-between gap-3">
                   <div className="flex items-center gap-3 text-sm text-accent">
                     <ScrollText size={18} />
@@ -625,6 +777,7 @@ export default function Home() {
                 </Card.Content>
               </Card>
             </motion.section>
+            )}
 
             {/* Same late-mount rule as the Server Logs section above - this
                 stagger container itself must re-fire its entrance so its
@@ -649,21 +802,36 @@ export default function Home() {
                   </KPI.Header>
                   <KPI.Content className="items-start">
                     <div className="grid flex-1 gap-2 text-sm">
-                      <div className="text-lg font-semibold">{CONDITION_LABEL[condition]}</div>
+                      <div className="text-lg font-semibold">
+                        {isBusyCondition(condition) ? (
+                          <TextShimmer>{CONDITION_LABEL[condition]}</TextShimmer>
+                        ) : (
+                          CONDITION_LABEL[condition]
+                        )}
+                      </div>
                       {condition === "online" && (
                         <>
                           <div className="text-muted">Version: {status?.version ?? "unknown"}</div>
-                          <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
-                          <div className="text-muted font-pixel-num">
-                            Ping: {status?.pingMs != null ? `${status.pingMs}ms` : "-"}
-                          </div>
+                          {expertView && (
+                            <>
+                              <div className="text-muted">MOTD: {status?.motd ?? "-"}</div>
+                              <div className="text-muted font-pixel-num">
+                                Ping:{" "}
+                                {status?.pingMs != null ? (
+                                  <Rolling value={status.pingMs} suffix="ms" />
+                                ) : (
+                                  "-"
+                                )}
+                              </div>
+                            </>
+                          )}
                         </>
                       )}
                       {condition === "warming" && (
                         <p className="text-muted" title={status?.error ?? undefined}>
                           The server is running but not taking players yet. The first
                           start of a modded server or modpack can take several minutes -
-                          watch the log above; it is ready when a line says{" "}
+                          watch the server log above; it is ready when a line says{" "}
                           <span className="font-mono">Done</span>.
                         </p>
                       )}
@@ -678,7 +846,7 @@ export default function Home() {
                       )}
                       {condition === "crashed" && (
                         <p className="text-muted">
-                          The server stopped unexpectedly. The last lines of the log
+                          The server stopped unexpectedly. The last lines of the server log
                           above usually say why; Start tries again.
                         </p>
                       )}
@@ -686,10 +854,12 @@ export default function Home() {
                   </KPI.Content>
                   <KPI.Footer className="mt-auto flex flex-wrap gap-2 pt-4">
                     <Button
+                      id={TARGET_START}
                       onPress={() => runAction("start")}
                       isDisabled={busy || !canStart}
                       onMouseEnter={() => play("hover")}
                     >
+                      <PressRipple />
                       {busyAction === "start" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
@@ -703,6 +873,7 @@ export default function Home() {
                       isDisabled={busy || !canStop}
                       onMouseEnter={() => play("hover")}
                     >
+                      <PressRipple />
                       {busyAction === "stop" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
@@ -716,6 +887,7 @@ export default function Home() {
                       isDisabled={busy || !canRestart}
                       onMouseEnter={() => play("hover")}
                     >
+                      <PressRipple />
                       {busyAction === "restart" ? (
                         <Loader2 size={16} className="animate-spin" />
                       ) : (
@@ -737,7 +909,7 @@ export default function Home() {
                       <Users size={16} />
                     </KPI.Icon>
                     <KPI.Title>Players</KPI.Title>
-                    {playerDelta !== null && (
+                    {expertView && playerDelta !== null && (
                       <TrendChip
                         className="ml-auto"
                         trend={playerDelta > 0 ? "up" : playerDelta < 0 ? "down" : "neutral"}
@@ -751,19 +923,21 @@ export default function Home() {
                   <KPI.Content className="items-start">
                     <div className="flex-1">
                       <KPI.Value className="font-pixel-num" value={playerCount}>
-                        {(formatted) => (
+                        {() => (
                           <>
-                            {formatted}
+                            <NumberFlow value={playerCount} />
                             <NumberValue.Suffix>/{maxPlayers || "?"}</NumberValue.Suffix>
                           </>
                         )}
                       </KPI.Value>
-                      <div className="mt-3 w-full">
-                        <Sparkline
-                          data={playerSeries}
-                          label={`Players online, last ${playerSeries.length} readings`}
-                        />
-                      </div>
+                      {expertView && (
+                        <div className="mt-3 w-full">
+                          <Sparkline
+                            data={playerSeries}
+                            label={`Players online, last ${playerSeries.length} readings`}
+                          />
+                        </div>
+                      )}
                       <div className="mt-4 flex flex-wrap gap-2">
                         {playerCount === 0 ? (
                           <EmptyState size="sm" className="items-start text-left">
@@ -836,7 +1010,16 @@ export default function Home() {
             </motion.section>
 
             <motion.section variants={cardMotion} initial="hidden" animate="show">
-              <JoinInfoCard online={serverOnline} />
+              <GettingStartedCard mode={mode} phase={phase} />
+            </motion.section>
+
+            <motion.section
+              id="join-info"
+              variants={cardMotion}
+              initial="hidden"
+              animate="show"
+            >
+              <JoinInfoCard online={serverOnline} startOpenInternet={joinInternet} />
             </motion.section>
           </>
         )}

@@ -107,6 +107,7 @@ pub fn run() {
             commands::set_settings,
             commands::detect_runtimes,
             commands::java_check,
+            commands::install_java,
             // §3.2 server state / lifecycle / status
             commands::get_server_state,
             commands::start_server,
@@ -127,12 +128,18 @@ pub fn run() {
             commands::download_mod,
             commands::delete_mod,
             commands::unpack_mod_archive,
+            commands::set_mod_enabled,
+            // §3.5a find mods on Modrinth (2.13.0)
+            commands::get_mod_support,
+            commands::search_mods,
+            commands::install_mod,
             // §3.6 instance
             commands::list_mc_versions,
             commands::create_instance,
             commands::delete_instance,
             commands::instance_status,
             commands::change_instance_version,
+            commands::required_java_major,
             // §3.7 config files
             commands::list_config_files,
             commands::read_config_file,

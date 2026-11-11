@@ -114,11 +114,13 @@ impl Runtime for FakeRuntime {
     async fn spawn_follow_logs(&self, _: &str) -> Result<tokio::process::Child> {
         unimplemented!()
     }
-    async fn exec(&self, _: &str, _: &[&str]) -> Result<ExecOutput> {
-        unimplemented!()
+    async fn exec(&self, name: &str, argv: &[&str]) -> Result<ExecOutput> {
+        self.log(format!("exec {name} {}", argv.join(" ")));
+        Ok(ok_output())
     }
-    async fn run_with_volumes_from(&self, _: &str, _: &[&str]) -> Result<ExecOutput> {
-        unimplemented!()
+    async fn run_with_volumes_from(&self, name: &str, argv: &[&str]) -> Result<ExecOutput> {
+        self.log(format!("helper {name} {}", argv.join(" ")));
+        Ok(ok_output())
     }
     async fn cp_to(&self, _: &str, _: &Path, _: &str) -> Result<()> {
         unimplemented!()
