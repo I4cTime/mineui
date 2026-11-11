@@ -594,8 +594,11 @@ export type InstanceStatus = {
   createdAt: string | null;
 };
 
-export const listMcVersions = (includeSnapshots?: boolean) =>
-  scoped<McVersion[]>("list_mc_versions", { includeSnapshots });
+/** 2.13.0 serverType: only the versions that server type has builds for;
+ *  absent or "vanilla" = every Mojang version (the list falls back to that
+ *  when the type's own list cannot be had). */
+export const listMcVersions = (includeSnapshots?: boolean, serverType?: ContainerLoader) =>
+  scoped<McVersion[]>("list_mc_versions", { includeSnapshots, serverType });
 /** 2.13.0, app-wide - the Java major a version ("LATEST" allowed) needs;
  *  null when it cannot be resolved (offline, unknown version). */
 export const requiredJavaMajor = (mcVersion: string) =>

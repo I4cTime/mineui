@@ -95,6 +95,23 @@ const LOADERS: { id: ContainerLoader; label: string; term: GlossaryTerm; hint: s
   { id: "neoforge", label: "NeoForge", term: "NeoForge", hint: "Forge's successor, for 1.20.2 and newer." },
 ];
 
+/** Whether a server type's version list has Mojang's newest release in it.
+ *  An empty list means "not known", which keeps "Latest release". */
+const hasNewestRelease = (list: McVersion[]) =>
+  list.length === 0 || list.some((item) => item.latest && item.type === "release");
+
+/** What to create a server type with when nobody picks: LATEST when the type
+ *  has a build for Mojang's newest release, else the newest version it has.
+ *  Falls back to LATEST when the list cannot be had (as before 2.13.0). */
+export const newestVersionFor = async (loader: ContainerLoader): Promise<string> => {
+  try {
+    const list = await listMcVersions(undefined, loader);
+    return hasNewestRelease(list) ? LATEST : list[0].id;
+  } catch {
+    return LATEST;
+  }
+};
+
 /** "Fabric survival" → "mc-fabric-survival" (container-name grammar). */
 export const containerNameFor = (serverName: string) => {
   const slug = serverName
@@ -128,6 +145,12 @@ export default function CreateContainerFlow({
   const [runtimeChecking, setRuntimeChecking] = useState(false);
   const [loader, setLoader] = useState<ContainerLoader>("vanilla");
   const [versions, setVersions] = useState<McVersion[]>([]);
+  // The versions the chosen server type has builds for, tagged with that type
+  // so a list that arrives late for another type is never used.
+  const [typeVersions, setTypeVersions] = useState<{
+    loader: ContainerLoader;
+    list: McVersion[];
+  } | null>(null);
   const [version, setVersion] = useState(LATEST);
   const [containerName, setContainerName] = useState(
     settings.advanced.containerName !== DEFAULT_CONTAINER_NAME
@@ -152,6 +175,31 @@ export default function CreateContainerFlow({
       .then(setVersions)
       .catch(() => setVersions([]));
   }, []);
+
+  useEffect(() => {
+    if (kind !== "type") return;
+    let current = true;
+    listMcVersions(undefined, loader)
+      .then((list) => {
+        if (!current) return;
+        setTypeVersions({ loader, list });
+        // Keep the pick to a version this type can run.
+        const latestOk = hasNewestRelease(list);
+        setVersion((picked) => {
+          if (list.length === 0) return picked;
+          if (picked === LATEST) return latestOk ? LATEST : list[0].id;
+          if (list.some((item) => item.id === picked)) return picked;
+          return latestOk ? LATEST : list[0].id;
+        });
+      })
+      .catch(() => {
+        // Not known: the full list and "Latest release", as before.
+        if (current) setTypeVersions(null);
+      });
+    return () => {
+      current = false;
+    };
+  }, [kind, loader]);
 
   const checkRuntime = useCallback(() => {
     setRuntimeChecking(true);
@@ -198,10 +246,21 @@ export default function CreateContainerFlow({
     modpack?.source === "modrinth" || modpack?.source === "curseforge-zip"
       ? modpack.gameVersions
       : null;
-  const versionIds = packVersions ?? versions.map((item) => item.id);
+  const typeList =
+    kind === "type" && typeVersions?.loader === loader && typeVersions.list.length > 0
+      ? typeVersions.list
+      : null;
+  const latestOffered = typeList === null || hasNewestRelease(typeList);
+  const versionIds = packVersions ?? (typeList ?? versions).map((item) => item.id);
+  const loaderMeta = LOADERS.find((item) => item.id === loader);
+  const newestRelease = versions.find((item) => item.latest && item.type === "release")?.id;
   const versionHint =
     kind === "type"
-      ? "Mod loaders can trail the newest release - for a modded server, pick the version your mods are built for."
+      ? !latestOffered && loaderMeta
+        ? `${loaderMeta.label} has no build for ${
+            newestRelease ? `Minecraft ${newestRelease}` : "the newest Minecraft release"
+          } yet, so the newest it can run is picked.`
+        : "Mod loaders can trail the newest release - for a modded server, pick the version your mods are built for."
       : modpack === null
         ? "Choose the modpack first."
         : modpack.source === "modrinth"
@@ -210,7 +269,6 @@ export default function CreateContainerFlow({
             ? "From the pack's manifest."
             : "The Minecraft version the pack is made for - it decides which Java the server gets, and a pack on the wrong Java does not start.";
 
-  const loaderMeta = LOADERS.find((item) => item.id === loader);
   const workloadReady =
     kind === "type" || (modpack !== null && version !== "" && version !== LATEST);
   const portProblems = portsProblems(extraPorts, gamePort, rconPort);
@@ -373,7 +431,7 @@ export default function CreateContainerFlow({
               </Select.Trigger>
               <Select.Popover>
                 <ListBox className="max-h-72 overflow-auto">
-                  {kind === "type" && (
+                  {kind === "type" && latestOffered && (
                     <ListBox.Item id={LATEST} textValue="Latest release">
                       Latest release
                       <ListBox.ItemIndicator />

@@ -34,6 +34,7 @@ import {
   LATEST,
   MEMORY_DEFAULT,
   MEMORY_DEFAULT_MODPACK,
+  newestVersionFor,
 } from "@/app/components/CreateContainerFlow";
 import GetJavaForMe from "@/app/components/GetJavaForMe";
 import { useMode } from "@/app/components/ModeProvider";
@@ -315,9 +316,12 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
               ? current.advanced.containerName
               : containerNameFor(serverName);
           const withPack = modsPath === "pack" && modpack !== null;
+          // No pack: the newest version Fabric has a build for (LATEST only
+          // when that is Mojang's newest release).
+          const mcVersion = withPack ? packVersion : await newestVersionFor("fabric");
           await createContainer({
             loader: "fabric",
-            mcVersion: withPack ? packVersion : LATEST,
+            mcVersion,
             containerName,
             memoryMb: withPack ? MEMORY_DEFAULT_MODPACK : MEMORY_DEFAULT,
             gamePort: current.advanced.queryPort,
