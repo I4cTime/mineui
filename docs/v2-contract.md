@@ -769,6 +769,8 @@ Semantics:
   256 MB (`FILE_TOO_LARGE`).
 - `delete_mod`: filename per §6.2; advanced →
   `runtime exec <name> rm -f -- <root>/<filename>`; simple → `std::fs::remove_file`.
+  A disabled mod (`<name>.jar.disabled`, as `list_mods` reports it and
+  `set_mod_enabled` makes it) can be deleted as it is (2.13.0, §6.2 rule 3a).
 - `unpack_mod_archive` (2.7.0): installs the `.jar` files **inside** a `.zip` - a
   folder of mods zipped up, or a "server pack". `upload_mod`/`download_mod` place a
   `.zip` as one file, which is right for a mod shipped as a zip and useless for a
@@ -2083,6 +2085,11 @@ Applied to the basename in `upload_mod`, `download_mod`, `delete_mod`:
    with `_` (v1 rule, kept).
 3. Post-sanitization: non-empty, ≤ 255 bytes, does not start with `.` or `-`, not
    `..`, ends with `.jar` or `.zip` (case-insensitive).
+   3a. `delete_mod` only (2.13.0): a name ending `.jar.disabled` (case-insensitive)
+   is also accepted. The whole name must pass rule 1, the charset of rule 2
+   unchanged and the 255-byte limit, and the name without its final `.disabled`
+   must pass rule 3 and end in `.jar` (`x.disabled`, `x.jar.disabled.disabled`,
+   `x.zip.disabled` and `x.txt.disabled` are refused).
 4. `target` must be exactly `"mods"` or `"plugins"`.
 
 ### 6.2a Mod archives (`unpack_mod_archive`, 2.7.0)
