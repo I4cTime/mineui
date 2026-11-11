@@ -583,10 +583,8 @@ async fn installed_dependencies_are_skipped() {
         .with("b", "B", vec![ver("b1", "b", "release", D1, vec![])])
         .with("c", "C", vec![ver("c1", "c", "release", D1, vec![])]);
     let mut installed = InstalledIndex::default();
-    // b by project (any version, e.g. an older or disabled jar) ...
-    installed
-        .projects
-        .insert("b".into(), "b-older.jar.disabled".into());
+    // b by project (any version, e.g. an older jar) ...
+    installed.projects.insert("b".into(), "b-older.jar".into());
     // ... c by the exact file name.
     installed.filenames.insert("c-c1.jar".into());
     let plan = plan_install(&source, &fabric(), "a", &installed)
@@ -599,6 +597,51 @@ async fn installed_dependencies_are_skipped() {
         !source.calls().contains(&"project b".to_string()),
         "an installed project is not even looked up"
     );
+}
+
+#[tokio::test]
+async fn a_switched_off_copy_does_not_count_as_installed() {
+    // a needs b; the folder has b switched off (exactly the file the plan
+    // would place, plus ".disabled") and an unrelated enabled mod.
+    let source = FakeSource::default()
+        .with(
+            "a",
+            "A",
+            vec![ver("a1", "a", "release", D1, vec![required("b")])],
+        )
+        .with("b", "B", vec![ver("b1", "b", "release", D1, vec![])]);
+    let files = vec![
+        ("h-b".to_string(), "B-B1.JAR.DISABLED".to_string()),
+        ("h-c".to_string(), "c.jar".to_string()),
+    ];
+    let projects = HashMap::from([
+        ("h-b".to_string(), "b".to_string()),
+        ("h-c".to_string(), "c".to_string()),
+    ]);
+    let installed = build_index(&files, &projects);
+    assert!(!installed.projects.contains_key("b"));
+    assert_eq!(
+        installed.projects.get("c").map(String::as_str),
+        Some("c.jar")
+    );
+    // Its name still counts, but no planned .jar can equal it.
+    assert!(installed.has_file("b-b1.jar.disabled"));
+    assert!(!installed.has_file("b-b1.jar"));
+
+    let plan = plan_install(&source, &fabric(), "a", &installed)
+        .await
+        .unwrap();
+    let names: Vec<&str> = plan.files.iter().map(|f| f.filename.as_str()).collect();
+    assert_eq!(names, ["a-a1.jar", "b-b1.jar"]);
+    assert!(plan.already_installed.is_empty());
+
+    // The same holds for the project asked for.
+    let plan = plan_install(&source, &fabric(), "b", &installed)
+        .await
+        .unwrap();
+    assert_eq!(plan.files[0].filename, "b-b1.jar");
+    assert!(is_switched_off("x.jar.disabled") && is_switched_off("X.Jar.Disabled"));
+    assert!(!is_switched_off("x.jar") && !is_switched_off("x.disabled.jar"));
 }
 
 #[tokio::test]
@@ -989,20 +1032,34 @@ async fn installed_index_on_this_computer_matches_names() {
     // Cached answers are used for the same set of hashes (no network here).
     let mods = core.settings().await.simple.instance_dir.join("mods");
     std::fs::create_dir_all(&mods).unwrap();
-    std::fs::write(mods.join("Some.jar.disabled"), b"x").unwrap();
-    let hash = sha1_of_file(&mods.join("Some.jar.disabled")).unwrap();
+    std::fs::write(mods.join("Some.jar"), b"x").unwrap();
+    std::fs::write(mods.join("Off.jar.disabled"), b"y").unwrap();
+    let hash = sha1_of_file(&mods.join("Some.jar")).unwrap();
+    let off = sha1_of_file(&mods.join("Off.jar.disabled")).unwrap();
+    // The cache key is only the enabled file's hash: the switched-off one is
+    // not looked up (a different key would go to the network and fail here).
     *core.modrinth_hashes.lock().unwrap() = Some(HashCache {
         hashes: vec![hash.clone()],
-        projects: HashMap::from([(hash, "proj".to_string())]),
+        projects: HashMap::from([(hash, "proj".to_string()), (off, "off-proj".to_string())]),
     });
     let index = installed_index(&core, &reqwest::Client::new(), ModTarget::Mods)
         .await
         .unwrap();
-    assert!(index.has_file("some.jar.disabled"));
+    assert!(index.has_file("some.jar"));
+    assert!(index.has_file("off.jar.disabled"));
     assert_eq!(
         index.projects.get("proj").map(String::as_str),
-        Some("Some.jar.disabled")
+        Some("Some.jar")
     );
+    assert!(!index.projects.contains_key("off-proj"));
+
+    // Only switched-off files: nothing to look up, no request.
+    std::fs::remove_file(mods.join("Some.jar")).unwrap();
+    *core.modrinth_hashes.lock().unwrap() = None;
+    let index = installed_index(&core, &reqwest::Client::new(), ModTarget::Mods)
+        .await
+        .unwrap();
+    assert!(index.has_file("off.jar.disabled") && index.projects.is_empty());
 }
 
 #[test]

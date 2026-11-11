@@ -551,27 +551,34 @@ async fn projects_for_hashes(
     Ok(projects)
 }
 
-/// What is already in the target folder, by name and by Modrinth project.
-pub async fn installed_index(
-    core: &crate::Core,
-    client: &reqwest::Client,
-    target: ModTarget,
-) -> Result<InstalledIndex> {
-    let files = file_hashes(core, target).await?;
+/// A switched-off mod (`<name>.jar.disabled`, any case): the server does not
+/// load it, so it does not count as installed (§3.5a installed projects).
+pub fn is_switched_off(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".jar.disabled")
+}
+
+/// The files that can make a project installed: every file but a
+/// switched-off one, at most `MAX_HASHES` of them.
+fn counted_files(files: &[(String, String)]) -> Vec<&(String, String)> {
+    files
+        .iter()
+        .filter(|(_, name)| !is_switched_off(name))
+        .take(MAX_HASHES)
+        .collect()
+}
+
+/// The index from the folder's (sha1, filename) pairs and the hash → project
+/// answer. Every name counts for the name checks; only files that are not
+/// switched off make their project installed.
+pub fn build_index(
+    files: &[(String, String)],
+    projects: &HashMap<String, String>,
+) -> InstalledIndex {
     let mut index = InstalledIndex::default();
-    for (_, name) in &files {
+    for (_, name) in files {
         index.filenames.insert(name.to_ascii_lowercase());
     }
-    let hashes: Vec<String> = files
-        .iter()
-        .take(MAX_HASHES)
-        .map(|(h, _)| h.clone())
-        .collect();
-    if hashes.is_empty() {
-        return Ok(index);
-    }
-    let projects = projects_for_hashes(core, client, &hashes).await?;
-    for (hash, name) in &files {
+    for (hash, name) in counted_files(files) {
         if let Some(project) = projects.get(hash) {
             index
                 .projects
@@ -579,7 +586,25 @@ pub async fn installed_index(
                 .or_insert_with(|| name.clone());
         }
     }
-    Ok(index)
+    index
+}
+
+/// What is already in the target folder, by name and by Modrinth project.
+pub async fn installed_index(
+    core: &crate::Core,
+    client: &reqwest::Client,
+    target: ModTarget,
+) -> Result<InstalledIndex> {
+    let files = file_hashes(core, target).await?;
+    let hashes: Vec<String> = counted_files(&files)
+        .into_iter()
+        .map(|(h, _)| h.clone())
+        .collect();
+    if hashes.is_empty() {
+        return Ok(build_index(&files, &HashMap::new()));
+    }
+    let projects = projects_for_hashes(core, client, &hashes).await?;
+    Ok(build_index(&files, &projects))
 }
 
 /* ---------- search (§3.5a search_mods) ---------- */

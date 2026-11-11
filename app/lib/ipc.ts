@@ -519,7 +519,8 @@ export type ModSearchHit = {
   downloads: number;
   /** "required": every player must install the mod too. */
   clientSide: ModClientSide;
-  /** Already in this server's folder (enabled or disabled). */
+  /** Already in this server's folder and switched on (a `.jar.disabled`
+   *  copy does not count). */
   installed: boolean;
 };
 
