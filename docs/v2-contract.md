@@ -846,7 +846,8 @@ type ModSearchHit = {
   downloads: number;
   /** "required": every player must install the mod too. */
   clientSide: ModClientSide;
-  /** Already in this server's folder (enabled or disabled). */
+  /** Already in this server's folder and switched on (a `.jar.disabled`
+   *  copy does not count). */
   installed: boolean;
 };
 
@@ -926,6 +927,11 @@ a supported type whose Minecraft version is unknown.
   (at most 1000 hashes; files past that are only matched by name), and
   the answer maps each known hash to its version and so its `project_id`. A file
   Modrinth does not know (an upload, a jar from elsewhere) is simply not a project.
+  A switched-off file (name ending `.jar.disabled`, any case, §3.5 `set_mod_enabled`)
+  is not loaded by the server, so it does not count: it is not looked up, and its
+  project is not installed for `installed`, step 3 or step 4. Its name still counts
+  for the name checks, but no planned file (always a `.jar`) can equal it, so a fresh
+  `x.jar` is placed beside an existing `x.jar.disabled` and never replaces it.
   The answer is cached on the server's core for the same set of hashes.
 - `install_mod`: `projectId` is a Modrinth project id or slug,
   `^[A-Za-z0-9_-]{1,64}$` (`INVALID_INPUT`). Steps:
@@ -946,13 +952,13 @@ a supported type whose Minecraft version is unknown.
      versions are the author's call and are not checked). Otherwise its
      `project_id` goes through step 2. A dependency with neither (only a
      `file_name`) cannot be resolved. A project already planned is not visited
-     again (cycles end there); a dependency whose project is already installed, or
-     whose chosen file name is already in the folder, is skipped and reported in
-     `alreadyInstalled`. A required dependency that cannot be resolved fails the
+     again (cycles end there); a dependency whose project is already installed
+     (switched on; a `.jar.disabled` copy does not count), or whose chosen file name
+     is already in the folder, is skipped and reported in `alreadyInstalled`. A required dependency that cannot be resolved fails the
      whole install with `INVALID_INPUT` naming it and the mod that needs it. More
      than 50 files in total → `INVALID_INPUT`.
-  4. The project asked for is refused when it is already installed (its project id
-     is in the folder, enabled or disabled) or its file name is already taken
+  4. The project asked for is refused when it is already installed (a switched-on
+     file of that project is in the folder) or its file name is already taken
      (`INVALID_INPUT`): MineUI never overwrites a file here.
   5. Each planned file is downloaded host-side under §6.3b (progress events with
      `kind: "mod"`, one `downloadId` per file), all of them before any is placed.
@@ -1532,9 +1538,15 @@ type ModpackRef = {
 
 Picking `mcVersion` (2.13.0): for a server type the UI offers only the versions
 `list_mc_versions` returns with `serverType` set to the chosen `loader` (§3.6), and
-sends `LATEST` only when that list contains Mojang's latest release; otherwise it
-picks the newest version in the list. Core does not repeat the check here (the image
-stays the authority on what it can install). Modpacks keep their own versions.
+sends a concrete version id from that list. "Latest release" is offered only when the
+list contains Mojang's latest release, and is a label: at create time the UI resolves
+it to that release's id. With nothing picked (Start here) the UI takes the type's
+newest version the same way (Mojang's latest release when the list has it, else the
+newest version in the list). The UI sends `LATEST` only when that list cannot be
+loaded. So a server made by the UI keeps the version it was made with on every
+restart, and Find mods (§3.5a) can tell its version. Core still accepts `LATEST`
+(step 3) and does not repeat the check here (the image stays the authority on what it
+can install). Modpacks keep their own versions.
 
 Sequence (first failure wins; nothing is created before step 7):
 
@@ -2806,7 +2818,8 @@ export type ModSearchHit = {
   downloads: number;
   /** "required": every player must install the mod too. */
   clientSide: ModClientSide;
-  /** Already in this server's folder (enabled or disabled). */
+  /** Already in this server's folder and switched on (a `.jar.disabled`
+   *  copy does not count). */
   installed: boolean;
 };
 
