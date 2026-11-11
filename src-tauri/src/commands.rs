@@ -284,9 +284,15 @@ pub async fn list_mc_versions(
     hub: HubState<'_>,
     server_id: Option<String>,
     include_snapshots: Option<bool>,
+    server_type: Option<String>,
 ) -> CmdResult<Vec<McVersion>> {
     let core = core_for(&hub, server_id).await?;
-    mineui_core::mojang::list_versions(&core, include_snapshots.unwrap_or(false)).await
+    mineui_core::loader_versions::list_versions(
+        &core,
+        include_snapshots.unwrap_or(false),
+        server_type.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]

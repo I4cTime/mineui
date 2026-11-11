@@ -691,7 +691,7 @@ pub struct ServerOverview {
 
 /* ---------- §3.13 container creation ---------- */
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ContainerLoader {
     Vanilla,

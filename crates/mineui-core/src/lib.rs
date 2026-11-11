@@ -22,6 +22,7 @@ pub mod java;
 pub mod javainstall;
 pub mod joininfo;
 pub mod lifecycle;
+pub mod loader_versions;
 pub mod logs;
 pub mod machine;
 pub mod metrics;
@@ -77,6 +78,10 @@ pub struct Core {
     pub logs: logs::Manager,
     pub(crate) events: tokio::sync::broadcast::Sender<CoreEvent>,
     pub(crate) mojang_cache: tokio::sync::Mutex<Option<mojang::ManifestCache>>,
+    /// Each server type's Minecraft versions, cached 15 min (§3.6, 2.13.0).
+    pub(crate) loader_versions_cache: tokio::sync::Mutex<
+        std::collections::HashMap<model::ContainerLoader, loader_versions::TypeCache>,
+    >,
     pub(crate) last_advanced_phase: std::sync::Mutex<Option<model::ServerPhase>>,
     /// Loader/version of the attached container, cached per container id
     /// (§3.12 overview identity).
@@ -147,6 +152,7 @@ impl Core {
             logs,
             events,
             mojang_cache: tokio::sync::Mutex::new(None),
+            loader_versions_cache: tokio::sync::Mutex::new(std::collections::HashMap::new()),
             last_advanced_phase: std::sync::Mutex::new(None),
             container_kind: std::sync::Mutex::new(None),
             modrinth_hashes: std::sync::Mutex::new(None),
