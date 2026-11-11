@@ -3,10 +3,11 @@
 // "Get Java for me": MineUI downloads the Java a Minecraft version needs into
 // its own folder (install_java, contract 2.13.0) and shows the progress. Used
 // by Start here, the Create server flow and a failed Start on the Dashboard.
-// The caller decides when Java is "ready" from the JavaCheck handed back.
+// It says "ready" only when the JavaCheck handed back says the server can use
+// a Java of that major; the caller gets the check either way.
 import { TextShimmer } from "@heroui-pro/react";
 import { useState } from "react";
-import { CheckCircle2, Download, Loader2, RefreshCw } from "lucide-react";
+import { CheckCircle2, Download, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { Button, ProgressBar } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
 import { formatBytes } from "@/app/lib/format";
@@ -18,10 +19,16 @@ import {
   type JavaCheck,
 } from "@/app/lib/ipc";
 
+/** Whether the server can run on the Java a check found, for a version that
+ *  needs `major`. */
+export const javaUsable = (check: JavaCheck, major: number) =>
+  check.found && check.compatible !== false && (check.majorVersion ?? 0) >= major;
+
 interface GetJavaForMeProps {
   /** The Java major the Minecraft version needs. */
   major: number;
-  /** Called with the Java check after a successful download. */
+  /** Called with the Java check after a successful download, also when the
+   *  server still cannot use it (see javaUsable). */
   onInstalled: (check: JavaCheck) => void;
   isDisabled?: boolean;
   /** Button text; defaults to "Get Java for me". */
@@ -39,19 +46,34 @@ export default function GetJavaForMe({
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Downloaded, but the server still does not use it: why, in a sentence.
+  const [unused, setUnused] = useState<string | null>(null);
 
   const run = async () => {
     play("click_confirm");
     setBusy(true);
     setError(null);
+    setUnused(null);
     setProgress(null);
     const unlisten = await onDownloadProgress((event) => {
       if (event.kind === "java") setProgress(event);
     });
     try {
       const check = await installJava(major);
-      play("success");
-      setDone(true);
+      if (javaUsable(check, major)) {
+        play("success");
+        setDone(true);
+      } else {
+        play("error");
+        // The check prefers MineUI's own Java over anything else on the
+        // computer, except the Java location set in Server Settings (contract
+        // 3.1 java_check). Not using the download means that setting won.
+        setUnused(
+          check.managed
+            ? `MineUI downloaded Java ${major}, but the server still cannot use it.`
+            : `MineUI downloaded Java ${major}, but this server is set to use a different Java: the Java location under Server Settings → Advanced (in Advanced view). Clear that setting to use the downloaded one.`,
+        );
+      }
       onInstalled(check);
     } catch (e) {
       play("error");
@@ -87,14 +109,22 @@ export default function GetJavaForMe({
           >
             {busy ? (
               <Loader2 size={16} className="animate-spin" />
-            ) : error ? (
+            ) : error || unused ? (
               <RefreshCw size={16} />
             ) : (
               <Download size={16} />
             )}
-            {busy ? <TextShimmer>Getting Java...</TextShimmer> : error ? "Try again" : label}
+            {busy ? (
+              <TextShimmer>Getting Java...</TextShimmer>
+            ) : error ? (
+              "Try again"
+            ) : unused ? (
+              "Check again"
+            ) : (
+              label
+            )}
           </Button>
-          {!busy && !error && (
+          {!busy && !error && !unused && (
             <span className="text-xs text-muted">
               Free download (about 50 MB). MineUI keeps it in its own folder.
             </span>
@@ -130,6 +160,13 @@ export default function GetJavaForMe({
       {error && (
         <p className="text-sm text-danger" role="alert">
           {error}
+        </p>
+      )}
+
+      {unused && !busy && (
+        <p className="flex items-start gap-2 text-sm" role="alert" data-testid="get-java-unused">
+          <TriangleAlert size={16} className="mt-0.5 shrink-0 text-warning" />
+          {unused}
         </p>
       )}
     </div>

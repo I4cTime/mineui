@@ -32,7 +32,7 @@ import { useViewLevel } from "@/app/components/ViewLevelProvider";
 import { SkeletonCard } from "@/app/components/Skeleton";
 import CreateContainerFlow from "@/app/components/CreateContainerFlow";
 import CreateServerFlow from "@/app/components/CreateServerFlow";
-import GetJavaForMe from "@/app/components/GetJavaForMe";
+import GetJavaForMe, { javaUsable } from "@/app/components/GetJavaForMe";
 import GettingStartedCard, {
   TARGET_BACKUP,
   TARGET_START,
@@ -690,9 +690,13 @@ export default function Home() {
                     ) : javaProblem.major !== null ? (
                       <GetJavaForMe
                         major={javaProblem.major}
-                        onInstalled={() =>
-                          setJavaProblem((p) => (p ? { ...p, fixed: true } : p))
-                        }
+                        onInstalled={(check) => {
+                          // Not usable (a Java location set in Server
+                          // Settings wins): GetJavaForMe says so in place.
+                          if (javaUsable(check, javaProblem.major ?? 0)) {
+                            setJavaProblem((p) => (p ? { ...p, fixed: true } : p));
+                          }
+                        }}
                       />
                     ) : (
                       <p className="text-sm text-muted">

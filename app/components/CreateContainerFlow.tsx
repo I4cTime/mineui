@@ -100,13 +100,18 @@ const LOADERS: { id: ContainerLoader; label: string; term: GlossaryTerm; hint: s
 const hasNewestRelease = (list: McVersion[]) =>
   list.length === 0 || list.some((item) => item.latest && item.type === "release");
 
-/** What to create a server type with when nobody picks: LATEST when the type
- *  has a build for Mojang's newest release, else the newest version it has.
- *  Falls back to LATEST when the list cannot be had (as before 2.13.0). */
+/** The newest concrete version in a server type's list: Mojang's newest
+ *  release when the type has a build for it, else the newest it has; null
+ *  for an empty list. */
+const newestIn = (list: McVersion[]): string | null =>
+  list.find((item) => item.latest && item.type === "release")?.id ?? list[0]?.id ?? null;
+
+/** What to create a server type with when nobody picks: the newest concrete
+ *  version the type can run (contract 3.13), so the server keeps it on every
+ *  restart and Find mods can tell it. LATEST only when the list cannot be had. */
 export const newestVersionFor = async (loader: ContainerLoader): Promise<string> => {
   try {
-    const list = await listMcVersions(undefined, loader);
-    return hasNewestRelease(list) ? LATEST : list[0].id;
+    return newestIn(await listMcVersions(undefined, loader)) ?? LATEST;
   } catch {
     return LATEST;
   }
@@ -254,6 +259,9 @@ export default function CreateContainerFlow({
   const versionIds = packVersions ?? (typeList ?? versions).map((item) => item.id);
   const loaderMeta = LOADERS.find((item) => item.id === loader);
   const newestRelease = versions.find((item) => item.latest && item.type === "release")?.id;
+  // What "Latest release" stands for with this type's list (null: not known).
+  const latestId = typeList ? newestIn(typeList) : null;
+  const latestLabel = latestId ? `Latest release (${latestId})` : "Latest release";
   const versionHint =
     kind === "type"
       ? !latestOffered && loaderMeta
@@ -297,9 +305,15 @@ export default function CreateContainerFlow({
     play("click_confirm");
     setCreating(true);
     try {
+      // "Latest release" is a label: send the concrete version it stands for
+      // (contract 3.13), LATEST only when the type's list cannot be had.
+      const mcVersion =
+        kind === "type" && version === LATEST
+          ? (latestId ?? (await newestVersionFor(loader)))
+          : version;
       await createContainer({
         loader,
-        mcVersion: version,
+        mcVersion,
         containerName: containerName.trim(),
         memoryMb,
         gamePort,
@@ -432,8 +446,8 @@ export default function CreateContainerFlow({
               <Select.Popover>
                 <ListBox className="max-h-72 overflow-auto">
                   {kind === "type" && latestOffered && (
-                    <ListBox.Item id={LATEST} textValue="Latest release">
-                      Latest release
+                    <ListBox.Item id={LATEST} textValue={latestLabel}>
+                      {latestLabel}
                       <ListBox.ItemIndicator />
                     </ListBox.Item>
                   )}

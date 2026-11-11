@@ -167,6 +167,9 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
   const [error, setError] = useState<string | null>(null);
   // The server exists but did not start: Try again only starts it.
   const [made, setMade] = useState(false);
+  // Once the server is made its answers are fixed: changing them could not
+  // change the server Try again starts.
+  const locked = busy || made;
 
   const checkJava = useCallback(async () => {
     setJava({ kind: "checking" });
@@ -316,8 +319,8 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
               ? current.advanced.containerName
               : containerNameFor(serverName);
           const withPack = modsPath === "pack" && modpack !== null;
-          // No pack: the newest version Fabric has a build for (LATEST only
-          // when that is Mojang's newest release).
+          // No pack: the newest concrete version Fabric has a build for
+          // (LATEST only when Fabric's list cannot be had, contract 3.13).
           const mcVersion = withPack ? packVersion : await newestVersionFor("fabric");
           await createContainer({
             loader: "fabric",
@@ -377,7 +380,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
         </Card.Header>
 
         <Card.Content className="mt-4 grid gap-6 text-sm">
-          <fieldset className="grid gap-2" disabled={busy}>
+          <fieldset className="grid gap-2" disabled={locked}>
             <legend className="mb-2 text-sm font-semibold">1. What do you want to play?</legend>
             <ChoiceCards
               ripple
@@ -385,12 +388,12 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
               className="sm:grid-cols-2"
               options={PLAY_OPTIONS}
               value={what as Play}
-              isDisabled={busy}
+              isDisabled={locked}
               onChange={chooseWhat}
             />
           </fieldset>
 
-          <fieldset className="grid gap-2" disabled={busy}>
+          <fieldset className="grid gap-2" disabled={locked}>
             <legend className="mb-2 text-sm font-semibold">2. Who will play?</legend>
             <ChoiceCards
               ripple
@@ -398,7 +401,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
               className="sm:grid-cols-3"
               options={WHO_OPTIONS}
               value={who as Who}
-              isDisabled={busy}
+              isDisabled={locked}
               onChange={(next) => {
                 setWho(next);
                 setError(null);
@@ -420,7 +423,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                 className="flex max-w-sm flex-col gap-2"
                 value={name}
                 onChange={setName}
-                isDisabled={busy}
+                isDisabled={locked}
                 maxLength={MAX_NAME}
               >
                 <Label>Name your server (you can change it later)</Label>
@@ -461,7 +464,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                   </p>
                   <GetJavaForMe
                     major={java.major}
-                    isDisabled={busy}
+                    isDisabled={locked}
                     onInstalled={(check) =>
                       setJava(
                         javaIsEnough(check, java.major)
@@ -520,7 +523,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                       good to go.
                     </span>
                   </div>
-                  <fieldset className="grid gap-2" disabled={busy}>
+                  <fieldset className="grid gap-2" disabled={locked}>
                     <legend className="mb-2 text-sm font-semibold">
                       Which mods do you want?
                     </legend>
@@ -530,7 +533,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                       className="sm:grid-cols-2"
                       options={MODS_OPTIONS}
                       value={modsPath as ModsPath}
-                      isDisabled={busy}
+                      isDisabled={locked}
                       onChange={(next) => {
                         setModsPath(next);
                         if (next === "none") setModpack(null);
@@ -538,7 +541,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                     />
                   </fieldset>
                   {modsPath === "pack" && (
-                    <ModpackPicker value={modpack} onChange={setModpack} isDisabled={busy} />
+                    <ModpackPicker value={modpack} onChange={setModpack} isDisabled={locked} />
                   )}
                 </>
               )}
@@ -551,7 +554,7 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
                 type="checkbox"
                 className="mt-1"
                 checked={eula}
-                disabled={busy}
+                disabled={locked}
                 onChange={(event) => {
                   play(event.target.checked ? "toggle_on" : "click_back");
                   setEula(event.target.checked);
@@ -612,7 +615,8 @@ export default function StartHere({ onActive, onDone, onSkip }: StartHereProps) 
               <p>{error}</p>
               {made && (
                 <p className="text-muted">
-                  Your server was made. Only starting it failed, so Try again just starts it.
+                  Your server is already made, so the answers above are locked. Only
+                  starting it failed, and Try again just starts it.
                 </p>
               )}
             </div>
