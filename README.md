@@ -111,7 +111,7 @@ the one server you have is not set up yet. For a server On this computer,
 *Just me* only changes the wording; container servers are limited to this
 computer. The create forms keep server type, version, pack and the Mojang
 agreement up front and put the rest under *More options*, with the same
-defaults. About 25 terms (RCON, port, whitelist, op, EULA, container, Java,
+defaults. 26 terms (RCON, port, whitelist, op, EULA, container, Java,
 the mod loaders, TPS, MSPT and more) have a *What's this?* explanation.
 
 ### Simple and Advanced view

@@ -30,7 +30,7 @@ All notable changes to MineUI are documented here. Format follows
   Java already on the computer is still used when present. Tested on a real
   download on Linux; the Windows and macOS archive layouts are covered by
   tests on synthetic archives only.
-- **What's this?** Short explanations for 25 terms, among them RCON, port,
+- **What's this?** Short explanations for 26 terms, among them RCON, port,
   whitelist, op, EULA, container, Java, the mod loaders, TPS and MSPT.
 - **Getting started checklist** on the Dashboard, per server: server made,
   started, you joined, a friend joined, first backup. Steps tick from real

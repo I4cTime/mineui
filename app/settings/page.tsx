@@ -177,7 +177,7 @@ const MODE_OPTIONS = [
     id: "simple",
     title: "On this computer",
     description:
-      "MineUI downloads and runs a plain (vanilla) Minecraft server on this computer. You need Java, and nothing else.",
+      "MineUI downloads and runs a plain (vanilla) Minecraft server on this computer. If this computer has no Java, MineUI can get it for you.",
     icon: Sparkles,
   },
   {
