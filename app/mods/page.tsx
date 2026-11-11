@@ -39,6 +39,7 @@ import Term from "@/app/components/Term";
 import {
   deleteMod,
   listMods,
+  setModEnabled,
   restartServer,
   IpcError,
   type ModEntry,
@@ -177,6 +178,25 @@ export default function ModsPage() {
       toast.danger(error instanceof IpcError ? error.message : "Delete failed");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const [toggling, setToggling] = useState<string | null>(null);
+  const toggleMod = async (item: ModEntry, kind: ModTarget, enabled: boolean) => {
+    setToggling(`${kind}:${item.filename}`);
+    try {
+      await setModEnabled(item.filename, kind, enabled);
+      toast.success(
+        `${item.name} is ${enabled ? "on" : "off"}`,
+        { description: "The change applies after the server restarts." },
+      );
+      if (phase === "running") setNeedsRestart(true);
+      await refreshMods();
+    } catch (error) {
+      play("error");
+      toast.danger(error instanceof IpcError ? error.message : "The switch did not work");
+    } finally {
+      setToggling(null);
     }
   };
 
@@ -413,6 +433,8 @@ export default function ModsPage() {
                           serverLoader={serverLoader}
                           copied={copied === item.filename}
                           deleting={deleting === `mods:${item.filename}`}
+                          toggling={toggling === `mods:${item.filename}`}
+                          onToggle={toggleMod}
                           index={index}
                           variants={cardMotion}
                           onCopy={copyFilename}
@@ -448,6 +470,8 @@ export default function ModsPage() {
                           serverLoader={serverLoader}
                           copied={copied === item.filename}
                           deleting={deleting === `plugins:${item.filename}`}
+                          toggling={toggling === `plugins:${item.filename}`}
+                          onToggle={toggleMod}
                           index={index}
                           variants={cardMotion}
                           onCopy={copyFilename}

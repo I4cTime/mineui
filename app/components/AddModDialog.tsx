@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Link2,
   Plug,
+  Search,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -31,22 +32,26 @@ import {
   TextField,
 } from "@heroui/react";
 import { useUISound } from "@/app/hooks/useUISound";
+import FindMods from "@/app/components/FindMods";
 import ChoiceCards from "@/app/components/ChoiceCards";
 import { identityLine, useServers } from "@/app/components/ServerProvider";
+import { useViewLevel } from "@/app/components/ViewLevelProvider";
 import { onFileDrag, pickModFile } from "@/app/lib/dialog";
 import { DropZone } from "@heroui-pro/react";
 import { formatBytes } from "@/app/lib/format";
 import {
   downloadMod,
+  getModSupport,
   onDownloadProgress,
   unpackModArchive,
   uploadMod,
   IpcError,
   type DownloadProgressEvent,
+  type ModSupport,
   type ModTarget,
 } from "@/app/lib/ipc";
 
-type Source = "link" | "file";
+type Source = "find" | "link" | "file";
 
 /** What a .zip is: several mods to unpack, or one mod shipped as a zip. */
 type ZipAs = "bundle" | "single";
@@ -159,7 +164,7 @@ export default function AddModDialog({ isOpen, onClose, onInstalled }: AddModDia
       variant="blur"
     >
       <Modal.Container>
-        <Modal.Dialog className="sm:max-w-[540px]">
+        <Modal.Dialog className="sm:max-w-[600px]">
           <AddModForm busy={busy} setBusy={setBusy} onClose={onClose} onInstalled={onInstalled} />
         </Modal.Dialog>
       </Modal.Container>
@@ -185,7 +190,38 @@ function AddModForm({
   const loads = loader !== null && loader in LOADS ? LOADS[loader] : undefined;
 
   const [target, setTarget] = useState<ModTarget>(loads ?? "mods");
-  const [source, setSource] = useState<Source>("file");
+  const { level } = useViewLevel();
+  const [picked, setPicked] = useState<Source>("find");
+  // The link tab only exists in Advanced view; Find is the front door.
+  const source: Source = picked === "link" && level !== "advanced" ? "find" : picked;
+  const setSource = setPicked;
+  const [support, setSupport] = useState<ModSupport | null>(null);
+  useEffect(() => {
+    let live = true;
+    getModSupport()
+      .then((s) => live && setSupport(s))
+      .catch(
+        () =>
+          live &&
+          setSupport({
+            supported: false,
+            target: null,
+            serverType: null,
+            mcVersion: null,
+            loaders: [],
+            reason: "MineUI could not tell what this server can load.",
+          }),
+      );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const matching = [
+    support?.serverType ? (LOADER_NAMES[support.serverType] ?? support.serverType) : null,
+    support?.mcVersion,
+  ]
+    .filter(Boolean)
+    .join(" ") || "this server";
   const [link, setLink] = useState("");
   const [saveAs, setSaveAs] = useState("");
   const [progress, setProgress] = useState<DownloadProgressEvent | null>(null);
@@ -396,7 +432,8 @@ function AddModForm({
       </Modal.Header>
 
       <Modal.Body className="flex flex-col gap-5 px-1 pt-3 pb-1 text-sm">
-        {/* 1 - what it is */}
+        {/* 1 - what it is (Find knows from the server) */}
+        {source !== "find" && (
         <section className="flex flex-col gap-2">
           <span id="add-mod-kind" className="text-xs uppercase tracking-[0.2em] text-muted">
             1 · What are you adding?
@@ -416,11 +453,12 @@ function AddModForm({
             </p>
           )}
         </section>
+        )}
 
         {/* 2 - where it comes from */}
         <section className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-[0.2em] text-muted">
-            2 · Where is the file?
+            {source === "find" ? "Where from?" : "2 · Where is the file?"}
           </span>
           <Tabs
             selectedKey={source}
@@ -433,6 +471,13 @@ function AddModForm({
           >
             <Tabs.ListContainer>
               <Tabs.List aria-label="Where the file comes from">
+                <Tabs.Tab id="find" isDisabled={busy}>
+                  <span className="flex items-center gap-1.5">
+                    <Search size={14} />
+                    Find
+                  </span>
+                  <Tabs.Indicator />
+                </Tabs.Tab>
                 <Tabs.Tab id="file" isDisabled={busy}>
                   <span className="flex items-center gap-1.5">
                     <FolderOpen size={14} />
@@ -440,16 +485,39 @@ function AddModForm({
                   </span>
                   <Tabs.Indicator />
                 </Tabs.Tab>
-                <Tabs.Tab id="link" isDisabled={busy}>
-                  <span className="flex items-center gap-1.5">
-                    <Link2 size={14} />A link
-                  </span>
-                  <Tabs.Indicator />
-                </Tabs.Tab>
+                {level === "advanced" && (
+                  <Tabs.Tab id="link" isDisabled={busy}>
+                    <span className="flex items-center gap-1.5">
+                      <Link2 size={14} />A link
+                    </span>
+                    <Tabs.Indicator />
+                  </Tabs.Tab>
+                )}
               </Tabs.List>
             </Tabs.ListContainer>
 
+            <Tabs.Panel id="find" className="pt-4">
+              <FindMods
+                support={support}
+                matching={matching}
+                running={server?.phase === "running"}
+                onThisComputer={server?.mode === "simple"}
+                busy={busy}
+                setBusy={setBusy}
+                onInstalled={onInstalled}
+              />
+            </Tabs.Panel>
+
             <Tabs.Panel id="link" className="flex flex-col gap-4 pt-4">
+              <p
+                role="note"
+                className="flex items-start gap-2 rounded-lg border border-warning p-3 text-xs text-warning"
+              >
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  MineUI cannot check a file from a link the way it checks files from Find. Only use links you trust.
+                </span>
+              </p>
               <TextField
                 className="flex flex-col gap-2"
                 value={link}
@@ -625,7 +693,7 @@ function AddModForm({
           </p>
         )}
 
-        {added.length > 0 && (
+        {source !== "find" && added.length > 0 && (
           <div
             className="flex flex-col gap-2 rounded-lg border border-border p-3"
             style={{ background: "var(--surface-secondary)" }}
@@ -658,9 +726,9 @@ function AddModForm({
           }}
           onMouseEnter={() => play("hover")}
         >
-          {added.length > 0 ? "Done" : "Cancel"}
+          {added.length > 0 || (source === "find" && support?.supported) ? "Done" : "Cancel"}
         </Button>
-        {source === "link" ? (
+        {source === "find" ? null : source === "link" ? (
           <Button
             isDisabled={!canDownload}
             isPending={busy}

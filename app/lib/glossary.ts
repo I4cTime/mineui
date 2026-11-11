@@ -49,6 +49,10 @@ export const GLOSSARY = {
     title: "Plugin",
     body: "A file that adds features to the server, like home commands or protection. It only runs on the server, so your friends do not install anything.",
   },
+  Modrinth: {
+    title: "Modrinth",
+    body: "A free website where people share mods and plugins. MineUI searches it for you, so you do not have to download files by hand.",
+  },
   modpack: {
     title: "Modpack",
     body: "A ready-made bundle of mods that work well together. Pick one and MineUI sets the whole thing up for you.",

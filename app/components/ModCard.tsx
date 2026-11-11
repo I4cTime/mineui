@@ -3,7 +3,7 @@
 // One mod or plugin on the Mods page: name, a few facts, copy / delete.
 import { motion, type Variants } from "motion/react";
 import { Copy, Trash2 } from "lucide-react";
-import { Button, Card, Chip, Tooltip } from "@heroui/react";
+import { Button, Card, Chip, Switch, Tooltip } from "@heroui/react";
 import { formatBytes, formatDateTime } from "@/app/lib/format";
 import { useUISound } from "@/app/hooks/useUISound";
 import type { ModEntry, ModTarget } from "@/app/lib/ipc";
@@ -33,10 +33,13 @@ interface ModCardProps {
   serverLoader: string | null;
   copied: boolean;
   deleting: boolean;
+  /** A switch for this file is being applied. */
+  toggling: boolean;
   index: number;
   variants: Variants;
   onCopy: (filename: string) => void;
   onDelete: (item: ModEntry, kind: ModTarget) => void;
+  onToggle: (item: ModEntry, kind: ModTarget, enabled: boolean) => void;
 }
 
 export default function ModCard({
@@ -45,10 +48,12 @@ export default function ModCard({
   serverLoader,
   copied,
   deleting,
+  toggling,
   index,
   variants,
   onCopy,
   onDelete,
+  onToggle,
 }: ModCardProps) {
   const { play } = useUISound();
   const known = item.loader !== "unknown";
@@ -57,17 +62,42 @@ export default function ModCard({
   const serverKnown = serverLoader !== null && serverLoader in LOADER_NAMES;
   const mismatch = known && serverKnown && item.loader !== serverLoader;
   const disabled = item.filename.toLowerCase().endsWith(".jar.disabled");
+  // Only a .jar can be switched: a .zip has no off state.
+  const switchable = disabled || item.filename.toLowerCase().endsWith(".jar");
 
   return (
     <motion.div variants={variants} custom={index}>
-      <Card className="p-4 text-sm" variant={kind === "mods" ? "secondary" : "default"}>
+      <Card className="p-4 text-sm" data-disabled={disabled || undefined} variant={kind === "mods" ? "secondary" : "default"}>
         <Card.Header className="gap-1">
-          <Card.Title className="text-base">{item.name}</Card.Title>
+          <div className="flex items-start justify-between gap-3">
+            <Card.Title className={`text-base ${disabled ? "text-muted line-through" : ""}`}>
+              {item.name}
+            </Card.Title>
+            {switchable && (
+              <Switch
+                size="sm"
+                aria-label={`${item.name} is ${disabled ? "off" : "on"}`}
+                isSelected={!disabled}
+                isDisabled={toggling}
+                onChange={(on) => {
+                  play(on ? "toggle_on" : "toggle_off");
+                  onToggle(item, kind, on);
+                }}
+                className="shrink-0"
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
+            )}
+          </div>
           <Card.Description className="text-xs text-muted">
             Updated {formatDateTime(item.updatedAtEpochMs)}
           </Card.Description>
         </Card.Header>
-        <Card.Content className="mt-3 flex flex-row flex-wrap gap-2 text-xs">
+        <Card.Content className={`mt-3 flex flex-row flex-wrap gap-2 text-xs ${disabled ? "opacity-60" : ""}`}>
           <Chip variant="soft">Size: {formatBytes(item.sizeBytes)}</Chip>
           {known && <Chip variant="soft">Loader: {loaderName(item.loader)}</Chip>}
           {mismatch && (
@@ -84,8 +114,8 @@ export default function ModCard({
               </Tooltip.Trigger>
               <Tooltip.Content placement="top">
                 <span className="block max-w-72 break-normal">
-                  A file ending in .disabled is ignored by the server. Rename it back to .jar
-                  to use it again.
+                  The server skips this one. Turn the switch on to use it again. The change
+                  applies after a restart.
                 </span>
               </Tooltip.Content>
             </Tooltip>
