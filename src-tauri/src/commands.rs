@@ -13,9 +13,10 @@ use mineui_core::model::{
     AppDir, AppInfo, AuditLog, BackupEntry, ChangedInstanceVersion, ConfigFileContent,
     ConfigFileList, CreateContainerArgs, CreateInstanceArgs, CreatedBackup, DeletedContainer,
     DownloadedMod, ExtraPort, InstanceStatus, JavaCheck, JobRunResult, JoinInfo, LogsTail,
-    McVersion, Metrics, ModTarget, ModpackHit, ModpackZipInfo, ModsList, PlayerHistory, PlayerNote,
-    PlayerNotes, PlayersResult, PublicAddress, RconOutput, RuntimeProbe, SchedulerStatus,
-    ServerList, ServerOverview, ServerState, ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
+    McVersion, Metrics, ModInstall, ModSearchPage, ModSupport, ModTarget, ModpackHit,
+    ModpackZipInfo, ModsList, PlayerHistory, PlayerNote, PlayerNotes, PlayersResult, PublicAddress,
+    RconOutput, RenamedMod, RuntimeProbe, SchedulerStatus, ServerList, ServerOverview, ServerState,
+    ServerStatus, UnpackedMods, UpdateCheck, UploadedMod,
 };
 use mineui_core::settings::Mode;
 use mineui_core::{Core, Error, Hub, Settings};
@@ -228,6 +229,52 @@ pub async fn unpack_mod_archive(
         target,
     )
     .await
+}
+
+/// 2.13.0: `name.jar` ⇄ `name.jar.disabled`.
+#[tauri::command]
+pub async fn set_mod_enabled(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    filename: String,
+    target: ModTarget,
+    enabled: bool,
+) -> CmdResult<RenamedMod> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::mods::set_enabled(&core, &filename, target, enabled).await
+}
+
+/* ---------- §3.5a find mods on Modrinth (2.13.0) ---------- */
+
+#[tauri::command]
+pub async fn get_mod_support(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+) -> CmdResult<ModSupport> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modrinth::support(&core).await
+}
+
+#[tauri::command]
+pub async fn search_mods(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    query: String,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> CmdResult<ModSearchPage> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modrinth::search(&core, &query, offset, limit).await
+}
+
+#[tauri::command]
+pub async fn install_mod(
+    hub: HubState<'_>,
+    server_id: Option<String>,
+    project_id: String,
+) -> CmdResult<ModInstall> {
+    let core = core_for(&hub, server_id).await?;
+    mineui_core::modrinth::install(&core, &project_id).await
 }
 
 /* ---------- §3.6 instance (simple mode only; WRONG_MODE enforced in core) ---------- */

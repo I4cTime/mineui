@@ -128,6 +128,11 @@ pub fn run() {
             commands::download_mod,
             commands::delete_mod,
             commands::unpack_mod_archive,
+            commands::set_mod_enabled,
+            // §3.5a find mods on Modrinth (2.13.0)
+            commands::get_mod_support,
+            commands::search_mods,
+            commands::install_mod,
             // §3.6 instance
             commands::list_mc_versions,
             commands::create_instance,

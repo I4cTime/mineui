@@ -25,7 +25,7 @@ const CURSEFORGE_PAGE: &str = "https://www.curseforge.com/minecraft/modpacks/";
 const KNOWN_LOADERS: [&str; 4] = ["forge", "neoforge", "fabric", "quilt"];
 
 /// Modrinth asks every client to identify itself.
-fn user_agent() -> String {
+pub(crate) fn user_agent() -> String {
     format!(
         "I4cTime/mineui/{} (mineui.i4c.studio)",
         env!("CARGO_PKG_VERSION")

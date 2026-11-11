@@ -225,6 +225,7 @@ pub async fn download_server_jar(
         max_bytes: None,
         expected_sha1: Some(download.sha1.clone()),
         expected_sha256: None,
+        expected_sha512: None,
         client: None,
         // Server-jar URLs come from Mojang's HTTPS manifest and the content
         // is SHA-1 pinned; still use the strict client - piston-data has no

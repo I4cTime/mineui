@@ -28,6 +28,7 @@ pub mod metrics;
 pub mod mod_archive;
 pub mod model;
 pub mod modpacks;
+pub mod modrinth;
 pub mod mods;
 pub mod mojang;
 pub mod notes;
@@ -80,6 +81,9 @@ pub struct Core {
     /// Loader/version of the attached container, cached per container id
     /// (§3.12 overview identity).
     pub(crate) container_kind: std::sync::Mutex<Option<identity::ContainerKind>>,
+    /// Modrinth's answer for the sha1s of the files in the mods/plugins
+    /// folder (§3.5a installed projects), cached for the same set of hashes.
+    pub(crate) modrinth_hashes: std::sync::Mutex<Option<modrinth::HashCache>>,
     /// Podman machine facts, cached 60 s (§3.2 `machine::facts`).
     pub(crate) machine_facts:
         tokio::sync::Mutex<Option<(std::time::Instant, machine::MachineFacts)>>,
@@ -145,6 +149,7 @@ impl Core {
             mojang_cache: tokio::sync::Mutex::new(None),
             last_advanced_phase: std::sync::Mutex::new(None),
             container_kind: std::sync::Mutex::new(None),
+            modrinth_hashes: std::sync::Mutex::new(None),
             machine_facts: tokio::sync::Mutex::new(None),
             audit_lock: tokio::sync::Mutex::new(()),
             notes_lock: tokio::sync::Mutex::new(()),

@@ -8,11 +8,13 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
-use crate::model::{DownloadKind, DownloadedMod, ModEntry, ModTarget, ModsList, UploadedMod};
+use crate::model::{
+    DownloadKind, DownloadedMod, ModEntry, ModTarget, ModsList, RenamedMod, UploadedMod,
+};
 use crate::settings::Mode;
 
 /// §3.5: 256 MB download cap.
-const MOD_MAX_BYTES: u64 = 256 * 1024 * 1024;
+pub(crate) const MOD_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
 /// §3.5: upload source cap - 512 MiB comfortably covers real modpack jars
 /// while stopping accidental (or malicious) multi-GB copies into the
@@ -271,6 +273,7 @@ async fn download_inner(
         max_bytes: Some(MOD_MAX_BYTES),
         expected_sha1: None,
         expected_sha256: None,
+        expected_sha512: None,
         client: None,
         allow_private_hosts: allow_private,
     };
@@ -322,6 +325,108 @@ async fn delete_inner(core: &crate::Core, filename: &str, target: ModTarget) -> 
             }
         }
     }
+}
+
+/// `set_mod_enabled` (§3.5, 2.13.0): constant script, zero interpolation -
+/// the two paths arrive as positional arguments, never inside the text.
+/// Exit 3 = no such file, 4 = the new name is taken.
+const RENAME_SCRIPT: &str =
+    r#"[ -f "$1" ] || exit 3; if [ -e "$2" ] || [ -L "$2" ]; then exit 4; fi; mv -- "$1" "$2""#;
+
+const DISABLED_SUFFIX: &str = ".disabled";
+
+/// `(from, to)` for `set_mod_enabled`: `<name>.jar` ⇄ `<name>.jar.disabled`,
+/// both bare names under §6.2 rules 1 and 3.
+pub(crate) fn enable_rename(filename: &str, enabled: bool) -> Result<(String, String)> {
+    let lower = filename.to_ascii_lowercase();
+    if enabled {
+        if !lower.ends_with(".jar.disabled") {
+            return Err(Error::InvalidInput(format!(
+                "{filename} is not turned off (its name does not end in .jar.disabled)"
+            )));
+        }
+        // The suffix is ASCII, so this cut is on a char boundary.
+        let base = &filename[..filename.len() - DISABLED_SUFFIX.len()];
+        let base = crate::validate::mod_filename(base, false)?;
+        // `filename` is `base` plus an ASCII-letter suffix, so it is as safe.
+        Ok((filename.to_string(), base))
+    } else {
+        if !lower.ends_with(".jar") {
+            return Err(Error::InvalidInput(format!(
+                "only a .jar file can be turned off, not {filename}"
+            )));
+        }
+        let base = crate::validate::mod_filename(filename, false)?;
+        Ok((base.clone(), format!("{base}{DISABLED_SUFFIX}")))
+    }
+}
+
+/// The rename script's outcome as the contract's errors.
+fn rename_outcome(out: &crate::runtime::ExecOutput, from: &str, to: &str) -> Result<()> {
+    if out.success() {
+        return Ok(());
+    }
+    match out.exit_code {
+        Some(3) => Err(Error::InvalidInput(format!("{from} does not exist"))),
+        Some(4) => Err(Error::InvalidInput(format!(
+            "there is already a file named {to}"
+        ))),
+        code => Err(Error::Io(format!(
+            "failed to rename {from}: {}",
+            if out.stderr.trim().is_empty() {
+                format!("exit code {code:?}")
+            } else {
+                out.stderr.trim().to_string()
+            }
+        ))),
+    }
+}
+
+/// Host-side rename with the same checks as the script.
+async fn rename_on_host(dir: &Path, from: &str, to: &str) -> Result<()> {
+    let src = dir.join(from);
+    let dst = dir.join(to);
+    match tokio::fs::metadata(&src).await {
+        Ok(meta) if meta.is_file() => {}
+        _ => return Err(Error::InvalidInput(format!("{from} does not exist"))),
+    }
+    if tokio::fs::symlink_metadata(&dst).await.is_ok() {
+        return Err(Error::InvalidInput(format!(
+            "there is already a file named {to}"
+        )));
+    }
+    tokio::fs::rename(&src, &dst)
+        .await
+        .map_err(|e| Error::Io(format!("failed to rename {from}: {e}")))
+}
+
+async fn set_enabled_inner(
+    core: &crate::Core,
+    filename: &str,
+    target: ModTarget,
+    enabled: bool,
+) -> Result<RenamedMod> {
+    let (from, to) = enable_rename(filename, enabled)?;
+    let settings = core.settings().await;
+    match settings.active_mode {
+        Mode::Advanced => {
+            let runtime = crate::runtime::resolve(&settings.advanced).await?;
+            let root = container_root(target);
+            let (src, dst) = (format!("{root}/{from}"), format!("{root}/{to}"));
+            let out = crate::runtime::run_in_container(
+                runtime.as_ref(),
+                &settings.advanced.container_name,
+                &["sh", "-c", RENAME_SCRIPT, "sh", &src, &dst],
+            )
+            .await?;
+            rename_outcome(&out, &from, &to)?;
+        }
+        Mode::Simple => {
+            let dir = settings.simple.instance_dir.join(target.dir_name());
+            rename_on_host(&dir, &from, &to).await?;
+        }
+    }
+    Ok(RenamedMod { filename: to })
 }
 
 /* ---------- audited entry points (§3.11) ---------- */
@@ -389,6 +494,30 @@ pub async fn delete(core: &crate::Core, filename: &str, target: ModTarget) -> Re
         "mod.delete",
         Some(filename),
         Some(target_label(target)),
+        r.as_ref().err(),
+    )
+    .await;
+    r
+}
+
+/// `set_mod_enabled` (§3.5, 2.13.0), audited as `mod.enable` / `mod.disable`.
+pub async fn set_enabled(
+    core: &crate::Core,
+    filename: &str,
+    target: ModTarget,
+    enabled: bool,
+) -> Result<RenamedMod> {
+    let r = set_enabled_inner(core, filename, target, enabled).await;
+    let detail = match &r {
+        Ok(renamed) => format!("{} → {}", target_label(target), renamed.filename),
+        Err(_) => target_label(target).to_string(),
+    };
+    crate::audit::record(
+        core,
+        crate::model::AuditSource::User,
+        if enabled { "mod.enable" } else { "mod.disable" },
+        Some(filename),
+        Some(&detail),
         r.as_ref().err(),
     )
     .await;
@@ -541,5 +670,136 @@ mod tests {
         file.set_len(UPLOAD_MAX_BYTES).unwrap();
         drop(file);
         assert!(validate_upload_source(&ok).await.is_ok());
+    }
+
+    /* ---------- set_mod_enabled (§3.5, 2.13.0) ---------- */
+
+    #[test]
+    fn enable_rename_names() {
+        assert_eq!(
+            enable_rename("sodium-0.6.jar", false).unwrap(),
+            ("sodium-0.6.jar".into(), "sodium-0.6.jar.disabled".into())
+        );
+        assert_eq!(
+            enable_rename("Chunky-1.4.23.JAR.Disabled", true).unwrap(),
+            (
+                "Chunky-1.4.23.JAR.Disabled".into(),
+                "Chunky-1.4.23.JAR".into()
+            )
+        );
+        for (name, enabled) in [
+            ("mod.jar.disabled", false), // already off
+            ("mod.jar", true),           // already on
+            ("pack.zip", false),         // zips cannot be switched
+            ("../evil.jar", false),
+            ("dir/mod.jar.disabled", true),
+            (".jar.disabled", true),
+            ("-x.jar", false),
+            ("bad name.jar", false),
+        ] {
+            assert_eq!(
+                enable_rename(name, enabled).unwrap_err().code(),
+                "INVALID_INPUT",
+                "{name} enabled={enabled}"
+            );
+        }
+    }
+
+    #[test]
+    fn rename_script_exit_codes_map_to_errors() {
+        let out = |code: i32, stderr: &str| crate::runtime::ExecOutput {
+            stdout: String::new(),
+            stderr: stderr.into(),
+            exit_code: Some(code),
+        };
+        assert!(rename_outcome(&out(0, ""), "a.jar", "a.jar.disabled").is_ok());
+        let missing = rename_outcome(&out(3, ""), "a.jar", "a.jar.disabled").unwrap_err();
+        assert_eq!(missing.code(), "INVALID_INPUT");
+        assert!(missing.to_string().contains("a.jar does not exist"));
+        let taken = rename_outcome(&out(4, ""), "a.jar", "a.jar.disabled").unwrap_err();
+        assert_eq!(taken.code(), "INVALID_INPUT");
+        assert!(taken
+            .to_string()
+            .contains("already a file named a.jar.disabled"));
+        let other = rename_outcome(&out(1, "mv: Permission denied"), "a.jar", "b").unwrap_err();
+        assert_eq!(other.code(), "IO");
+        assert!(other.to_string().contains("Permission denied"));
+    }
+
+    /// The container script itself, run by this machine's `sh`: it renames,
+    /// refuses a taken name and a missing source, and treats `$1`/`$2` as
+    /// data (a name with shell syntax stays a name).
+    #[cfg(unix)]
+    #[test]
+    fn rename_script_behaves_under_sh() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run = |from: &str, to: &str| {
+            std::process::Command::new("sh")
+                .args(["-c", RENAME_SCRIPT, "sh"])
+                .arg(tmp.path().join(from))
+                .arg(tmp.path().join(to))
+                .status()
+                .unwrap()
+                .code()
+        };
+        std::fs::write(tmp.path().join("a.jar"), b"a").unwrap();
+        assert_eq!(run("a.jar", "a.jar.disabled"), Some(0));
+        assert!(tmp.path().join("a.jar.disabled").exists());
+        assert!(!tmp.path().join("a.jar").exists());
+        assert_eq!(run("a.jar", "a.jar.disabled"), Some(3), "source gone");
+        std::fs::write(tmp.path().join("a.jar"), b"new").unwrap();
+        assert_eq!(run("a.jar", "a.jar.disabled"), Some(4), "target taken");
+        assert_eq!(
+            std::fs::read(tmp.path().join("a.jar.disabled")).unwrap(),
+            b"a"
+        );
+        std::fs::write(tmp.path().join("$(touch pwned).jar"), b"x").unwrap();
+        assert_eq!(run("$(touch pwned).jar", "x.jar"), Some(0));
+        assert!(!tmp.path().join("pwned").exists());
+        assert!(!std::path::Path::new("pwned").exists());
+    }
+
+    #[tokio::test]
+    async fn set_enabled_on_this_computer_renames_and_never_overwrites() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = crate::Core::init(tmp.path().join("config"), tmp.path().join("data"))
+            .await
+            .unwrap();
+        let mods = core.settings().await.simple.instance_dir.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("lithium.jar"), b"jar").unwrap();
+
+        let off = set_enabled(&core, "lithium.jar", ModTarget::Mods, false)
+            .await
+            .unwrap();
+        assert_eq!(off.filename, "lithium.jar.disabled");
+        assert!(mods.join("lithium.jar.disabled").is_file());
+        assert!(!mods.join("lithium.jar").exists());
+
+        // A new lithium.jar appears; turning the old one back on must not
+        // replace it.
+        std::fs::write(mods.join("lithium.jar"), b"newer").unwrap();
+        let err = set_enabled(&core, "lithium.jar.disabled", ModTarget::Mods, true)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), "INVALID_INPUT");
+        assert_eq!(std::fs::read(mods.join("lithium.jar")).unwrap(), b"newer");
+        assert!(mods.join("lithium.jar.disabled").is_file());
+
+        std::fs::remove_file(mods.join("lithium.jar")).unwrap();
+        let on = set_enabled(&core, "lithium.jar.disabled", ModTarget::Mods, true)
+            .await
+            .unwrap();
+        assert_eq!(on.filename, "lithium.jar");
+        assert_eq!(std::fs::read(mods.join("lithium.jar")).unwrap(), b"jar");
+
+        let missing = set_enabled(&core, "nope.jar", ModTarget::Mods, false)
+            .await
+            .unwrap_err();
+        assert!(missing.to_string().contains("does not exist"));
+
+        let log = crate::audit::recent(&core, Some(10)).await.unwrap();
+        let actions: Vec<_> = log.entries.iter().map(|e| e.action.as_str()).collect();
+        assert!(actions.contains(&"mod.disable") && actions.contains(&"mod.enable"));
     }
 }

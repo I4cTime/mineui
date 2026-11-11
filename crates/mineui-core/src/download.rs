@@ -31,6 +31,9 @@ pub struct DownloadRequest {
     /// Expected SHA-256 (hex); mismatch → CHECKSUM_MISMATCH (Java runtime
     /// archives, §6.3a).
     pub expected_sha256: Option<String>,
+    /// Expected SHA-512 (hex); mismatch → CHECKSUM_MISMATCH (Modrinth files,
+    /// §6.3b).
+    pub expected_sha512: Option<String>,
     /// A client with its own redirect policy (the host-allowlisted Java
     /// client, §6.3a). Takes precedence over `allow_private_hosts`.
     pub client: Option<reqwest::Client>,
@@ -154,6 +157,7 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
         .map_err(|e| Error::Io(format!("failed to create temp file: {e}")))?;
     let mut hasher = Sha1::new();
     let mut hasher256 = req.expected_sha256.as_ref().map(|_| sha2::Sha256::new());
+    let mut hasher512 = req.expected_sha512.as_ref().map(|_| sha2::Sha512::new());
     let mut received: u64 = 0;
     let mut last_emit = Instant::now() - PROGRESS_THROTTLE;
 
@@ -171,6 +175,9 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
                 }
                 hasher.update(&chunk);
                 if let Some(h) = hasher256.as_mut() {
+                    h.update(&chunk);
+                }
+                if let Some(h) = hasher512.as_mut() {
                     h.update(&chunk);
                 }
                 if let Err(e) = file.write_all(&chunk).await {
@@ -215,6 +222,16 @@ async fn run(core: &crate::Core, req: &DownloadRequest) -> Result<DownloadResult
             return Err(Error::ChecksumMismatch(format!(
                 "the download does not match its published sha256 checksum \
                  (expected {expected}, got {got})"
+            )));
+        }
+    }
+    if let (Some(expected), Some(h)) = (&req.expected_sha512, hasher512) {
+        let got = hex::encode(h.finalize());
+        if !expected.eq_ignore_ascii_case(&got) {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(Error::ChecksumMismatch(format!(
+                "{} does not match its published sha512 checksum",
+                req.filename
             )));
         }
     }

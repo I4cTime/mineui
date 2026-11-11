@@ -218,6 +218,82 @@ pub struct UnpackedMods {
     pub download_id: Option<String>,
 }
 
+/// Result of `set_mod_enabled` (§3.5, 2.13.0): the file's new name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamedMod {
+    pub filename: String,
+}
+
+/* ---------- §3.5a find mods on Modrinth (2.13.0) ---------- */
+
+/// What Find mods can do for one server (`get_mod_support`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSupport {
+    pub supported: bool,
+    pub target: Option<ModTarget>,
+    pub server_type: Option<String>,
+    pub mc_version: Option<String>,
+    pub loaders: Vec<String>,
+    pub reason: Option<String>,
+}
+
+/// Modrinth's `client_side` of a project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModClientSide {
+    Required,
+    Optional,
+    Unsupported,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSearchHit {
+    pub project_id: String,
+    pub slug: String,
+    pub title: String,
+    pub description: String,
+    pub author: String,
+    pub icon_url: Option<String>,
+    pub downloads: u64,
+    pub client_side: ModClientSide,
+    pub installed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSearchPage {
+    pub hits: Vec<ModSearchHit>,
+    pub offset: u32,
+    pub limit: u32,
+    pub total_hits: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledModFile {
+    pub filename: String,
+    pub project_id: String,
+    pub slug: String,
+    pub title: String,
+    pub version_id: String,
+    pub version_number: String,
+    pub dependency: bool,
+    pub download_id: String,
+}
+
+/// Result of `install_mod`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModInstall {
+    pub target: ModTarget,
+    pub installed: Vec<InstalledModFile>,
+    pub already_installed: Vec<String>,
+}
+
 /* ---------- §3.6 instance ---------- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

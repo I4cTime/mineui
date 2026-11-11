@@ -591,6 +591,7 @@ async fn download_and_install(
         max_bytes: Some(MAX_ARCHIVE_BYTES),
         expected_sha1: None,
         expected_sha256: Some(asset.sha256.clone()),
+        expected_sha512: None,
         allow_private_hosts: false,
         client: Some(client),
     };
@@ -1033,6 +1034,7 @@ mod tests {
             max_bytes: Some(MAX_ARCHIVE_BYTES),
             expected_sha1: None,
             expected_sha256: Some("0".repeat(64)),
+            expected_sha512: None,
             allow_private_hosts: true,
             client: Some(reqwest::Client::new()),
         };
