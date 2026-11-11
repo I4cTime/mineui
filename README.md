@@ -166,9 +166,9 @@ container), a **Normal Minecraft, on this computer** server (vanilla, no
 containers), or **A container I already run**. For a new container MineUI
 creates an [`itzg/minecraft-server`](https://github.com/itzg/docker-minecraft-server)
 container for you - pick Vanilla, Paper, Purpur, Fabric, Quilt, Forge or
-NeoForge, the Minecraft version, memory and ports - picks the image with the
-right Java for that version, generates the RCON password, and connects itself
-to the result. The world lives in a named volume.
+NeoForge, the Minecraft version (only the ones that type has a build for),
+memory and ports - picks the image with the right Java for that version,
+generates the RCON password, and connects itself to the result. The world lives in a named volume.
 
 **Deleting is always your call.** MineUI removes a container only when you
 ask it to - *Delete container* in Server Settings, or the tick box when you
@@ -296,7 +296,7 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 309 unit tests);
+`crates/mineui-core` is pure Rust (no Tauri dependency, 327 unit tests);
 `src-tauri` is a thin `#[tauri::command]` shell (61 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) - binding, not a suggestion; see
@@ -325,7 +325,7 @@ Other commands:
 - `pnpm build` - static export to `out/` (what Tauri bundles)
 - `pnpm lint` - ESLint
 - `pnpm tauri build` - production desktop bundle
-- `cargo test -p mineui-core` - Rust unit tests (309 tests; must stay green)
+- `cargo test -p mineui-core` - Rust unit tests (327 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every

@@ -76,6 +76,19 @@ All notable changes to MineUI are documented here. Format follows
 - @heroui-pro/react 1.0.0-beta.11. The Java installer reads archive names
   the way zip 9 returns them.
 
+### Fixed
+
+- **Creating a server in a container only offers Minecraft versions the
+  server type can run.** Picking Purpur with Minecraft 26.1.1 failed inside
+  the container with "Version 26.1.1 does not exist", because the version
+  list showed every Minecraft release whatever the type. Now the list
+  follows the server type you choose (from Paper, Purpur, Fabric, Quilt,
+  Forge and NeoForge's own version lists), "Latest release" appears only
+  when the type has a build for it, and otherwise the newest version the
+  type supports is picked, with a line under the picker saying why. Start
+  here's "Minecraft with mods" does the same for Fabric. When a type's list
+  cannot be fetched, the full list is shown as before.
+
 ## [2.12.1] - 2026-11-10
 
 ### Security
