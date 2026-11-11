@@ -390,7 +390,11 @@ pub fn extract_zip(file: std::fs::File, dest: &Path) -> Result<()> {
         let mut entry = zip
             .by_index(index)
             .map_err(|e| unsafe_archive(format!("unreadable archive: {e}")))?;
-        let name = entry.name().to_string();
+        // zip 9 decodes names lazily: one that does not decode refuses the archive.
+        let name = entry
+            .name()
+            .map_err(|e| unsafe_archive(format!("an entry has an unreadable name: {e}")))?
+            .into_owned();
         check_zip_name(&name)?;
         let rel = entry
             .enclosed_name()
