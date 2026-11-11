@@ -60,7 +60,9 @@ The following areas are in scope for security reports:
 - **RCON console** - command injection or allowlist bypass in the RCON
   command panel.
 - **Mods & Plugins** - path traversal or unsafe file handling in upload,
-  URL download, or delete flows.
+  URL download, enable/disable, or delete flows; for Find mods, a bypass of
+  the fixed Modrinth hosts (https only) or of the sha512 check MineUI makes
+  on every file before it keeps it.
 - **Configuration editor** - path traversal outside the intended
   `server.properties` / `config/` scope.
 - **World backups** - path traversal or archive extraction issues

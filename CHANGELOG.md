@@ -43,8 +43,22 @@ All notable changes to MineUI are documented here. Format follows
   server made and the first friend joining. The join address is shown as a
   tilting "server pass" card with Copy. All of it stops under the system's
   reduce-motion setting, and sounds follow the existing sound setting.
+- **Find mods.** The add dialog on Mods & plugins searches Modrinth for a
+  server In a container that runs Fabric, Quilt, Forge, NeoForge, Paper or
+  Purpur, and lists only what works with its type and Minecraft version,
+  the most downloaded first. Install also adds the other mods it needs,
+  checks every file against the sha512 Modrinth published before keeping
+  it, and says when every player has to install the mod too. Servers On
+  this computer, Vanilla servers and modpack servers get an explanation
+  instead of a search. Tried on a real Fabric server under rootless Podman;
+  the other server types are covered by tests only.
+- **Switch a mod off and on.** Each mod and plugin jar has a switch. Off
+  renames the file to `.jar.disabled` so the server skips it; it applies
+  after a restart. A switched-off mod can be deleted as it is.
 - IPC: `install_java` and `required_java_major`, `JavaCheck.managed`, and
-  `DownloadKind` gains `"java"` (see `docs/v2-contract.md`).
+  `DownloadKind` gains `"java"`; `get_mod_support`, `search_mods`,
+  `install_mod` and `set_mod_enabled`, and `delete_mod` accepts a
+  `.jar.disabled` name (see `docs/v2-contract.md`).
 
 ### Changed
 
@@ -54,6 +68,9 @@ All notable changes to MineUI are documented here. Format follows
 - **The create forms show less up front.** Server type, version, pack and
   the Mojang agreement come first; the rest is under More options, with the
   same defaults as before.
+- **Adding a mod from a link is in the Advanced view only**, with a warning
+  that MineUI cannot check a file from a link the way it checks files from
+  Find.
 - **macOS builds are signed with a Developer ID and notarized** by the
   release workflow from this release on. Windows builds are still unsigned.
 - @heroui-pro/react 1.0.0-beta.11. The Java installer reads archive names

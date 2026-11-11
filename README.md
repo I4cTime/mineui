@@ -232,9 +232,20 @@ confirmation before `stop`.
 
 ### Mods & plugins
 
-Browse what's installed, upload a jar from disk, or download one from a URL.
-The add dialog preselects mod or plugin from what the server runs and warns
-when the choice cannot load there. Have a whole set of mods as a `.zip` - a
+**Find mods.** For a server In a container that runs Fabric, Quilt, Forge,
+NeoForge, Paper or Purpur, the add dialog searches
+[Modrinth](https://modrinth.com) and lists only what works with that server's
+type and Minecraft version. *Install* also adds the other mods it needs,
+checks every file against the sha512 Modrinth published before keeping it,
+and says when every player has to install the mod too. Servers On this
+computer, Vanilla servers and modpack servers get a plain explanation instead
+of a search.
+
+Browse what's installed, switch a mod off and on again without deleting it
+(it applies after a restart), or upload a jar from disk. Downloading from a
+link is still there in the Advanced view, with a warning that MineUI cannot
+check such a file. The add dialog preselects mod or plugin from what the
+server runs and warns when the choice cannot load there. Have a whole set of mods as a `.zip` - a
 zipped folder, or a server pack? MineUI unpacks the jars inside and installs
 them together, which is the way to put a pack's mods onto a server that
 already exists.
@@ -285,8 +296,8 @@ plus container/process metrics; everything else still works.
 
 ### Every backend call is typed and contract-bound
 
-`crates/mineui-core` is pure Rust (no Tauri dependency, 273 unit tests);
-`src-tauri` is a thin `#[tauri::command]` shell (57 IPC commands) that
+`crates/mineui-core` is pure Rust (no Tauri dependency, 309 unit tests);
+`src-tauri` is a thin `#[tauri::command]` shell (61 IPC commands) that
 delegates to it. The full command/error/event surface is specified in
 [`docs/v2-contract.md`](docs/v2-contract.md) - binding, not a suggestion; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -314,7 +325,7 @@ Other commands:
 - `pnpm build` - static export to `out/` (what Tauri bundles)
 - `pnpm lint` - ESLint
 - `pnpm tauri build` - production desktop bundle
-- `cargo test -p mineui-core` - Rust unit tests (273 tests; must stay green)
+- `cargo test -p mineui-core` - Rust unit tests (309 tests; must stay green)
 
 CI (`.github/workflows/ci.yml`) runs lint/typecheck/build on the frontend and
 `cargo fmt`/`clippy`/`test` plus a `cargo check` of the Tauri shell, on every
