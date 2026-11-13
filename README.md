@@ -1,13 +1,22 @@
 <p align="center">
-  <img src="assets/brand/mark.svg" alt="MineUI" width="120">
+  <a href="https://mineui.i4c.studio">
+    <img src="assets/brand/social-card-1200x630.jpg" alt="MineUI - Run your own Minecraft server. No terminal needed. Free and open source for Windows, macOS and Linux." width="840">
+  </a>
 </p>
 
 <h1 align="center">MineUI</h1>
 
 <p align="center">
-  <b>The desktop app your Minecraft server has been missing.</b><br>
-  Run managed vanilla servers, create modded ones in containers, or attach to the Docker/Podman containers you already have - several at once.<br>
+  <b>Run your own Minecraft server. No terminal needed.</b><br>
+  Start a vanilla server on this computer, create a modded one in a container, or attach to the Docker/Podman containers you already have - several at once.<br>
   One native app. No dashboard to self-host, no local API server.
+</p>
+
+<p align="center">
+  <a href="https://mineui.i4c.studio/#downloads"><b>Download</b></a> &middot;
+  <a href="https://mineui.i4c.studio">Website</a> &middot;
+  <a href="https://mineui.i4c.studio/docs">Docs</a> &middot;
+  <a href="https://mineui.i4c.studio/changelog">Changelog</a>
 </p>
 
 <p align="center">
@@ -58,16 +67,21 @@ number of servers at once, and each one runs in one of two ways:
 
 ## Install
 
-Grab the build for your platform from the
-[latest release](https://github.com/I4cTime/mineui/releases/latest):
+Download the build for your platform from
+[mineui.i4c.studio](https://mineui.i4c.studio/#downloads). Each link below
+always gets the current version:
 
-| Platform | Package |
-| --- | --- |
-| Linux x86_64 | `MineUI_2.13.0_amd64.AppImage` - `chmod +x` and run |
-| Debian/Ubuntu | `MineUI_2.13.0_amd64.deb` - `sudo apt install ./MineUI_2.13.0_amd64.deb` |
-| Windows x64 | `MineUI_2.13.0_x64-setup.exe` |
-| macOS (Apple Silicon) | `MineUI_2.13.0_aarch64.dmg` |
-| macOS (Intel) | `MineUI_2.13.0_x64.dmg` |
+| Platform | Download | Then |
+| --- | --- | --- |
+| Windows x64 | [`MineUI_2.13.0_x64-setup.exe`](https://mineui.i4c.studio/download/windows) | Run the installer |
+| macOS (Apple Silicon) | [`MineUI_2.13.0_aarch64.dmg`](https://mineui.i4c.studio/download/mac-arm) | Open it and drag MineUI to Applications |
+| macOS (Intel) | [`MineUI_2.13.0_x64.dmg`](https://mineui.i4c.studio/download/mac-intel) | Open it and drag MineUI to Applications |
+| Linux x86_64 | [`MineUI_2.13.0_amd64.AppImage`](https://mineui.i4c.studio/download/linux-appimage) | `chmod +x` and run |
+| Debian/Ubuntu | [`MineUI_2.13.0_amd64.deb`](https://mineui.i4c.studio/download/linux-deb) | `sudo apt install ./MineUI_2.13.0_amd64.deb` |
+
+The macOS builds are signed and notarized. Release notes and every earlier
+version are on the
+[Releases page](https://github.com/I4cTime/mineui/releases).
 
 A server On this computer needs Java. If the computer has none that fits
 the Minecraft version you pick, MineUI offers *Get Java for me* and downloads
